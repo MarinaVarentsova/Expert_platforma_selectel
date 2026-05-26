@@ -49,7 +49,9 @@ type ExpertProfile = {
   bio: string | null;
   business_trip_ready: boolean;
   palata_registry_verified: boolean;
+  palata_registry_number: string | null;
   centrsudexpert_verified: boolean;
+  centrsudexpert_registry_number: string | null;
   avg_customer_rating: number | null;
   completed_orders_count: number;
 };
@@ -198,7 +200,7 @@ export default function RequestDetail() {
       const [profilesRes, usersRes] = await Promise.all([
         expertIds.length > 0
           ? supabase.from("palata_expert_profiles")
-              .select("user_id, specializations, regions, experience_years, bio, business_trip_ready, palata_registry_verified, centrsudexpert_verified, avg_customer_rating, completed_orders_count")
+              .select("user_id, specializations, regions, experience_years, bio, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count")
               .in("user_id", expertIds)
           : Promise.resolve({ data: [] as ExpertProfile[], error: null }),
         userIds.length > 0
@@ -374,6 +376,8 @@ function Detail({ data }: { data: LoadedData }) {
                   {/* Expert profile details */}
                   {profile ? (
                     <div className="px-4 py-3 space-y-3">
+
+                      {/* Main fields grid */}
                       <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
                         {profile.specializations.length > 0 && (
                           <Field label="Направления экспертиз">
@@ -388,34 +392,46 @@ function Detail({ data }: { data: LoadedData }) {
                         {profile.experience_years != null && (
                           <Field label="Опыт">{profile.experience_years} лет</Field>
                         )}
-                        {profile.avg_customer_rating != null && (
-                          <Field label="Рейтинг">
-                            <span className="text-amber-500">{"★".repeat(Math.round(profile.avg_customer_rating))}</span>
-                            <span className="text-slate-400 ml-1 text-xs">{profile.avg_customer_rating} / 5</span>
-                          </Field>
-                        )}
+                        <Field label="Рейтинг">
+                          {profile.avg_customer_rating != null ? (
+                            <>
+                              <span className="text-amber-500">
+                                {"★".repeat(Math.round(profile.avg_customer_rating))}
+                                {"☆".repeat(5 - Math.round(profile.avg_customer_rating))}
+                              </span>
+                              <span className="text-slate-400 ml-1 text-xs">{profile.avg_customer_rating} / 5</span>
+                            </>
+                          ) : (
+                            <span className="text-slate-400 italic">Нет оценок</span>
+                          )}
+                        </Field>
                         <Field label="Выполнено заказов">{profile.completed_orders_count}</Field>
+                        <Field label="Готовность к командировкам">
+                          {profile.business_trip_ready
+                            ? <span className="text-teal-600 font-medium">Готов ✈</span>
+                            : <span className="text-slate-400">Без командировок</span>}
+                        </Field>
                       </div>
 
-                      {/* Badges */}
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {profile.palata_registry_verified && (
-                          <Badge color="blue" icon="✓">Реестр Палаты СЭ</Badge>
-                        )}
-                        {profile.centrsudexpert_verified && (
-                          <Badge color="indigo" icon="✓">Центр судэксперт</Badge>
-                        )}
-                        {profile.business_trip_ready && (
-                          <Badge color="teal" icon="✈">Готов к командировкам</Badge>
-                        )}
-                        {!profile.business_trip_ready && (
-                          <Badge color="slate" icon="—">Без командировок</Badge>
-                        )}
+                      {/* Registry section */}
+                      <div className="border-t border-slate-100 pt-3 grid grid-cols-2 gap-x-6 gap-y-2.5">
+                        <RegistryField
+                          label="Палата судебных экспертов РФ"
+                          verified={profile.palata_registry_verified}
+                          number={profile.palata_registry_number}
+                        />
+                        <RegistryField
+                          label="Центр судебных экспертиз"
+                          verified={profile.centrsudexpert_verified}
+                          number={profile.centrsudexpert_registry_number}
+                        />
                       </div>
 
                       {/* Bio */}
                       {profile.bio && (
-                        <p className="text-xs text-slate-500 leading-relaxed border-t border-slate-100 pt-2">{profile.bio}</p>
+                        <p className="text-xs text-slate-500 leading-relaxed border-t border-slate-100 pt-2">
+                          {profile.bio}
+                        </p>
                       )}
                     </div>
                   ) : (
@@ -536,6 +552,37 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <p className="text-xs text-slate-400 mb-0.5">{label}</p>
       <p className="text-sm text-slate-700 font-medium leading-snug">{children}</p>
+    </div>
+  );
+}
+
+function RegistryField({
+  label,
+  verified,
+  number,
+}: {
+  label: string;
+  verified: boolean;
+  number: string | null;
+}) {
+  return (
+    <div>
+      <p className="text-xs text-slate-400 mb-1">{label}</p>
+      <div className="flex items-center gap-1.5 mb-0.5">
+        {verified ? (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+            <span className="text-[10px]">✓</span> Подтверждено
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5">
+            Не подтверждено
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-slate-500">
+        <span className="text-slate-400">№ </span>
+        {number ?? <span className="italic text-slate-300">Не указано</span>}
+      </p>
     </div>
   );
 }

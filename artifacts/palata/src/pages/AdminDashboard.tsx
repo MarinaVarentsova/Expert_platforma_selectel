@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import AdminLayout from "@/components/AdminLayout";
+import { FileText, Clock, Zap, CheckCircle2, AlertTriangle, TrendingUp } from "lucide-react";
 
 type Request = {
   id: string;
@@ -22,13 +23,62 @@ type State =
   | { kind: "error"; message: string };
 
 const COLUMNS = [
-  { id: "new",      label: "Новые",          accent: "border-t-slate-400",  statuses: ["draft", "new"] },
-  { id: "pending",  label: "Идёт подбор",    accent: "border-t-yellow-400", statuses: ["pending"] },
-  { id: "matching", label: "Выбор эксперта", accent: "border-t-cyan-400",   statuses: ["expert_selection"] },
-  { id: "working",  label: "В работе",       accent: "border-t-indigo-400", statuses: ["in_progress", "in_work"] },
-  { id: "problem",  label: "Проблемные",     accent: "border-t-red-400",    statuses: ["failed", "matching"] },
-  { id: "done",     label: "Выполненные",    accent: "border-t-green-400",  statuses: ["completed"] },
-  { id: "closed",   label: "Неактуальные",   accent: "border-t-slate-300",  statuses: ["cancelled"] },
+  {
+    id: "new",
+    label: "Новые",
+    dotColor: "bg-slate-400",
+    bgColor: "bg-white border-slate-200",
+    accent: "",
+    statuses: ["draft", "new"],
+  },
+  {
+    id: "pending",
+    label: "Идёт подбор",
+    dotColor: "bg-amber-400",
+    bgColor: "bg-amber-50/60 border-amber-200",
+    accent: "",
+    statuses: ["pending"],
+  },
+  {
+    id: "matching",
+    label: "Выбор эксперта",
+    dotColor: "bg-cyan-400",
+    bgColor: "bg-cyan-50/60 border-cyan-200",
+    accent: "",
+    statuses: ["expert_selection"],
+  },
+  {
+    id: "working",
+    label: "В работе",
+    dotColor: "bg-indigo-500",
+    bgColor: "bg-indigo-50/60 border-indigo-200",
+    accent: "",
+    statuses: ["in_progress", "in_work"],
+  },
+  {
+    id: "problem",
+    label: "Проблемные",
+    dotColor: "bg-red-400",
+    bgColor: "bg-red-50/60 border-red-200",
+    accent: "",
+    statuses: ["failed", "matching"],
+  },
+  {
+    id: "done",
+    label: "Выполненные",
+    dotColor: "bg-emerald-400",
+    bgColor: "bg-emerald-50/60 border-emerald-200",
+    accent: "",
+    statuses: ["completed"],
+  },
+  {
+    id: "closed",
+    label: "Неактуальные",
+    dotColor: "bg-slate-300",
+    bgColor: "bg-slate-50 border-slate-200",
+    accent: "",
+    statuses: ["cancelled"],
+  },
 ];
 
 export default function AdminDashboard() {
@@ -45,37 +95,82 @@ export default function AdminDashboard() {
       });
   }, []);
 
-  const total = state.kind === "ok" ? state.rows.length : null;
+  const rows = state.kind === "ok" ? state.rows : [];
+  const total = state.kind === "ok" ? rows.length : null;
+
+  const count = (...statuses: string[]) => rows.filter(r => statuses.includes(r.status)).length;
 
   const columns = COLUMNS.map((col) => ({
-    id: col.id,
-    label: col.label,
-    accent: col.accent,
+    ...col,
     items: state.kind === "ok"
-      ? state.rows.filter((r) => col.statuses.includes(r.status))
+      ? rows.filter((r) => col.statuses.includes(r.status))
       : [],
   }));
 
   return (
     <AdminLayout>
       <div className="px-6 py-8">
-        <div className="flex items-end justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Все заказы</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Таблица{" "}
-              <code className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">palata_requests</code>
-            </p>
-          </div>
-          {total != null && (
-            <div className="text-right">
-              <p className="text-xs text-slate-400 mb-0.5">Всего заявок</p>
-              <p className="text-3xl font-bold text-slate-900">{total}</p>
-            </div>
-          )}
+
+        {/* ── KPI cards ──────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+          <KpiCard
+            label="Всего заявок"
+            value={total ?? "—"}
+            Icon={FileText}
+            colorClass="kpi-indigo"
+            loading={state.kind === "loading"}
+          />
+          <KpiCard
+            label="Новые"
+            value={state.kind === "ok" ? count("draft", "new") : "—"}
+            Icon={Clock}
+            colorClass="kpi-slate"
+            loading={state.kind === "loading"}
+          />
+          <KpiCard
+            label="Идёт подбор"
+            value={state.kind === "ok" ? count("pending") : "—"}
+            Icon={Zap}
+            colorClass="kpi-yellow"
+            loading={state.kind === "loading"}
+          />
+          <KpiCard
+            label="В работе"
+            value={state.kind === "ok" ? count("in_progress", "in_work") : "—"}
+            Icon={TrendingUp}
+            colorClass="kpi-cyan"
+            loading={state.kind === "loading"}
+          />
+          <KpiCard
+            label="Выполнено"
+            value={state.kind === "ok" ? count("completed") : "—"}
+            Icon={CheckCircle2}
+            colorClass="kpi-emerald"
+            loading={state.kind === "loading"}
+          />
+          <KpiCard
+            label="Проблемные"
+            value={state.kind === "ok" ? count("failed", "matching") : "—"}
+            Icon={AlertTriangle}
+            colorClass="kpi-red"
+            loading={state.kind === "loading"}
+          />
         </div>
 
-        {state.kind === "loading" && <p className="text-sm text-slate-400 py-8">Загрузка данных…</p>}
+        {/* ── Section header ─────────────────────────────────────── */}
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Канбан-доска заявок</h1>
+            <p className="text-xs text-slate-400 mt-0.5">Отслеживайте статус каждой заявки в реальном времени</p>
+          </div>
+        </div>
+
+        {state.kind === "loading" && (
+          <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
+            <div className="h-4 w-4 rounded-full border-2 border-indigo-300 border-t-indigo-600 animate-spin" />
+            Загрузка данных…
+          </div>
+        )}
         {state.kind === "error" && <ErrorCard message={state.message} />}
         {state.kind === "ok" && (
           <KanbanBoard
@@ -89,21 +184,75 @@ export default function AdminDashboard() {
   );
 }
 
+function KpiCard({
+  label, value, Icon, colorClass, loading,
+}: {
+  label: string;
+  value: number | string;
+  Icon: React.ElementType;
+  colorClass: string;
+  loading: boolean;
+}) {
+  return (
+    <div className={`kpi-card ${colorClass}`}>
+      <div className="flex items-start justify-between mb-2">
+        <p className="text-[11px] font-medium text-slate-500 leading-tight">{label}</p>
+        <Icon className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+      </div>
+      {loading ? (
+        <div className="h-7 w-12 bg-slate-100 rounded animate-pulse mt-1" />
+      ) : (
+        <p className="text-2xl font-bold text-slate-900 tabular-nums">
+          {typeof value === "number" ? value.toLocaleString("ru-RU") : value}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AdminCard({ request: r }: { request: Request }) {
+  const urgency =
+    r.status === "failed" || r.status === "matching"
+      ? "border-l-red-400"
+      : r.status === "pending"
+      ? "border-l-amber-400"
+      : r.status === "completed"
+      ? "border-l-emerald-400"
+      : r.status === "in_progress" || r.status === "in_work"
+      ? "border-l-indigo-400"
+      : "border-l-slate-200";
+
   return (
     <Link href={`/requests/${r.id}`}>
-      <div className="bg-white rounded-lg border border-slate-200 p-3 hover:shadow-sm hover:border-indigo-200 transition-all cursor-pointer">
-        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2">{r.title}</p>
-        <p className="text-xs text-slate-500 mb-1 truncate">{r.expertise_type}</p>
-        <p className="text-xs text-slate-400 truncate">{r.region}</p>
-        {(r.budget_min != null || r.budget_max != null) && (
-          <p className="text-xs text-slate-400 mt-1">
-            {r.budget_min?.toLocaleString("ru-RU") ?? "—"} – {r.budget_max?.toLocaleString("ru-RU") ?? "—"} ₽
-          </p>
-        )}
-        <div className="mt-2 pt-2 border-t border-slate-50 flex items-center justify-between">
-          <span className="text-xs text-slate-400">Раунд {r.matching_round}</span>
-          <span className="text-xs text-slate-300">{new Date(r.created_at).toLocaleDateString("ru-RU")}</span>
+      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgency} p-3.5 hover:shadow-md hover:border-indigo-100 hover:border-l-indigo-400 transition-all cursor-pointer group shadow-sm`}>
+        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2.5 line-clamp-2 group-hover:text-indigo-700 transition-colors">
+          {r.title}
+        </p>
+
+        <div className="space-y-1 mb-3">
+          {r.expertise_type && (
+            <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
+              <span className="inline-block h-1 w-1 rounded-full bg-indigo-300 flex-shrink-0" />
+              {r.expertise_type}
+            </p>
+          )}
+          {r.region && (
+            <p className="text-[11px] text-slate-400 truncate">{r.region}</p>
+          )}
+          {(r.budget_min != null || r.budget_max != null) && (
+            <p className="text-[11px] text-slate-400">
+              {r.budget_min?.toLocaleString("ru-RU") ?? "—"} – {r.budget_max?.toLocaleString("ru-RU") ?? "—"} ₽
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between pt-2 border-t border-slate-50">
+          <span className="text-[10px] text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded">
+            Раунд {r.matching_round}
+          </span>
+          <span className="text-[10px] text-slate-300">
+            {new Date(r.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" })}
+          </span>
         </div>
       </div>
     </Link>
@@ -114,7 +263,7 @@ function ErrorCard({ message }: { message: string }) {
   return (
     <div className="rounded-xl border border-red-200 bg-red-50 p-6 max-w-xl">
       <p className="text-sm font-semibold text-red-700 mb-1">Ошибка Supabase</p>
-      <p className="text-xs text-red-600">{message}</p>
+      <p className="text-xs text-red-600 font-mono">{message}</p>
     </div>
   );
 }

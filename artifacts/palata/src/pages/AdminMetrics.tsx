@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import AdminLayout from "@/components/AdminLayout";
+import { TrendingUp, Users, Star, XCircle } from "lucide-react";
 
 type RequestRow = {
   id: string;
@@ -142,10 +143,6 @@ export default function AdminMetrics() {
         ms.length > 0 && ms.every(m => m.status === "declined" || m.status === "withdrawn")
       ).length;
 
-      const byRegion = groupCount(requests, r => r.region);
-      const byExpertise = groupCount(requests, r => r.expertise_type);
-      const conversions = computeConversions(requests);
-
       const metrics: Metrics = {
         requests: {
           total: requests.length,
@@ -172,9 +169,9 @@ export default function AdminMetrics() {
           avg_expert: avg(expRatings.map(r => r.score)),
           avg_customer: avg(custRatings.map(r => r.score)),
         },
-        conversions,
-        byRegion,
-        byExpertise,
+        conversions: computeConversions(requests),
+        byRegion: groupCount(requests, r => r.region),
+        byExpertise: groupCount(requests, r => r.expertise_type),
       };
 
       setState({ kind: "ok", metrics });
@@ -186,16 +183,29 @@ export default function AdminMetrics() {
   return (
     <AdminLayout>
       <div className="max-w-5xl mx-auto px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-900">Метрики</h1>
-          <p className="text-sm text-slate-500 mt-1">Данные из Supabase в реальном времени</p>
+
+        {/* Header */}
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Метрики платформы</h1>
+            <p className="text-xs text-slate-400 mt-0.5">Данные Supabase в реальном времени</p>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Live
+          </div>
         </div>
 
-        {state.kind === "loading" && <p className="text-sm text-slate-400 py-8">Загрузка данных…</p>}
+        {state.kind === "loading" && (
+          <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
+            <div className="h-4 w-4 rounded-full border-2 border-indigo-300 border-t-indigo-600 animate-spin" />
+            Загрузка данных…
+          </div>
+        )}
         {state.kind === "error" && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-6 max-w-xl">
             <p className="text-sm font-semibold text-red-700 mb-1">Ошибка Supabase</p>
-            <p className="text-xs text-red-600">{state.message}</p>
+            <p className="text-xs text-red-600 font-mono">{state.message}</p>
           </div>
         )}
         {state.kind === "ok" && <MetricsBody m={state.metrics} />}
@@ -206,51 +216,54 @@ export default function AdminMetrics() {
 
 function MetricsBody({ m }: { m: Metrics }) {
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
 
-      <Section title="Заявки">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label="Всего заявок"          value={m.requests.total}         accent="text-slate-900" />
-          <Stat label="Черновики"             value={m.requests.draft}          accent="text-slate-500" />
-          <Stat label="Идёт подбор"           value={m.requests.pending}        accent="text-yellow-600" />
-          <Stat label="Выбор эксперта"        value={m.requests.matching}       accent="text-cyan-600" />
-          <Stat label="В работе"              value={m.requests.in_progress}    accent="text-indigo-600" />
-          <Stat label="Выполнены"             value={m.requests.completed}      accent="text-green-600" />
-          <Stat label="Неактуальны"           value={m.requests.cancelled}      accent="text-slate-400" />
-          <Stat label="Ошибка подбора"        value={m.requests.failed}         accent="text-red-500" />
-          <Stat label="Все отказали"          value={m.requests.all_declined}   accent="text-red-600" />
-          <Stat label="Отказов экспертов"     value={m.matches.total_declines}  accent="text-orange-600" />
+      {/* ── Requests KPI ─────────────────────────────────────────── */}
+      <Section title="Заявки" Icon={TrendingUp} iconColor="text-indigo-500">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <StatCard label="Всего" value={m.requests.total} size="lg" colorClass="kpi-indigo" />
+          <StatCard label="Идёт подбор" value={m.requests.pending} colorClass="kpi-yellow" />
+          <StatCard label="В работе" value={m.requests.in_progress} colorClass="kpi-cyan" />
+          <StatCard label="Выполнены" value={m.requests.completed} colorClass="kpi-emerald" />
+          <StatCard label="Ошибка подбора" value={m.requests.failed} colorClass="kpi-red" />
+          <StatCard label="Черновики" value={m.requests.draft} colorClass="kpi-slate" />
+          <StatCard label="Выбор эксперта" value={m.requests.matching} colorClass="kpi-cyan" />
+          <StatCard label="Неактуальны" value={m.requests.cancelled} colorClass="kpi-slate" />
+          <StatCard label="Все отказали" value={m.requests.all_declined} colorClass="kpi-red" />
+          <StatCard label="Отказов экспертов" value={m.matches.total_declines} colorClass="kpi-red" />
         </div>
       </Section>
 
-      <Section title="Эксперты">
+      {/* ── Experts KPI ──────────────────────────────────────────── */}
+      <Section title="Эксперты" Icon={Users} iconColor="text-emerald-500">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label="Всего экспертов"       value={m.experts.total}           accent="text-slate-900" />
-          <Stat label="Активные"              value={m.experts.active}          accent="text-green-600" />
-          <Stat label="Реестр Палаты СЭ"      value={m.experts.palata_verified}  accent="text-indigo-600" />
-          <Stat label="Центр судэксперт"      value={m.experts.centr_verified}   accent="text-indigo-500" />
-          <Stat
+          <StatCard label="Всего экспертов" value={m.experts.total} size="lg" colorClass="kpi-indigo" />
+          <StatCard label="Активные" value={m.experts.active} colorClass="kpi-emerald" />
+          <StatCard label="Реестр Палаты СЭ" value={m.experts.palata_verified} colorClass="kpi-indigo" />
+          <StatCard label="Центр судэксперт" value={m.experts.centr_verified} colorClass="kpi-cyan" />
+          <StatCard
             label="Средний рейтинг (профиль)"
-            value={m.experts.avg_rating != null ? `${m.experts.avg_rating}` : "—"}
-            accent="text-amber-600"
+            value={m.experts.avg_rating != null ? m.experts.avg_rating : "—"}
+            colorClass="kpi-yellow"
             raw
           />
-          <Stat
-            label="Средний рейтинг (оценки)"
-            value={m.ratings.avg_expert != null ? `${m.ratings.avg_expert}` : "—"}
-            accent="text-amber-500"
+          <StatCard
+            label="Рейтинг (оценки экспертов)"
+            value={m.ratings.avg_expert != null ? m.ratings.avg_expert : "—"}
+            colorClass="kpi-yellow"
             raw
           />
-          <Stat
-            label="Ср. оценка заказчиков"
-            value={m.ratings.avg_customer != null ? `${m.ratings.avg_customer}` : "—"}
-            accent="text-teal-600"
+          <StatCard
+            label="Оценка заказчиков"
+            value={m.ratings.avg_customer != null ? m.ratings.avg_customer : "—"}
+            colorClass="kpi-emerald"
             raw
           />
         </div>
       </Section>
 
-      <Section title="Конверсии">
+      {/* ── Conversions ──────────────────────────────────────────── */}
+      <Section title="Воронка и конверсии" Icon={Star} iconColor="text-amber-500">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {m.conversions.map((c) => (
             <ConversionCard key={c.label} metric={c} />
@@ -258,28 +271,51 @@ function MetricsBody({ m }: { m: Metrics }) {
         </div>
       </Section>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <BreakdownTable title="Заявки по регионам"     rows={m.byRegion}    total={m.requests.total} />
-        <BreakdownTable title="Заявки по направлениям" rows={m.byExpertise} total={m.requests.total} />
-      </div>
+      {/* ── Breakdown tables ─────────────────────────────────────── */}
+      <Section title="Распределение" Icon={XCircle} iconColor="text-slate-400">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <BreakdownTable title="По регионам"     rows={m.byRegion}    total={m.requests.total} />
+          <BreakdownTable title="По направлениям" rows={m.byExpertise} total={m.requests.total} />
+        </div>
+      </Section>
+
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title, children, Icon, iconColor,
+}: {
+  title: string;
+  children: React.ReactNode;
+  Icon: React.ElementType;
+  iconColor: string;
+}) {
   return (
     <div>
-      <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">{title}</h2>
+      <div className="flex items-center gap-2 mb-4">
+        <Icon className={`w-4 h-4 ${iconColor}`} />
+        <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
+        <div className="flex-1 h-px bg-slate-100 ml-2" />
+      </div>
       {children}
     </div>
   );
 }
 
-function Stat({ label, value, accent, raw }: { label: string; value: number | string; accent: string; raw?: boolean }) {
+function StatCard({
+  label, value, colorClass, size, raw,
+}: {
+  label: string;
+  value: number | string;
+  colorClass: string;
+  size?: "lg";
+  raw?: boolean;
+}) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
-      <p className="text-xs text-slate-400 mb-1 leading-tight">{label}</p>
-      <p className={`text-2xl font-bold ${accent}`}>
+    <div className={`kpi-card ${colorClass}`}>
+      <p className="text-[11px] text-slate-500 leading-tight mb-2">{label}</p>
+      <p className={`font-bold text-slate-900 tabular-nums ${size === "lg" ? "text-3xl" : "text-2xl"}`}>
         {raw ? value : typeof value === "number" ? value.toLocaleString("ru-RU") : value}
       </p>
     </div>
@@ -288,26 +324,33 @@ function Stat({ label, value, accent, raw }: { label: string; value: number | st
 
 function ConversionCard({ metric: c }: { metric: ConversionMetric }) {
   const barColor =
-    c.pct >= 66 ? "bg-green-500" :
-    c.pct >= 33 ? "bg-amber-400" :
-    "bg-red-400";
+    c.pct >= 66 ? "bg-gradient-to-r from-emerald-400 to-emerald-500" :
+    c.pct >= 33 ? "bg-gradient-to-r from-amber-400 to-amber-500" :
+    "bg-gradient-to-r from-red-400 to-red-500";
   const textColor =
-    c.pct >= 66 ? "text-green-600" :
+    c.pct >= 66 ? "text-emerald-600" :
     c.pct >= 33 ? "text-amber-500" :
     "text-red-500";
+  const bgColor =
+    c.pct >= 66 ? "kpi-emerald" :
+    c.pct >= 33 ? "kpi-yellow" :
+    "kpi-red";
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">{c.label}</p>
-      <p className={`text-4xl font-bold mb-4 ${textColor}`}>{c.pct}%</p>
-      <div className="w-full bg-slate-100 rounded-full h-1.5 mb-4">
-        <div className={`${barColor} h-1.5 rounded-full transition-all duration-500`} style={{ width: `${c.pct}%` }} />
+    <div className={`kpi-card ${bgColor}`}>
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-3">{c.label}</p>
+      <p className={`text-4xl font-bold mb-4 tabular-nums ${textColor}`}>{c.pct}%</p>
+      <div className="w-full bg-slate-100 rounded-full h-2 mb-3 overflow-hidden">
+        <div
+          className={`${barColor} h-2 rounded-full transition-all duration-700`}
+          style={{ width: `${c.pct}%` }}
+        />
       </div>
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        <span className="font-semibold text-slate-800">{c.numerator.toLocaleString("ru-RU")}</span>
-        <span>/</span>
+      <div className="flex items-baseline gap-1.5 text-sm text-slate-500">
+        <span className="font-bold text-slate-800">{c.numerator.toLocaleString("ru-RU")}</span>
+        <span className="text-slate-300">/</span>
         <span>{c.denominator.toLocaleString("ru-RU")}</span>
-        <span className="text-slate-400 text-xs ml-auto">
+        <span className="text-slate-300 text-xs ml-auto">
           {c.denominator === 0 ? "нет данных" : `${c.numerator} из ${c.denominator}`}
         </span>
       </div>
@@ -315,25 +358,38 @@ function ConversionCard({ metric: c }: { metric: ConversionMetric }) {
   );
 }
 
-function BreakdownTable({ title, rows, total }: { title: string; rows: Array<{ label: string; count: number }>; total: number }) {
+function BreakdownTable({
+  title, rows, total,
+}: {
+  title: string;
+  rows: Array<{ label: string; count: number }>;
+  total: number;
+}) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-        <p className="text-xs font-semibold text-slate-600">{title}</p>
+    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+      <div className="px-5 py-3.5 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
+        <p className="text-xs font-semibold text-slate-700">{title}</p>
+        <p className="text-xs text-slate-400">{rows.length} позиций</p>
       </div>
       {rows.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-slate-400 text-center">Нет данных</p>
+        <p className="px-5 py-8 text-sm text-slate-300 text-center">Нет данных</p>
       ) : (
         <div className="divide-y divide-slate-50">
-          {rows.map(({ label, count }) => {
+          {rows.slice(0, 10).map(({ label, count }) => {
             const share = total > 0 ? Math.round((count / total) * 100) : 0;
             return (
-              <div key={label} className="px-4 py-2.5 flex items-center gap-3">
+              <div key={label} className="px-5 py-2.5 flex items-center gap-3 hover:bg-slate-50/50 transition-colors">
                 <p className="text-sm text-slate-700 flex-1 truncate">{label}</p>
-                <div className="w-20 bg-slate-100 rounded-full h-1.5 shrink-0">
-                  <div className="bg-indigo-400 h-1.5 rounded-full" style={{ width: `${share}%` }} />
+                <div className="w-24 bg-slate-100 rounded-full h-1.5 shrink-0 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-indigo-400 to-indigo-500 h-1.5 rounded-full transition-all duration-500"
+                    style={{ width: `${share}%` }}
+                  />
                 </div>
-                <p className="text-sm font-semibold text-slate-700 w-5 text-right shrink-0">{count}</p>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <p className="text-sm font-semibold text-slate-700 w-5 text-right">{count}</p>
+                  <p className="text-xs text-slate-300 w-8">{share}%</p>
+                </div>
               </div>
             );
           })}

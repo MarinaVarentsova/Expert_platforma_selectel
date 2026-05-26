@@ -1,10 +1,11 @@
 import { Link, useLocation } from "wouter";
+import { LayoutDashboard, BarChart3, Users, Settings } from "lucide-react";
 
 const TABS = [
-  { to: "/admin",          label: "Все заказы",  exact: true },
-  { to: "/admin/metrics",  label: "Метрики",     exact: false },
-  { to: "/admin/experts",  label: "Эксперты",    exact: false },
-  { to: "/admin/settings", label: "Настройки",   exact: false },
+  { to: "/admin",          label: "Все заказы",  Icon: LayoutDashboard, exact: true },
+  { to: "/admin/metrics",  label: "Метрики",     Icon: BarChart3,       exact: false },
+  { to: "/admin/experts",  label: "Эксперты",    Icon: Users,           exact: false },
+  { to: "/admin/settings", label: "Настройки",   Icon: Settings,        exact: false },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -16,23 +17,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <>
-      <div className="bg-white border-b border-slate-200">
+      {/* Admin sub-header */}
+      <div className="bg-white border-b border-slate-200 shadow-sm">
         <div className="px-6">
-          <p className="pt-4 pb-0 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Панель управления
-          </p>
-          <div className="flex items-end mt-2 gap-0">
+          <div className="flex items-center justify-between pt-4 pb-0">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">
+                Панель управления
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 pb-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[10px] text-slate-400 font-medium">Live</span>
+            </div>
+          </div>
+
+          <div className="flex items-end mt-3 gap-1">
             {TABS.map(tab => {
               const active = isActive(tab);
               return (
                 <Link key={tab.to} href={tab.to}>
-                  <span className={`
-                    inline-block px-4 py-3 text-sm font-medium border-b-2 transition-colors select-none
-                    ${active
-                      ? "border-indigo-600 text-indigo-700"
-                      : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
-                    }
-                  `}>
+                  <span className={[
+                    "inline-flex items-center gap-1.5 px-3.5 py-2.5 text-sm font-medium border-b-2 transition-all select-none rounded-t-lg",
+                    active
+                      ? "border-indigo-600 text-indigo-700 bg-indigo-50/60"
+                      : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-200 hover:bg-slate-50",
+                  ].join(" ")}>
+                    <tab.Icon className={["w-3.5 h-3.5", active ? "text-indigo-600" : "text-slate-400"].join(" ")} />
                     {tab.label}
                   </span>
                 </Link>

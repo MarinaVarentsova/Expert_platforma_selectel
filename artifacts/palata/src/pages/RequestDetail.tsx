@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
+import { notify, type NotifyItem } from "@/lib/notifyApi";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -301,6 +302,22 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   const customer = r.customer_id ? usersMap[r.customer_id] : undefined;
   const orderStatus = ORDER_STATUS[r.status];
 
+  // ── Notification helpers ───────────────────────────────────────────────────
+  const customerEmail = r.customer_email || customer?.email || "";
+  const requestShortId = shortId(r.id);
+
+  function mkNotify(override: Partial<NotifyItem> & Pick<NotifyItem, "type" | "recipientEmail" | "recipientType">): NotifyItem {
+    return {
+      requestId:      r.id,
+      requestShortId,
+      requestTitle:   r.title,
+      expertiseType:  r.expertise_type,
+      region:         r.region,
+      currentStatus:  r.status,
+      ...override,
+    };
+  }
+
   // ── Customer action state ──────────────────────────────────────────────────
   const [custUI, setCustUI] = useState<CustUIState>({ kind: "idle" });
   const [matchingRunning, setMatchingRunning] = useState(false);
@@ -355,6 +372,17 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       } else {
         await logEvent("match", match.id, match.status, "contacts_opened", "Открыты контакты");
       }
+      // Notify customer + expert about contacts opened
+      const match2 = matches.find(m => m.id === (custUI as { selectedMatchId: string }).selectedMatchId);
+      if (match2) {
+        const expertUser = usersMap[match2.expert_id];
+        const expertName = expertUser?.full_name ?? undefined;
+        const expertEmail = expertUser?.email;
+        const payloads = [];
+        if (customerEmail) payloads.push(mkNotify({ type: "contacts_opened_customer", recipientEmail: customerEmail, recipientType: "customer", expertId: match2.expert_id, expertName }));
+        if (expertEmail)   payloads.push(mkNotify({ type: "contacts_opened_expert",   recipientEmail: expertEmail,   recipientType: "expert",   expertId: match2.expert_id, expertName, recipientName: expertName }));
+        if (payloads.length) notify(payloads);
+      }
       setCustUI({ kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -369,6 +397,15 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .update({ status: newStatus }).eq("id", r.id);
       if (error) throw error;
       await logEvent("request", r.id, r.status, newStatus);
+      // Notify customer (and expert if assigned)
+      const emailType = newStatus === "completed" ? "request_completed" : "request_cancelled";
+      const notifyPayloads = [];
+      if (customerEmail) notifyPayloads.push(mkNotify({ type: emailType, recipientEmail: customerEmail, recipientType: "customer", currentStatus: newStatus }));
+      if (r.assigned_expert_id) {
+        const assignedExpert = usersMap[r.assigned_expert_id];
+        if (assignedExpert?.email) notifyPayloads.push(mkNotify({ type: emailType, recipientEmail: assignedExpert.email, recipientType: "expert", expertId: r.assigned_expert_id, expertName: assignedExpert.full_name ?? undefined, currentStatus: newStatus }));
+      }
+      if (notifyPayloads.length) notify(notifyPayloads);
       setCustUI({ kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -390,6 +427,11 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .eq("id", match.id);
       if (error) throw error;
       await logEvent("match", match.id, match.status, "can_start_from", `Может взять с ${fmtDate(date)}`);
+      // Notify customer that expert confirmed readiness
+      if (customerEmail) {
+        const expertUser = usersMap[match.expert_id];
+        notify(mkNotify({ type: "expert_can_take", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: expertUser?.full_name ?? undefined, canStartFrom: fmtDate(date) }));
+      }
       setMS(match.id, { kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -435,6 +477,18 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .update({ status: "in_work", assigned_expert_id: match.expert_id }).eq("id", r.id);
       if (re) throw re;
       await logEvent("request", r.id, r.status, "in_work", "Эксперт взял в работу");
+      // Notify customer that work has started; notify other experts their match is closed
+      const takenExpert = usersMap[match.expert_id];
+      const inWorkPayloads: NotifyItem[] = [];
+      if (customerEmail) inWorkPayloads.push(mkNotify({ type: "request_in_progress", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: takenExpert?.full_name ?? undefined, currentStatus: "in_work" }));
+      // Notify other active experts that order was taken
+      for (const m of matches) {
+        if (m.id === match.id) continue;
+        if (!ACTIVE_MATCH_STATUSES.has(m.status)) continue;
+        const otherExpert = usersMap[m.expert_id];
+        if (otherExpert?.email) inWorkPayloads.push(mkNotify({ type: "taken_by_other", recipientEmail: otherExpert.email, recipientType: "expert", expertId: m.expert_id, expertName: otherExpert.full_name ?? undefined }));
+      }
+      if (inWorkPayloads.length) notify(inWorkPayloads);
       setMS(match.id, { kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -453,6 +507,12 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .update({ status: "completed" }).eq("id", r.id);
       if (re) throw re;
       await logEvent("request", r.id, r.status, "completed", "Работа завершена экспертом");
+      // Notify customer and expert about completion
+      const completedExpert = usersMap[match.expert_id];
+      const completedPayloads: NotifyItem[] = [];
+      if (customerEmail) completedPayloads.push(mkNotify({ type: "request_completed", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: completedExpert?.full_name ?? undefined, currentStatus: "completed" }));
+      if (completedExpert?.email) completedPayloads.push(mkNotify({ type: "request_completed", recipientEmail: completedExpert.email, recipientType: "expert", expertId: match.expert_id, expertName: completedExpert.full_name ?? undefined, currentStatus: "completed" }));
+      if (completedPayloads.length) notify(completedPayloads);
       setMS(match.id, { kind: "idle" });
       onReload();
     } catch (e: unknown) {

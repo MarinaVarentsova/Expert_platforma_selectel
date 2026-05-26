@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/authContext";
+import { notify } from "@/lib/notifyApi";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -232,6 +233,57 @@ export default function NewRequest() {
         matchedCount = result.matched;
       } catch (matchErr) {
         console.warn("Matching skipped:", matchErr);
+      }
+
+      // 5. Email notifications (fire-and-forget — never block submission)
+      // Notify customer that the request was received
+      if (form.customer_email.trim()) {
+        notify({
+          type: "request_created",
+          requestId,
+          requestShortId: requestId.slice(0, 8).toUpperCase(),
+          requestTitle:   form.title.trim(),
+          expertiseType:  form.expertise_type,
+          region:         form.region,
+          currentStatus:  "pending",
+          recipientEmail: form.customer_email.trim(),
+          recipientType:  "customer",
+          recipientName:  form.customer_name.trim() || undefined,
+        });
+      }
+
+      // Notify each matched expert
+      if (matchedCount > 0) {
+        supabase
+          .from("palata_request_matches")
+          .select("expert_id")
+          .eq("request_id", requestId)
+          .eq("status", "proposed")
+          .then(async ({ data: matchRows }) => {
+            if (!matchRows?.length) return;
+            const expertIds = matchRows.map((m: { expert_id: string }) => m.expert_id);
+            const { data: expertUsers } = await supabase
+              .from("palata_users")
+              .select("id, email, full_name")
+              .in("id", expertIds);
+            if (!expertUsers?.length) return;
+            notify(
+              (expertUsers as { id: string; email: string; full_name: string | null }[]).map(u => ({
+                type:           "expert_proposed" as const,
+                requestId,
+                requestShortId: requestId.slice(0, 8).toUpperCase(),
+                requestTitle:   form.title.trim(),
+                expertiseType:  form.expertise_type,
+                region:         form.region,
+                currentStatus:  "pending",
+                recipientEmail: u.email,
+                recipientType:  "expert" as const,
+                recipientName:  u.full_name ?? undefined,
+                expertId:       u.id,
+                expertName:     u.full_name ?? undefined,
+              })),
+            );
+          });
       }
 
       setState({ kind: "success", requestId, title: form.title.trim(), matchedCount });

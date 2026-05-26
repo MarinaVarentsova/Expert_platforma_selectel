@@ -1,5 +1,12 @@
 import { Link } from "wouter";
-import { FileText, Search, UserCheck, Users, MapPin, Star, ArrowRight, ShieldCheck, Gavel } from "lucide-react";
+import { FileText, Search, UserCheck, ShieldCheck, Star, MapPin, ArrowRight } from "lucide-react";
+
+const STATS = [
+  { value: "150+",   label: "Экспертов" },
+  { value: "74",     label: "Региона" },
+  { value: "1 000+", label: "Дел закрыто" },
+  { value: "100%",   label: "Верифицированы" },
+];
 
 const STEPS = [
   {
@@ -18,190 +25,245 @@ const STEPS = [
     Icon: UserCheck,
     step: "03",
     title: "Эксперт принимает дело",
-    desc: "Вы получаете квалифицированного специалиста с подтверждёнными регистровыми данными.",
-  },
-];
-
-const CARDS = [
-  {
-    to: "/customer/new-request",
-    role: "Заказчик",
-    description: "Подайте заявку на судебную экспертизу. Система автоматически подберёт квалифицированного специалиста по вашему региону и направлению.",
-    Icon: Gavel,
-    iconBg: "bg-gradient-to-br from-indigo-500 to-indigo-700",
-    cta: "Подать заявку",
-  },
-  {
-    to: "/expert",
-    role: "Эксперт",
-    description: "Принимайте заказы по своей специализации и региону. Управляйте профилем, документами и репутацией на платформе.",
-    Icon: ShieldCheck,
-    iconBg: "bg-gradient-to-br from-emerald-500 to-teal-700",
-    cta: "Личный кабинет",
-  },
-  {
-    to: "/admin",
-    role: "Администратор",
-    description: "Управляйте заявками, экспертным пулом и процессом подбора. Полная аналитика в реальном времени.",
-    Icon: Users,
-    iconBg: "bg-gradient-to-br from-violet-500 to-purple-700",
-    cta: "Панель управления",
+    desc: "Вы получаете квалифицированного специалиста с подтверждёнными реестровыми данными.",
   },
 ];
 
 const FEATURES = [
-  { Icon: ShieldCheck, label: "Верификация", desc: "Только эксперты с подтверждёнными реестровыми номерами" },
-  { Icon: Star,        label: "Рейтинг",     desc: "Рейтинговая система на основе реальных отзывов заказчиков" },
-  { Icon: MapPin,      label: "Регионы",     desc: "74 субъекта РФ, выездные экспертизы по всей стране" },
-  { Icon: FileText,    label: "Документы",   desc: "Хранение материалов дела и файлов внутри платформы" },
+  { Icon: ShieldCheck, label: "Верификация",  desc: "Только эксперты с подтверждёнными реестровыми номерами" },
+  { Icon: Star,        label: "Рейтинг",      desc: "Рейтинговая система на основе реальных отзывов заказчиков" },
+  { Icon: MapPin,      label: "74 региона",   desc: "Выездные экспертизы по всей территории России" },
+  { Icon: FileText,    label: "Документы",    desc: "Хранение материалов дела и файлов внутри платформы" },
 ];
 
 export default function Home() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-[#f2ece2]">
 
-      {/* ── Hero ────────────────────────────────────────────────────── */}
-      <section className="hero-gradient relative overflow-hidden py-28 px-6">
-        {/* Dot grid overlay */}
-        <div className="absolute inset-0 dot-grid opacity-100" />
+      {/* ── Hero ─────────────────────────────────────────────────────── */}
+      <section className="px-6 pt-16 pb-0 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
 
-        {/* Glowing orbs */}
-        <div className="absolute top-16 left-1/3 w-[32rem] h-[32rem] rounded-full bg-indigo-700/25 blur-[80px] pointer-events-none" />
-        <div className="absolute bottom-0 right-1/4 w-80 h-80 rounded-full bg-violet-700/20 blur-[60px] pointer-events-none" />
+          {/* Left — headline + CTA */}
+          <div className="pb-16">
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 border border-[#c4bdb4] text-[#78716c] text-xs font-medium px-3 py-1.5 rounded-full mb-8">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Закрытая профессиональная платформа
+            </div>
 
-        <div className="relative max-w-3xl mx-auto text-center">
+            <h1 className="text-5xl md:text-6xl font-bold text-[#1c1714] leading-[1.08] tracking-tight mb-5">
+              Платформа,<br />
+              которая{" "}
+              <span className="text-[#e8891a]">находит</span>
+              <br />
+              нужного эксперта
+            </h1>
 
-          {/* Status pill */}
-          <div className="inline-flex items-center gap-2 bg-white/10 border border-white/15 text-indigo-200 text-xs font-medium px-4 py-1.5 rounded-full mb-8">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Платформа аккредитованных судебных экспертов РФ
+            <p className="text-lg text-[#78716c] leading-relaxed mb-8 max-w-md">
+              Автоматизированный подбор аккредитованных судебных экспертов по специализации, региону и репутации.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Link href="/customer/new-request">
+                <button className="inline-flex items-center gap-2 bg-[#2e2a27] hover:bg-[#1c1714] text-[#f2ece2] font-semibold px-6 py-3 rounded-full transition-all shadow-sm">
+                  Подать заявку
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </Link>
+              <Link href="/login">
+                <button className="inline-flex items-center gap-2 bg-transparent border border-[#c4bdb4] hover:bg-[#ece6dc] hover:border-[#a89e92] text-[#2e2a27] font-medium px-6 py-3 rounded-full transition-all">
+                  Войти в кабинет
+                </button>
+              </Link>
+            </div>
           </div>
 
-          <h1 className="text-5xl md:text-6xl font-bold text-white mb-5 tracking-tight leading-[1.08]">
-            Палата судебных<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 to-violet-300">
-              экспертов
-            </span>
-          </h1>
+          {/* Right — dark panel (terminal-style) */}
+          <div className="hidden lg:block">
+            <div className="bg-[#1c1714] rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "4/3" }}>
+              {/* Terminal header */}
+              <div className="flex items-center gap-2 px-5 py-3.5 border-b border-white/8">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
+                <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/70" />
+                <span className="ml-3 text-[10px] font-mono text-white/25 tracking-widest uppercase">// PALATA MATCHING ENGINE</span>
+              </div>
 
-          <p className="text-lg text-slate-300 max-w-xl mx-auto leading-relaxed mb-10">
-            Профессиональная workflow-платформа для независимых судебно-экспертных назначений
-          </p>
+              {/* Content */}
+              <div className="p-6 font-mono">
+                <div className="text-[11px] text-white/40 mb-4 tracking-wider">ПОДБОР ЭКСПЕРТА · ЗАПРОС #2847</div>
 
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Link href="/customer/new-request">
-              <button className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 active:bg-indigo-600 text-white font-semibold px-7 py-3 rounded-xl transition-all shadow-lg shadow-indigo-900/40">
-                Подать заявку
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </Link>
-            <Link href="/admin">
-              <button className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/20 text-white font-medium px-7 py-3 rounded-xl transition-all">
-                Панель администратора
-              </button>
-            </Link>
-          </div>
+                {/* Matching rows */}
+                {[
+                  { name: "Иванов А.С.",     type: "Строительно-техническая", region: "Москва",    score: 98, status: "✓ ПОДОБРАН" },
+                  { name: "Петрова Е.В.",    type: "Строительно-техническая", region: "Москва",    score: 91, status: "→ в очереди" },
+                  { name: "Сидоров П.Н.",    type: "Строительно-техническая", region: "МО",        score: 87, status: "→ в очереди" },
+                ].map((e, i) => (
+                  <div
+                    key={i}
+                    className={`mb-3 rounded-lg p-3 ${i === 0 ? "bg-[#e8891a]/15 border border-[#e8891a]/30" : "bg-white/4"}`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`text-xs font-semibold ${i === 0 ? "text-[#e8891a]" : "text-white/60"}`}>
+                        {e.name}
+                      </span>
+                      <span className={`text-[10px] font-bold ${i === 0 ? "text-[#e8891a]" : "text-white/30"}`}>
+                        {e.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-white/35">{e.type} · {e.region}</span>
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-1 w-14 rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${i === 0 ? "bg-[#e8891a]" : "bg-white/25"}`}
+                            style={{ width: `${e.score}%` }}
+                          />
+                        </div>
+                        <span className={`text-[10px] font-mono ${i === 0 ? "text-[#e8891a]" : "text-white/40"}`}>
+                          {e.score}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
 
-          {/* Stats strip */}
-          <div className="mt-14 pt-8 border-t border-white/10 grid grid-cols-3 gap-8 max-w-sm mx-auto">
-            <div>
-              <p className="text-3xl font-bold text-white">150+</p>
-              <p className="text-xs text-indigo-300 mt-0.5 uppercase tracking-wide">экспертов</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-white">74</p>
-              <p className="text-xs text-indigo-300 mt-0.5 uppercase tracking-wide">региона</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-white">1 000+</p>
-              <p className="text-xs text-indigo-300 mt-0.5 uppercase tracking-wide">дел закрыто</p>
+                <div className="mt-4 pt-4 border-t border-white/8 flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[10px] text-white/30 font-mono">Система работает · 3 эксперта уведомлены</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── How it works ────────────────────────────────────────────── */}
-      <section className="bg-white py-20 px-6">
+      {/* ── Stats ────────────────────────────────────────────────────── */}
+      <section className="border-t border-[#ddd6ce] py-14 px-6">
+        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
+          {STATS.map(({ value, label }) => (
+            <div key={label} className="text-center">
+              <p className="text-3xl font-bold text-[#1c1714] tabular-nums">{value}</p>
+              <p className="text-sm text-[#a8a29e] mt-1 uppercase tracking-wide text-xs">{label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── How it works ─────────────────────────────────────────────── */}
+      <section className="bg-white border-t border-[#e5dfd7] py-20 px-6">
         <div className="max-w-4xl mx-auto">
+
           <div className="text-center mb-14">
-            <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-2">Как работает сервис</p>
-            <h2 className="text-2xl font-bold text-slate-900">Три шага до результата</h2>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#e8891a] mb-2">Как работает сервис</p>
+            <h2 className="text-2xl font-bold text-[#1c1714]">Три шага до результата</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {STEPS.map(({ Icon, step, title, desc }, i) => (
-              <div key={step} className="flex flex-col items-start">
+              <div key={step} className="flex flex-col">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-md shadow-indigo-100 flex-shrink-0">
-                    <Icon className="w-5 h-5 text-white" />
+                  <div className="w-11 h-11 rounded-xl bg-[#f2ece2] border border-[#ddd6ce] flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-[#2e2a27]" />
                   </div>
                   {i < STEPS.length - 1 && (
-                    <div className="hidden md:block flex-1 h-px bg-gradient-to-r from-indigo-200 to-transparent ml-2" />
+                    <div className="hidden md:block flex-1 h-px bg-[#e5dfd7]" />
                   )}
                 </div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1">{step}</div>
-                <p className="text-base font-semibold text-slate-900 mb-2">{title}</p>
-                <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-[#e8891a] mb-1">{step}</div>
+                <p className="text-base font-semibold text-[#1c1714] mb-2">{title}</p>
+                <p className="text-sm text-[#78716c] leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Role cards ──────────────────────────────────────────────── */}
-      <section className="bg-slate-50 py-20 px-6 border-t border-slate-100">
+      {/* ── Role CTAs ─────────────────────────────────────────────────── */}
+      <section className="border-t border-[#e5dfd7] py-20 px-6 bg-[#f2ece2]">
         <div className="max-w-4xl mx-auto">
+
           <div className="text-center mb-10">
-            <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-2">Участники платформы</p>
-            <h2 className="text-2xl font-bold text-slate-900">Выберите свою роль</h2>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#e8891a] mb-2">Участники платформы</p>
+            <h2 className="text-2xl font-bold text-[#1c1714]">Выберите свою роль</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {CARDS.map(({ to, role, description, Icon, iconBg, cta }) => (
-              <Link key={to} href={to}>
-                <div className="h-full bg-white rounded-2xl border border-slate-100 p-6 hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer group shadow-sm">
-                  <div className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center mb-5 shadow-sm group-hover:shadow-md transition-shadow`}>
-                    <Icon className="w-5 h-5 text-white" />
-                  </div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 group-hover:text-indigo-500 transition-colors">
-                    {role}
-                  </p>
-                  <p className="text-sm text-slate-600 leading-relaxed mb-5">{description}</p>
-                  <div className="flex items-center gap-1 text-sm font-semibold text-indigo-600 group-hover:gap-2 transition-all">
-                    {cta}
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </div>
+
+            <Link href="/customer/new-request">
+              <div className="h-full bg-white rounded-2xl border border-[#e5dfd7] p-6 hover:border-[#c4bdb4] hover:shadow-md transition-all cursor-pointer group">
+                <div className="w-10 h-10 rounded-xl bg-[#f2ece2] border border-[#ddd6ce] flex items-center justify-center mb-5">
+                  <span className="text-lg">⚖️</span>
                 </div>
-              </Link>
-            ))}
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-2 group-hover:text-[#e8891a] transition-colors">Заказчик</p>
+                <p className="text-sm text-[#78716c] leading-relaxed mb-5">
+                  Подайте заявку на судебную экспертизу. Система автоматически подберёт квалифицированного специалиста.
+                </p>
+                <div className="flex items-center gap-1 text-sm font-semibold text-[#2e2a27] group-hover:gap-2 transition-all">
+                  Подать заявку <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </div>
+            </Link>
+
+            <Link href="/expert">
+              <div className="h-full bg-white rounded-2xl border border-[#e5dfd7] p-6 hover:border-[#c4bdb4] hover:shadow-md transition-all cursor-pointer group">
+                <div className="w-10 h-10 rounded-xl bg-[#f2ece2] border border-[#ddd6ce] flex items-center justify-center mb-5">
+                  <span className="text-lg">🛡️</span>
+                </div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-2 group-hover:text-[#e8891a] transition-colors">Эксперт</p>
+                <p className="text-sm text-[#78716c] leading-relaxed mb-5">
+                  Принимайте заказы по своей специализации. Управляйте профилем и репутацией на платформе.
+                </p>
+                <div className="flex items-center gap-1 text-sm font-semibold text-[#2e2a27] group-hover:gap-2 transition-all">
+                  Личный кабинет <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </div>
+            </Link>
+
+            <Link href="/admin">
+              <div className="h-full bg-white rounded-2xl border border-[#e5dfd7] p-6 hover:border-[#c4bdb4] hover:shadow-md transition-all cursor-pointer group">
+                <div className="w-10 h-10 rounded-xl bg-[#f2ece2] border border-[#ddd6ce] flex items-center justify-center mb-5">
+                  <span className="text-lg">📊</span>
+                </div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-2 group-hover:text-[#e8891a] transition-colors">Администратор</p>
+                <p className="text-sm text-[#78716c] leading-relaxed mb-5">
+                  Управляйте заявками и экспертным пулом. Полная аналитика платформы в реальном времени.
+                </p>
+                <div className="flex items-center gap-1 text-sm font-semibold text-[#2e2a27] group-hover:gap-2 transition-all">
+                  Панель управления <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </div>
+            </Link>
+
           </div>
         </div>
       </section>
 
-      {/* ── Features strip ──────────────────────────────────────────── */}
-      <section className="bg-white py-16 px-6 border-t border-slate-100">
+      {/* ── Features ─────────────────────────────────────────────────── */}
+      <section className="bg-white border-t border-[#e5dfd7] py-16 px-6">
         <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {FEATURES.map(({ Icon, label, desc }) => (
-              <div key={label} className="flex flex-col items-start">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center mb-3">
-                  <Icon className="w-4.5 h-4.5 text-indigo-600" />
+              <div key={label}>
+                <div className="w-9 h-9 rounded-xl bg-[#f2ece2] border border-[#ddd6ce] flex items-center justify-center mb-3">
+                  <Icon className="w-4 h-4 text-[#2e2a27]" />
                 </div>
-                <p className="text-sm font-semibold text-slate-800 mb-1">{label}</p>
-                <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
+                <p className="text-sm font-semibold text-[#1c1714] mb-1">{label}</p>
+                <p className="text-xs text-[#78716c] leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── System status bar ───────────────────────────────────────── */}
-      <div className="bg-slate-900 py-3.5 px-6">
+      {/* ── Footer bar ───────────────────────────────────────────────── */}
+      <div className="border-t border-[#ddd6ce] py-3.5 px-6 bg-[#1c1714]">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Статус системы</p>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30">Статус системы</p>
           <div className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs text-slate-400">Supabase подключён · Система работает штатно</span>
+            <span className="text-xs text-white/40">Supabase подключён · Система работает штатно</span>
           </div>
         </div>
       </div>

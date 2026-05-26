@@ -674,7 +674,7 @@ SELECT
     COUNT(*) AS count,
     STRING_AGG(LEFT(r.title, 35), ' | ') AS titles
 FROM palata_requests r
-WHERE r.id LIKE 'b0000001%'
+WHERE r.id::text LIKE 'b0000001%'
 GROUP BY r.status
 ORDER BY r.status;
 

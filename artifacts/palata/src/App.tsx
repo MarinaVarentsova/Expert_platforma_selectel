@@ -11,6 +11,7 @@ import AdminDashboard from "@/pages/AdminDashboard";
 import AdminMetrics from "@/pages/AdminMetrics";
 import AdminExperts from "@/pages/AdminExperts";
 import AdminSettings from "@/pages/AdminSettings";
+import NewRequest from "@/pages/NewRequest";
 import RequestDetail from "@/pages/RequestDetail";
 import NotFound from "@/pages/not-found";
 
@@ -24,6 +25,7 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/login" component={Login} />
         <Route path="/customer" component={CustomerDashboard} />
+        <Route path="/customer/new-request" component={NewRequest} />
         <Route path="/expert" component={ExpertDashboard} />
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/metrics" component={AdminMetrics} />

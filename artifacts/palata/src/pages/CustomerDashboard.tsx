@@ -52,9 +52,14 @@ export default function CustomerDashboard() {
 
   return (
     <div className="px-6 py-8">
-      <div className="mb-6">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет</p>
-        <h1 className="text-2xl font-bold text-slate-900">Мои заказы</h1>
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет</p>
+          <h1 className="text-2xl font-bold text-slate-900">Мои заказы</h1>
+        </div>
+        <Link href="/customer/new-request">
+          <button className="btn-primary">Создать заказ</button>
+        </Link>
       </div>
 
       {state.kind === "loading" && <p className="text-sm text-slate-400 py-8">Загрузка данных…</p>}

@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 type Request = {
   id: string;
-  customer_id: string;
+  customer_id: string | null;
   title: string;
   description: string | null;
   status: string;
@@ -20,6 +20,12 @@ type Request = {
   assigned_expert_id: string | null;
   created_at: string;
   updated_at: string;
+  requires_travel: boolean;
+  urgency: string;
+  materials_available: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
 };
 
 type RequestFile = {
@@ -27,6 +33,7 @@ type RequestFile = {
   file_name: string;
   mime_type: string | null;
   size_bytes: number | null;
+  bucket_path: string | null;
   created_at: string;
 };
 
@@ -106,7 +113,8 @@ type CustUIState =
 // ─── Labels & colors ──────────────────────────────────────────────────────────
 
 const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
-  draft:            { label: "Черновик",        cls: "bg-slate-100 text-slate-600" },
+  new:              { label: "Новый",           cls: "bg-slate-100 text-slate-600" },
+  draft:            { label: "Черновик",        cls: "bg-slate-100 text-slate-500" },
   pending:          { label: "Ожидает",         cls: "bg-yellow-100 text-yellow-700" },
   matching:         { label: "Идёт подбор",     cls: "bg-blue-100 text-blue-700" },
   expert_selection: { label: "Выбор эксперта",  cls: "bg-cyan-100 text-cyan-700" },
@@ -127,6 +135,10 @@ const MATCH_STATUS: Record<string, { label: string; cls: string }> = {
   completed:              { label: "Завершено",            cls: "bg-emerald-100 text-emerald-700" },
   withdrawn:              { label: "Отозвано",             cls: "bg-slate-100 text-slate-500" },
   closed_by_other_expert: { label: "Закрыт другим",        cls: "bg-slate-100 text-slate-400" },
+};
+
+const URGENCY_LABEL: Record<string, string> = {
+  normal: "Стандартная", urgent: "Срочная", very_urgent: "Очень срочная",
 };
 
 const DECLINE_REASONS: { value: string; label: string }[] = [
@@ -162,13 +174,15 @@ function fmtSize(bytes: number | null) {
 }
 function shortId(id: string) { return id.slice(0, 8).toUpperCase(); }
 function mimeIcon(mime: string | null): string {
-  if (!mime) return "📄";
-  if (mime.startsWith("image/")) return "🖼️";
-  if (mime === "application/pdf") return "📕";
-  if (mime.includes("word") || mime.includes("document")) return "📝";
-  if (mime.includes("excel") || mime.includes("spreadsheet")) return "📊";
-  if (mime.includes("zip") || mime.includes("rar")) return "🗜️";
-  return "📄";
+  if (!mime) return "FILE";
+  if (mime.startsWith("image/")) return "IMG";
+  if (mime === "application/pdf") return "PDF";
+  if (mime.includes("word") || mime.includes("document")) return "DOC";
+  if (mime.includes("excel") || mime.includes("spreadsheet")) return "XLS";
+  return "FILE";
+}
+function filePublicUrl(bucketPath: string): string {
+  return supabase.storage.from("palata-request-files").getPublicUrl(bucketPath).data.publicUrl;
 }
 function userName(u: User | undefined) {
   return u?.full_name ?? u?.email ?? null;
@@ -206,7 +220,7 @@ export default function RequestDetail() {
       const [reqRes, filesRes, matchesRes, eventsRes] = await Promise.all([
         supabase.from("palata_requests").select("*").eq("id", id!).single(),
         supabase.from("palata_request_files")
-          .select("id, file_name, mime_type, size_bytes, created_at")
+          .select("id, file_name, mime_type, size_bytes, bucket_path, created_at")
           .eq("request_id", id!).order("created_at"),
         supabase.from("palata_request_matches")
           .select("id, expert_id, matching_round, status, decline_reason, decline_note, can_start_from_date, proposed_at, responded_at")
@@ -230,7 +244,9 @@ export default function RequestDetail() {
 
       const expertIds = [...new Set(matches.map(m => m.expert_id))];
       const actorIds = events.map(e => e.actor_id).filter(Boolean) as string[];
-      const userIds = [...new Set([request.customer_id, ...expertIds, ...actorIds])];
+      const userIds = [...new Set(
+        [request.customer_id, ...expertIds, ...actorIds].filter((id): id is string => id != null)
+      )];
 
       const [profilesRes, usersRes] = await Promise.all([
         expertIds.length > 0
@@ -281,7 +297,7 @@ export default function RequestDetail() {
 function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) {
   const { request: r, files, matches, expertProfiles, events, usersMap } = data;
   const profileMap = Object.fromEntries(expertProfiles.map(p => [p.user_id, p]));
-  const customer = usersMap[r.customer_id];
+  const customer = r.customer_id ? usersMap[r.customer_id] : undefined;
   const orderStatus = ORDER_STATUS[r.status];
 
   // ── Customer action state ──────────────────────────────────────────────────
@@ -455,13 +471,27 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           </div>
         )}
 
+        {r.materials_available && (
+          <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Имеющиеся материалы</p>
+            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
           <Field label="Заказчик">
-            {customer ? (userName(customer) ?? <span className="font-mono text-xs">{customer.email}</span>)
-              : <span className="text-slate-400 italic">Нет данных</span>}
+            {customer
+              ? (userName(customer) ?? <span className="font-mono text-xs">{customer.email}</span>)
+              : r.customer_name
+                ? r.customer_name
+                : <span className="text-slate-400 italic">Нет данных</span>}
           </Field>
+          {r.customer_phone && <Field label="Телефон заказчика">{r.customer_phone}</Field>}
+          {r.customer_email && <Field label="Email заказчика">{r.customer_email}</Field>}
           <Field label="Направление экспертизы">{r.expertise_type}</Field>
           <Field label="Регион">{r.region}</Field>
+          <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
+          <Field label="Выезд эксперта">{r.requires_travel ? "Требуется" : "Не требуется"}</Field>
           <Field label="Дата создания">{fmtDate(r.created_at)}</Field>
           <Field label="Обновлён">{fmtDate(r.updated_at)}</Field>
           <Field label="Раунд подбора">{r.matching_round}</Field>
@@ -566,12 +596,23 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           <div className="divide-y divide-slate-50 -mx-6 -mb-6">
             {files.map(f => (
               <div key={f.id} className="px-6 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
-                <span className="text-xl shrink-0">{mimeIcon(f.mime_type)}</span>
+                <span className="text-[10px] font-bold font-mono text-slate-400 bg-slate-100 rounded px-1.5 py-0.5 shrink-0">
+                  {mimeIcon(f.mime_type)}
+                </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{f.file_name}</p>
-                  <p className="text-xs text-slate-400">{f.mime_type ?? "—"} · {fmtSize(f.size_bytes)}</p>
+                  <p className="text-xs text-slate-400">{fmtSize(f.size_bytes)} · {fmtDate(f.created_at)}</p>
                 </div>
-                <p className="text-xs text-slate-400 shrink-0">{fmtDate(f.created_at)}</p>
+                {f.bucket_path && (
+                  <a
+                    href={filePublicUrl(f.bucket_path)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline shrink-0 transition-colors"
+                  >
+                    Скачать
+                  </a>
+                )}
               </div>
             ))}
           </div>

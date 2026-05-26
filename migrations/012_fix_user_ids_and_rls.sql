@@ -60,14 +60,11 @@ SET expert_id = '13fdcded-0ba9-4baf-bac8-497054fa9082'
 WHERE expert_id = '00000001-0000-0000-0000-000000000011';
 
 -- ── 6. Cascade FK updates: palata_request_contacts ───────────────────────────
+-- Note: this table has only expert_id (no customer_id column)
 
 UPDATE palata_request_contacts
 SET expert_id = '13fdcded-0ba9-4baf-bac8-497054fa9082'
 WHERE expert_id = '00000001-0000-0000-0000-000000000011';
-
-UPDATE palata_request_contacts
-SET customer_id = '55469b80-387d-4ef6-b03c-f56ca48bfab8'
-WHERE customer_id = '00000002-0000-0000-0000-000000000006';
 
 -- ── 7. Cascade FK updates: palata_status_events ──────────────────────────────
 

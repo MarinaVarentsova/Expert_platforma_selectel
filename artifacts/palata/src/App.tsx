@@ -8,6 +8,8 @@ import Login from "@/pages/Login";
 import CustomerDashboard from "@/pages/CustomerDashboard";
 import ExpertDashboard from "@/pages/ExpertDashboard";
 import AdminDashboard from "@/pages/AdminDashboard";
+import AdminMetrics from "@/pages/AdminMetrics";
+import RequestDetail from "@/pages/RequestDetail";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -22,6 +24,8 @@ function Router() {
         <Route path="/customer" component={CustomerDashboard} />
         <Route path="/expert" component={ExpertDashboard} />
         <Route path="/admin" component={AdminDashboard} />
+        <Route path="/admin/metrics" component={AdminMetrics} />
+        <Route path="/requests/:id" component={RequestDetail} />
         <Route component={NotFound} />
       </Switch>
     </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { KanbanBoard } from "@/components/KanbanBoard";
 
@@ -19,12 +20,7 @@ type State =
   | { kind: "ok"; rows: Request[] }
   | { kind: "error"; message: string };
 
-const COLUMNS: Array<{
-  id: string;
-  label: string;
-  accent: string;
-  statuses: string[];
-}> = [
+const COLUMNS = [
   { id: "new",      label: "Новые",          accent: "border-t-slate-400",  statuses: ["draft"] },
   { id: "pending",  label: "Идёт подбор",    accent: "border-t-yellow-400", statuses: ["pending"] },
   { id: "matching", label: "Выбор эксперта", accent: "border-t-blue-400",   statuses: ["matching"] },
@@ -40,9 +36,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     supabase
       .from("palata_requests")
-      .select(
-        "id, title, status, expertise_type, region, matching_round, budget_min, budget_max, created_at"
-      )
+      .select("id, title, status, expertise_type, region, matching_round, budget_min, budget_max, created_at")
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (error) { setState({ kind: "error", message: error.message }); return; }
@@ -50,7 +44,7 @@ export default function AdminDashboard() {
       });
   }, []);
 
-  const total = state.kind === "ok" ? state.rows.length : 0;
+  const total = state.kind === "ok" ? state.rows.length : null;
 
   const columns = COLUMNS.map((col) => ({
     id: col.id,
@@ -63,7 +57,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="max-w-full px-6 py-10">
-      <div className="max-w-5xl mb-8 flex items-end justify-between">
+      <div className="max-w-full mb-8 flex items-end justify-between">
         <div>
           <span className="inline-block rounded-full px-3 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 mb-2">
             Администратор
@@ -74,15 +68,23 @@ export default function AdminDashboard() {
             <code className="font-mono text-xs bg-slate-100 px-1 rounded">palata_requests</code>
           </p>
         </div>
-        {state.kind === "ok" && (
-          <div className="text-right">
-            <p className="text-xs text-slate-400">Всего заявок</p>
-            <p className="text-3xl font-bold text-slate-800">{total}</p>
-          </div>
-        )}
+        <div className="flex items-end gap-6">
+          {total != null && (
+            <div className="text-right">
+              <p className="text-xs text-slate-400">Всего заявок</p>
+              <p className="text-3xl font-bold text-slate-800">{total}</p>
+            </div>
+          )}
+          <Link
+            href="/admin/metrics"
+            className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors"
+          >
+            Метрики →
+          </Link>
+        </div>
       </div>
 
-      {state.kind === "loading" && <LoadingCard />}
+      {state.kind === "loading" && <p className="text-sm text-slate-400 py-8">Загрузка данных…</p>}
       {state.kind === "error" && <ErrorCard message={state.message} />}
       {state.kind === "ok" && (
         <KanbanBoard
@@ -97,32 +99,23 @@ export default function AdminDashboard() {
 
 function AdminCard({ request: r }: { request: Request }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md transition-shadow">
-      <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2">
-        {r.title}
-      </p>
-      <p className="text-xs text-slate-500 mb-1 truncate">{r.expertise_type}</p>
-      <p className="text-xs text-slate-400 truncate">📍 {r.region}</p>
-      {(r.budget_min != null || r.budget_max != null) && (
-        <p className="text-xs text-slate-400 mt-1">
-          💰{" "}
-          {r.budget_min != null ? r.budget_min.toLocaleString("ru-RU") : "—"}
-          {" – "}
-          {r.budget_max != null ? r.budget_max.toLocaleString("ru-RU") : "—"} ₽
-        </p>
-      )}
-      <div className="mt-2 flex items-center justify-between">
-        <span className="text-xs text-slate-400">Раунд {r.matching_round}</span>
-        <span className="text-xs text-slate-300">
-          {new Date(r.created_at).toLocaleDateString("ru-RU")}
-        </span>
+    <Link href={`/requests/${r.id}`}>
+      <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md hover:border-amber-300 transition-all cursor-pointer">
+        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2">{r.title}</p>
+        <p className="text-xs text-slate-500 mb-1 truncate">{r.expertise_type}</p>
+        <p className="text-xs text-slate-400 truncate">📍 {r.region}</p>
+        {(r.budget_min != null || r.budget_max != null) && (
+          <p className="text-xs text-slate-400 mt-1">
+            💰 {r.budget_min?.toLocaleString("ru-RU") ?? "—"} – {r.budget_max?.toLocaleString("ru-RU") ?? "—"} ₽
+          </p>
+        )}
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-xs text-slate-400">Раунд {r.matching_round}</span>
+          <span className="text-xs text-slate-300">{new Date(r.created_at).toLocaleDateString("ru-RU")}</span>
+        </div>
       </div>
-    </div>
+    </Link>
   );
-}
-
-function LoadingCard() {
-  return <div className="text-sm text-slate-400 py-8">Загрузка данных…</div>;
 }
 
 function ErrorCard({ message }: { message: string }) {

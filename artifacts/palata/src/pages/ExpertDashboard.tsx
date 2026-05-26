@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { KanbanBoard } from "@/components/KanbanBoard";
 
 type Match = {
   id: string;
+  request_id: string;
   status: string;
   matching_round: number;
   decline_reason: string | null;
@@ -12,7 +14,6 @@ type Match = {
     title: string;
     expertise_type: string;
     region: string;
-    status: string;
   } | null;
 };
 
@@ -21,27 +22,18 @@ type State =
   | { kind: "ok"; rows: Match[] }
   | { kind: "error"; message: string };
 
-const COLUMNS: Array<{
-  id: string;
-  label: string;
-  accent: string;
-  statuses: string[];
-}> = [
+const COLUMNS = [
   { id: "proposed",  label: "Новые предложения", accent: "border-t-blue-400",   statuses: ["proposed"] },
-  { id: "contacts",  label: "Контакты открыты",  accent: "border-t-cyan-400",   statuses: [] },
-  { id: "cantake",   label: "Могу взять",         accent: "border-t-teal-400",   statuses: [] },
+  { id: "contacts",  label: "Контакты открыты",  accent: "border-t-cyan-400",   statuses: [] as string[] },
+  { id: "cantake",   label: "Могу взять",         accent: "border-t-teal-400",   statuses: [] as string[] },
   { id: "accepted",  label: "В работе",           accent: "border-t-indigo-400", statuses: ["accepted"] },
   { id: "completed", label: "Завершено",          accent: "border-t-green-400",  statuses: ["completed"] },
   { id: "declined",  label: "Отказ / не взял",    accent: "border-t-red-300",    statuses: ["declined", "withdrawn"] },
 ];
 
 const DECLINE_LABEL: Record<string, string> = {
-  busy:          "Занят",
-  not_competent: "Вне компетенции",
-  location:      "Регион",
-  conflict:      "Конфликт интересов",
-  conditions:    "Условия",
-  other:         "Другое",
+  busy: "Занят", not_competent: "Вне компетенции", location: "Регион",
+  conflict: "Конфликт интересов", conditions: "Условия", other: "Другое",
 };
 
 export default function ExpertDashboard() {
@@ -51,8 +43,8 @@ export default function ExpertDashboard() {
     supabase
       .from("palata_request_matches")
       .select(`
-        id, status, matching_round, decline_reason, responded_at,
-        palata_requests ( title, expertise_type, region, status )
+        id, request_id, status, matching_round, decline_reason, responded_at,
+        palata_requests ( title, expertise_type, region )
       `)
       .order("matching_round", { ascending: true })
       .then(({ data, error }) => {
@@ -85,7 +77,7 @@ export default function ExpertDashboard() {
         </p>
       </div>
 
-      {state.kind === "loading" && <LoadingCard />}
+      {state.kind === "loading" && <p className="text-sm text-slate-400 py-8">Загрузка данных…</p>}
       {state.kind === "error" && <ErrorCard message={state.message} />}
       {state.kind === "ok" && (
         <KanbanBoard
@@ -101,33 +93,29 @@ export default function ExpertDashboard() {
 function ExpertCard({ match: m }: { match: Match }) {
   const req = m.palata_requests;
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md transition-shadow">
-      <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2">
-        {req?.title ?? "—"}
-      </p>
-      <p className="text-xs text-slate-500 mb-1 truncate">
-        {req?.expertise_type ?? "—"}
-      </p>
-      <p className="text-xs text-slate-400 truncate">📍 {req?.region ?? "—"}</p>
-      {m.decline_reason && (
-        <p className="mt-1.5 text-xs text-red-500">
-          Причина: {DECLINE_LABEL[m.decline_reason] ?? m.decline_reason}
+    <Link href={`/requests/${m.request_id}`}>
+      <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md hover:border-green-300 transition-all cursor-pointer">
+        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2">
+          {req?.title ?? "—"}
         </p>
-      )}
-      <div className="mt-2 flex items-center justify-between">
-        <span className="text-xs text-slate-400">Раунд {m.matching_round}</span>
-        {m.responded_at && (
-          <span className="text-xs text-slate-300">
-            {new Date(m.responded_at).toLocaleDateString("ru-RU")}
-          </span>
+        <p className="text-xs text-slate-500 mb-1 truncate">{req?.expertise_type ?? "—"}</p>
+        <p className="text-xs text-slate-400 truncate">📍 {req?.region ?? "—"}</p>
+        {m.decline_reason && (
+          <p className="mt-1.5 text-xs text-red-500">
+            {DECLINE_LABEL[m.decline_reason] ?? m.decline_reason}
+          </p>
         )}
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-xs text-slate-400">Раунд {m.matching_round}</span>
+          {m.responded_at && (
+            <span className="text-xs text-slate-300">
+              {new Date(m.responded_at).toLocaleDateString("ru-RU")}
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+    </Link>
   );
-}
-
-function LoadingCard() {
-  return <div className="text-sm text-slate-400 py-8">Загрузка данных…</div>;
 }
 
 function ErrorCard({ message }: { message: string }) {

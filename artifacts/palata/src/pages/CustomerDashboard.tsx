@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { KanbanBoard } from "@/components/KanbanBoard";
 
@@ -17,13 +18,7 @@ type State =
   | { kind: "ok"; rows: Request[] }
   | { kind: "error"; message: string };
 
-// Columns in display order
-const COLUMNS: Array<{
-  id: string;
-  label: string;
-  accent: string;
-  statuses: string[];
-}> = [
+const COLUMNS = [
   { id: "new",      label: "Новый",          accent: "border-t-slate-300",  statuses: ["draft"] },
   { id: "pending",  label: "Идёт подбор",    accent: "border-t-yellow-400", statuses: ["pending"] },
   { id: "matching", label: "Выбор эксперта", accent: "border-t-blue-400",   statuses: ["matching"] },
@@ -68,7 +63,7 @@ export default function CustomerDashboard() {
         </p>
       </div>
 
-      {state.kind === "loading" && <LoadingCard />}
+      {state.kind === "loading" && <p className="text-sm text-slate-400 py-8">Загрузка данных…</p>}
       {state.kind === "error" && <ErrorCard message={state.message} />}
       {state.kind === "ok" && (
         <KanbanBoard
@@ -83,26 +78,18 @@ export default function CustomerDashboard() {
 
 function CustomerCard({ request: r }: { request: Request }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md transition-shadow">
-      <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2">
-        {r.title}
-      </p>
-      <p className="text-xs text-slate-500 mb-1 truncate">{r.expertise_type}</p>
-      <p className="text-xs text-slate-400 truncate">📍 {r.region}</p>
-      <div className="mt-2 flex items-center justify-between">
-        <span className="text-xs text-slate-400">
-          Раунд {r.matching_round}
-        </span>
-        <span className="text-xs text-slate-300">
-          {new Date(r.created_at).toLocaleDateString("ru-RU")}
-        </span>
+    <Link href={`/requests/${r.id}`}>
+      <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md hover:border-blue-300 transition-all cursor-pointer">
+        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2">{r.title}</p>
+        <p className="text-xs text-slate-500 mb-1 truncate">{r.expertise_type}</p>
+        <p className="text-xs text-slate-400 truncate">📍 {r.region}</p>
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-xs text-slate-400">Раунд {r.matching_round}</span>
+          <span className="text-xs text-slate-300">{new Date(r.created_at).toLocaleDateString("ru-RU")}</span>
+        </div>
       </div>
-    </div>
+    </Link>
   );
-}
-
-function LoadingCard() {
-  return <div className="text-sm text-slate-400 py-8">Загрузка данных…</div>;
 }
 
 function ErrorCard({ message }: { message: string }) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { KanbanBoard } from "@/components/KanbanBoard";
 
 type Request = {
   id: string;
@@ -10,43 +11,28 @@ type Request = {
   matching_round: number;
   budget_min: number | null;
   budget_max: number | null;
-  deadline: string | null;
   created_at: string;
-};
-
-type Stats = {
-  total: number;
-  byStatus: Record<string, number>;
 };
 
 type State =
   | { kind: "loading" }
-  | { kind: "ok"; rows: Request[]; stats: Stats }
+  | { kind: "ok"; rows: Request[] }
   | { kind: "error"; message: string };
 
-const ALL_STATUSES = [
-  "draft", "pending", "matching", "in_progress", "completed", "cancelled", "failed",
+const COLUMNS: Array<{
+  id: string;
+  label: string;
+  accent: string;
+  statuses: string[];
+}> = [
+  { id: "new",      label: "Новые",          accent: "border-t-slate-400",  statuses: ["draft"] },
+  { id: "pending",  label: "Идёт подбор",    accent: "border-t-yellow-400", statuses: ["pending"] },
+  { id: "matching", label: "Выбор эксперта", accent: "border-t-blue-400",   statuses: ["matching"] },
+  { id: "working",  label: "В работе",       accent: "border-t-indigo-400", statuses: ["in_progress"] },
+  { id: "problem",  label: "Проблемные",     accent: "border-t-red-400",    statuses: ["failed"] },
+  { id: "done",     label: "Выполненные",    accent: "border-t-green-400",  statuses: ["completed"] },
+  { id: "closed",   label: "Неактуальные",   accent: "border-t-slate-300",  statuses: ["cancelled"] },
 ];
-
-const STATUS_LABEL: Record<string, string> = {
-  draft: "Черновик",
-  pending: "Ожидает",
-  matching: "Подбор",
-  in_progress: "В работе",
-  completed: "Завершён",
-  cancelled: "Отменён",
-  failed: "Ошибка",
-};
-
-const STATUS_COLOR: Record<string, string> = {
-  draft: "bg-slate-100 text-slate-600",
-  pending: "bg-yellow-100 text-yellow-700",
-  matching: "bg-blue-100 text-blue-700",
-  in_progress: "bg-indigo-100 text-indigo-700",
-  completed: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-600",
-  failed: "bg-red-100 text-red-600",
-};
 
 export default function AdminDashboard() {
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -55,152 +41,95 @@ export default function AdminDashboard() {
     supabase
       .from("palata_requests")
       .select(
-        "id, title, status, expertise_type, region, matching_round, budget_min, budget_max, deadline, created_at",
-        { count: "exact" }
+        "id, title, status, expertise_type, region, matching_round, budget_min, budget_max, created_at"
       )
       .order("created_at", { ascending: false })
-      .then(({ data, error, count }) => {
-        if (error) {
-          setState({ kind: "error", message: error.message });
-          return;
-        }
-        const rows = (data as Request[]) ?? [];
-        const byStatus: Record<string, number> = {};
-        for (const r of rows) {
-          byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
-        }
-        setState({ kind: "ok", rows, stats: { total: count ?? 0, byStatus } });
+      .then(({ data, error }) => {
+        if (error) { setState({ kind: "error", message: error.message }); return; }
+        setState({ kind: "ok", rows: (data as Request[]) ?? [] });
       });
   }, []);
 
+  const total = state.kind === "ok" ? state.rows.length : 0;
+
+  const columns = COLUMNS.map((col) => ({
+    id: col.id,
+    label: col.label,
+    accent: col.accent,
+    items: state.kind === "ok"
+      ? state.rows.filter((r) => col.statuses.includes(r.status))
+      : [],
+  }));
+
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10">
-      <div className="mb-8">
-        <span className="inline-block rounded-full px-3 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 mb-2">
-          Администратор
-        </span>
-        <h1 className="text-2xl font-bold text-slate-800">Все заявки</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Полный список из таблицы{" "}
-          <code className="font-mono text-xs bg-slate-100 px-1 rounded">
-            palata_requests
-          </code>
-        </p>
+    <div className="max-w-full px-6 py-10">
+      <div className="max-w-5xl mb-8 flex items-end justify-between">
+        <div>
+          <span className="inline-block rounded-full px-3 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 mb-2">
+            Администратор
+          </span>
+          <h1 className="text-2xl font-bold text-slate-800">Все заказы</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Канбан по таблице{" "}
+            <code className="font-mono text-xs bg-slate-100 px-1 rounded">palata_requests</code>
+          </p>
+        </div>
+        {state.kind === "ok" && (
+          <div className="text-right">
+            <p className="text-xs text-slate-400">Всего заявок</p>
+            <p className="text-3xl font-bold text-slate-800">{total}</p>
+          </div>
+        )}
       </div>
 
       {state.kind === "loading" && <LoadingCard />}
       {state.kind === "error" && <ErrorCard message={state.message} />}
       {state.kind === "ok" && (
-        <>
-          <StatsRow stats={state.stats} />
-          <div className="mt-6">
-            <AdminTable rows={state.rows} />
-          </div>
-        </>
+        <KanbanBoard
+          columns={columns}
+          renderCard={(r: Request) => <AdminCard request={r} />}
+          emptyText="Нет заявок"
+        />
       )}
     </div>
   );
 }
 
-function StatsRow({ stats }: { stats: Stats }) {
+function AdminCard({ request: r }: { request: Request }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-xs text-slate-400 mb-1">Всего заявок</p>
-        <p className="text-2xl font-bold text-slate-800">{stats.total}</p>
+    <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md transition-shadow">
+      <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2">
+        {r.title}
+      </p>
+      <p className="text-xs text-slate-500 mb-1 truncate">{r.expertise_type}</p>
+      <p className="text-xs text-slate-400 truncate">📍 {r.region}</p>
+      {(r.budget_min != null || r.budget_max != null) && (
+        <p className="text-xs text-slate-400 mt-1">
+          💰{" "}
+          {r.budget_min != null ? r.budget_min.toLocaleString("ru-RU") : "—"}
+          {" – "}
+          {r.budget_max != null ? r.budget_max.toLocaleString("ru-RU") : "—"} ₽
+        </p>
+      )}
+      <div className="mt-2 flex items-center justify-between">
+        <span className="text-xs text-slate-400">Раунд {r.matching_round}</span>
+        <span className="text-xs text-slate-300">
+          {new Date(r.created_at).toLocaleDateString("ru-RU")}
+        </span>
       </div>
-      {ALL_STATUSES.filter((s) => (stats.byStatus[s] ?? 0) > 0).map((s) => (
-        <div key={s} className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-400 mb-1">{STATUS_LABEL[s]}</p>
-          <p className="text-2xl font-bold text-slate-800">
-            {stats.byStatus[s]}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function AdminTable({ rows }: { rows: Request[] }) {
-  if (rows.length === 0) {
-    return (
-      <EmptyCard text="Заявок нет. Запустите seed-миграцию в Supabase SQL Editor." />
-    );
-  }
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-xs text-slate-500 bg-slate-50 border-b border-slate-100">
-            <th className="text-left px-4 py-3 font-medium">Заголовок</th>
-            <th className="text-left px-4 py-3 font-medium">Статус</th>
-            <th className="text-left px-4 py-3 font-medium">Вид экспертизы</th>
-            <th className="text-left px-4 py-3 font-medium">Регион</th>
-            <th className="text-right px-4 py-3 font-medium">Бюджет (₽)</th>
-            <th className="text-right px-4 py-3 font-medium">Раунд</th>
-            <th className="text-right px-4 py-3 font-medium">Создан</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr
-              key={r.id}
-              className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors"
-            >
-              <td className="px-4 py-3 max-w-[200px]">
-                <p className="text-slate-800 font-medium truncate">{r.title}</p>
-              </td>
-              <td className="px-4 py-3">
-                <span
-                  className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[r.status] ?? "bg-slate-100 text-slate-500"}`}
-                >
-                  {STATUS_LABEL[r.status] ?? r.status}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-slate-600 max-w-[160px] truncate">
-                {r.expertise_type}
-              </td>
-              <td className="px-4 py-3 text-slate-600">{r.region}</td>
-              <td className="px-4 py-3 text-right text-slate-500 text-xs">
-                {r.budget_min != null && r.budget_max != null
-                  ? `${r.budget_min.toLocaleString("ru-RU")} – ${r.budget_max.toLocaleString("ru-RU")}`
-                  : "—"}
-              </td>
-              <td className="px-4 py-3 text-right text-slate-500">
-                {r.matching_round}
-              </td>
-              <td className="px-4 py-3 text-right text-xs text-slate-400">
-                {new Date(r.created_at).toLocaleDateString("ru-RU")}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
 
 function LoadingCard() {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-400">
-      Загрузка данных…
-    </div>
-  );
+  return <div className="text-sm text-slate-400 py-8">Загрузка данных…</div>;
 }
 
 function ErrorCard({ message }: { message: string }) {
   return (
-    <div className="rounded-xl border border-red-200 bg-red-50 p-6">
+    <div className="rounded-xl border border-red-200 bg-red-50 p-6 max-w-xl">
       <p className="text-sm font-semibold text-red-700 mb-1">Ошибка Supabase</p>
       <p className="text-xs text-red-600">{message}</p>
-    </div>
-  );
-}
-
-function EmptyCard({ text }: { text: string }) {
-  return (
-    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-400">
-      {text}
     </div>
   );
 }

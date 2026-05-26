@@ -22,11 +22,11 @@ type State =
   | { kind: "error"; message: string };
 
 const COLUMNS = [
-  { id: "new",      label: "Новые",          accent: "border-t-slate-400",  statuses: ["draft"] },
+  { id: "new",      label: "Новые",          accent: "border-t-slate-400",  statuses: ["draft", "new"] },
   { id: "pending",  label: "Идёт подбор",    accent: "border-t-yellow-400", statuses: ["pending"] },
-  { id: "matching", label: "Выбор эксперта", accent: "border-t-cyan-400",   statuses: ["matching", "expert_selection"] },
+  { id: "matching", label: "Выбор эксперта", accent: "border-t-cyan-400",   statuses: ["expert_selection"] },
   { id: "working",  label: "В работе",       accent: "border-t-indigo-400", statuses: ["in_progress", "in_work"] },
-  { id: "problem",  label: "Проблемные",     accent: "border-t-red-400",    statuses: ["failed"] },
+  { id: "problem",  label: "Проблемные",     accent: "border-t-red-400",    statuses: ["failed", "matching"] },
   { id: "done",     label: "Выполненные",    accent: "border-t-green-400",  statuses: ["completed"] },
   { id: "closed",   label: "Неактуальные",   accent: "border-t-slate-300",  statuses: ["cancelled"] },
 ];

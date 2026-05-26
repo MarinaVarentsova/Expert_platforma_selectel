@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { runMatching } from "@/lib/matching";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -83,7 +84,7 @@ type FormData = {
 type SubmitState =
   | { kind: "idle" }
   | { kind: "submitting"; step: string }
-  | { kind: "success"; requestId: string; title: string }
+  | { kind: "success"; requestId: string; title: string; matchedCount: number }
   | { kind: "error"; message: string };
 
 const INIT: FormData = {
@@ -212,7 +213,22 @@ export default function NewRequest() {
         note: "Заявка создана заказчиком через форму",
       });
 
-      setState({ kind: "success", requestId, title: form.title.trim() });
+      // 4. Auto-matching
+      setState({ kind: "submitting", step: "Подбор экспертов…" });
+      let matchedCount = 0;
+      try {
+        const result = await runMatching({
+          requestId,
+          expertiseType: form.expertise_type,
+          region: form.region,
+          requiresTravel: form.requires_travel,
+        });
+        matchedCount = result.matched;
+      } catch (matchErr) {
+        console.warn("Matching skipped:", matchErr);
+      }
+
+      setState({ kind: "success", requestId, title: form.title.trim(), matchedCount });
     } catch (err: unknown) {
       setState({ kind: "error", message: (err as Error).message ?? "Неизвестная ошибка" });
     }
@@ -230,10 +246,18 @@ export default function NewRequest() {
         <h1 className="text-2xl font-bold text-slate-900 mb-2">Заявка создана</h1>
         <p className="text-sm text-slate-500 mb-1">{state.title}</p>
         <p className="text-xs font-mono text-slate-400 mb-8">{state.requestId.slice(0, 8).toUpperCase()}</p>
-        <p className="text-sm text-slate-600 mb-8 leading-relaxed">
-          Мы обработаем вашу заявку и подберём подходящего эксперта.<br />
-          Вы можете отслеживать статус в личном кабинете.
-        </p>
+        {state.matchedCount > 0 ? (
+          <p className="text-sm text-slate-600 mb-8 leading-relaxed">
+            Подобрано <strong>{state.matchedCount}</strong> эксперт
+            {state.matchedCount === 1 ? "" : state.matchedCount < 5 ? "а" : "ов"}.<br />
+            Эксперты получат предложение и смогут принять заявку.
+          </p>
+        ) : (
+          <p className="text-sm text-slate-600 mb-8 leading-relaxed">
+            Подходящие эксперты не найдены автоматически.<br />
+            Администратор рассмотрит заявку и свяжется с вами.
+          </p>
+        )}
         <div className="flex items-center justify-center gap-3">
           <Link href={`/requests/${state.requestId}`}>
             <button className="btn-primary">Открыть заказ</button>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { runMatching } from "@/lib/matching";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -302,6 +303,24 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   // ── Customer action state ──────────────────────────────────────────────────
   const [custUI, setCustUI] = useState<CustUIState>({ kind: "idle" });
+  const [matchingRunning, setMatchingRunning] = useState(false);
+
+  async function handleRematch() {
+    setMatchingRunning(true);
+    try {
+      await runMatching({
+        requestId: r.id,
+        expertiseType: r.expertise_type,
+        region: r.region,
+        requiresTravel: r.requires_travel ?? false,
+      });
+    } catch (e) {
+      console.error("Rematch error:", e);
+    } finally {
+      setMatchingRunning(false);
+      onReload();
+    }
+  }
 
   async function handleOpenContacts() {
     const { selectedMatchId } = custUI as { selectedMatchId: string };
@@ -523,6 +542,17 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         )}
 
         <div className="flex flex-wrap gap-2 items-start">
+          {/* Rematch: visible when no experts found or still pending */}
+          {isOrderActive && (r.status === "pending" || r.status === "matching") && custUI.kind === "idle" && (
+            <button
+              className="btn-primary"
+              onClick={handleRematch}
+              disabled={matchingRunning}
+            >
+              {matchingRunning ? "Идёт подбор…" : "Запустить подбор экспертов"}
+            </button>
+          )}
+
           {/* Open contacts */}
           {isOrderActive && selectableMatches.length > 0 && custUI.kind === "idle" && (
             <button

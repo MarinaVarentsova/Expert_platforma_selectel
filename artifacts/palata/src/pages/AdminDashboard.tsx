@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import AdminLayout from "@/components/AdminLayout";
 import { FileText, Clock, Zap, CheckCircle2, AlertTriangle, TrendingUp } from "lucide-react";
+import { useRequireRole } from "@/lib/useRequireRole";
 
 type Request = {
   id: string;
@@ -82,6 +83,7 @@ const COLUMNS = [
 ];
 
 export default function AdminDashboard() {
+  const guard = useRequireRole("admin");
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
@@ -94,6 +96,16 @@ export default function AdminDashboard() {
         setState({ kind: "ok", rows: (data as Request[]) ?? [] });
       });
   }, []);
+
+  if (guard.status === "loading" || guard.status === "redirecting") {
+    return (
+      <AdminLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="h-5 w-5 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin" />
+        </div>
+      </AdminLayout>
+    );
+  }
 
   const rows = state.kind === "ok" ? state.rows : [];
   const total = state.kind === "ok" ? rows.length : null;

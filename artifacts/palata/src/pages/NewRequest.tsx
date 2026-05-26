@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
+import { useAuth } from "@/lib/authContext";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -106,6 +107,8 @@ const INIT: FormData = {
 
 export default function NewRequest() {
   const [, navigate] = useLocation();
+  const { state: authState } = useAuth();
+  const currentUserId = authState.kind === "authenticated" ? authState.user.id : null;
   const [form, setForm] = useState<FormData>(INIT);
   const [files, setFiles] = useState<File[]>([]);
   const [state, setState] = useState<SubmitState>({ kind: "idle" });
@@ -167,6 +170,7 @@ export default function NewRequest() {
           customer_name: form.customer_name.trim(),
           customer_phone: form.customer_phone.trim() || null,
           customer_email: form.customer_email.trim() || null,
+          customer_id: currentUserId,
         })
         .select("id")
         .single();

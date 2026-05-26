@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import AdminLayout from "@/components/AdminLayout";
 import { TrendingUp, Users, Star, XCircle } from "lucide-react";
+import { useRequireRole } from "@/lib/useRequireRole";
 
 type RequestRow = {
   id: string;
@@ -112,9 +113,11 @@ function groupCount<T>(arr: T[], key: (item: T) => string): Array<{ label: strin
 }
 
 export default function AdminMetrics() {
+  const guard = useRequireRole("admin");
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
+    if (guard.status !== "ok") return;
     async function load() {
       const [reqRes, expRes, matchRes, expRatRes, custRatRes] = await Promise.all([
         supabase.from("palata_requests").select("id, status, region, expertise_type"),
@@ -178,7 +181,17 @@ export default function AdminMetrics() {
     }
 
     load();
-  }, []);
+  }, [guard.status]);
+
+  if (guard.status === "loading" || guard.status === "redirecting") {
+    return (
+      <AdminLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="h-5 w-5 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin" />
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>

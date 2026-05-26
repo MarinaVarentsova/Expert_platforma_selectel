@@ -75,6 +75,8 @@ const REGION_ALIASES: Record<string, string[]> = {
   "Саратовская область": ["Saratovskaya oblast"],
   "Тверская область": ["Tverskaya oblast"],
   "Калужская область": ["Kaluzhskaya oblast"],
+  "Ивановская область": ["Ivanovskaya oblast"],
+  "Иваново": ["Ivanovo"],
 };
 
 // ─── Matching helpers ─────────────────────────────────────────────────────────

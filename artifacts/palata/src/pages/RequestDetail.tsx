@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Request = {
   id: string;
@@ -37,6 +37,7 @@ type Match = {
   status: string;
   decline_reason: string | null;
   decline_note: string | null;
+  can_start_from_date: string | null;
   proposed_at: string;
   responded_at: string | null;
 };
@@ -81,42 +82,68 @@ type LoadedData = {
   usersMap: Record<string, User>;
 };
 
-type State =
+type PageState =
   | { kind: "loading" }
   | { kind: "ok"; data: LoadedData }
   | { kind: "error"; message: string }
   | { kind: "not_found" };
 
-// ─── Labels & colors ─────────────────────────────────────────────────────────
+// Per-match inline action state
+type MatchUIState =
+  | { kind: "idle" }
+  | { kind: "date_picker"; date: string }
+  | { kind: "decline_form"; reason: string; note: string }
+  | { kind: "submitting" }
+  | { kind: "error"; message: string };
+
+// Customer panel state
+type CustUIState =
+  | { kind: "idle" }
+  | { kind: "open_contacts"; selectedMatchId: string }
+  | { kind: "submitting" }
+  | { kind: "error"; message: string };
+
+// ─── Labels & colors ──────────────────────────────────────────────────────────
 
 const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
-  draft:       { label: "Черновик",       cls: "bg-slate-100 text-slate-600" },
-  pending:     { label: "Ожидает",        cls: "bg-yellow-100 text-yellow-700" },
-  matching:    { label: "Идёт подбор",    cls: "bg-blue-100 text-blue-700" },
-  in_progress: { label: "В работе",       cls: "bg-indigo-100 text-indigo-700" },
-  completed:   { label: "Выполнен",       cls: "bg-green-100 text-green-700" },
-  cancelled:   { label: "Отменён",        cls: "bg-slate-100 text-slate-500" },
-  failed:      { label: "Ошибка подбора", cls: "bg-red-100 text-red-600" },
+  draft:            { label: "Черновик",        cls: "bg-slate-100 text-slate-600" },
+  pending:          { label: "Ожидает",         cls: "bg-yellow-100 text-yellow-700" },
+  matching:         { label: "Идёт подбор",     cls: "bg-blue-100 text-blue-700" },
+  expert_selection: { label: "Выбор эксперта",  cls: "bg-cyan-100 text-cyan-700" },
+  in_work:          { label: "В работе",         cls: "bg-indigo-100 text-indigo-700" },
+  in_progress:      { label: "В работе",         cls: "bg-indigo-100 text-indigo-700" },
+  completed:        { label: "Выполнен",         cls: "bg-green-100 text-green-700" },
+  cancelled:        { label: "Неактуален",       cls: "bg-slate-100 text-slate-500" },
+  failed:           { label: "Ошибка подбора",   cls: "bg-red-100 text-red-600" },
 };
 
 const MATCH_STATUS: Record<string, { label: string; cls: string }> = {
-  proposed:  { label: "Предложено", cls: "bg-yellow-100 text-yellow-700" },
-  accepted:  { label: "Принято",    cls: "bg-green-100 text-green-700" },
-  declined:  { label: "Отказ",      cls: "bg-red-100 text-red-600" },
-  completed: { label: "Завершено",  cls: "bg-emerald-100 text-emerald-700" },
-  withdrawn: { label: "Отозвано",   cls: "bg-slate-100 text-slate-500" },
+  proposed:               { label: "Предложено",          cls: "bg-yellow-100 text-yellow-700" },
+  can_start_from:         { label: "Может взять",          cls: "bg-teal-100 text-teal-700" },
+  contacts_opened:        { label: "Контакты открыты",     cls: "bg-cyan-100 text-cyan-700" },
+  accepted:               { label: "Принято",              cls: "bg-green-100 text-green-700" },
+  accepted_work:          { label: "Взял в работу",        cls: "bg-indigo-100 text-indigo-700" },
+  declined:               { label: "Отказ",                cls: "bg-red-100 text-red-600" },
+  completed:              { label: "Завершено",            cls: "bg-emerald-100 text-emerald-700" },
+  withdrawn:              { label: "Отозвано",             cls: "bg-slate-100 text-slate-500" },
+  closed_by_other_expert: { label: "Закрыт другим",        cls: "bg-slate-100 text-slate-400" },
 };
 
-const DECLINE_REASON: Record<string, string> = {
-  busy:          "Занят",
-  not_competent: "Вне компетенции",
-  location:      "Регион",
-  conflict:      "Конфликт интересов",
-  conditions:    "Условия не подходят",
-  other:         "Другое",
-};
+const DECLINE_REASONS: { value: string; label: string }[] = [
+  { value: "busy",          label: "Занят" },
+  { value: "not_competent", label: "Вне компетенции" },
+  { value: "location",      label: "Регион не подходит" },
+  { value: "conflict",      label: "Конфликт интересов" },
+  { value: "conditions",    label: "Условия не подходят" },
+  { value: "other",         label: "Другое" },
+];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Matches eligible for customer contact-opening
+const ACTIVE_MATCH_STATUSES = new Set(["proposed", "can_start_from", "contacts_opened", "accepted", "accepted_work"]);
+// Matches where expert can still act
+const EXPERT_CAN_ACT = new Set(["proposed", "can_start_from", "contacts_opened", "accepted", "accepted_work"]);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(date: string) {
   return new Date(date).toLocaleString("ru-RU", {
@@ -124,22 +151,16 @@ function fmt(date: string) {
     hour: "2-digit", minute: "2-digit",
   });
 }
-
 function fmtDate(date: string) {
   return new Date(date).toLocaleDateString("ru-RU");
 }
-
 function fmtSize(bytes: number | null) {
   if (bytes == null) return "—";
   if (bytes < 1024) return `${bytes} Б`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
 }
-
-function shortId(id: string) {
-  return id.slice(0, 8).toUpperCase();
-}
-
+function shortId(id: string) { return id.slice(0, 8).toUpperCase(); }
 function mimeIcon(mime: string | null): string {
   if (!mime) return "📄";
   if (mime.startsWith("image/")) return "🖼️";
@@ -149,41 +170,56 @@ function mimeIcon(mime: string | null): string {
   if (mime.includes("zip") || mime.includes("rar")) return "🗜️";
   return "📄";
 }
+function userName(u: User | undefined) {
+  return u?.full_name ?? u?.email ?? null;
+}
+
+async function logEvent(
+  entityType: string, entityId: string,
+  oldStatus: string | null, newStatus: string,
+  note?: string,
+) {
+  await supabase.from("palata_status_events").insert({
+    entity_type: entityType, entity_id: entityId,
+    old_status: oldStatus ?? null, new_status: newStatus,
+    actor_id: null, note: note ?? null,
+  });
+}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function RequestDetail() {
   const { id } = useParams<{ id: string }>();
-  const [state, setState] = useState<State>({ kind: "loading" });
+  const [loadKey, setLoadKey] = useState(0);
+  const [state, setState] = useState<PageState>({ kind: "loading" });
+
+  const reload = useCallback(() => {
+    setState({ kind: "loading" });
+    setLoadKey(k => k + 1);
+  }, []);
 
   useEffect(() => {
     if (!id) { setState({ kind: "not_found" }); return; }
+    setState({ kind: "loading" });
 
     async function load() {
-      // First wave — parallel fetches that don't depend on each other
       const [reqRes, filesRes, matchesRes, eventsRes] = await Promise.all([
         supabase.from("palata_requests").select("*").eq("id", id!).single(),
         supabase.from("palata_request_files")
           .select("id, file_name, mime_type, size_bytes, created_at")
-          .eq("request_id", id!)
-          .order("created_at"),
+          .eq("request_id", id!).order("created_at"),
         supabase.from("palata_request_matches")
-          .select("id, expert_id, matching_round, status, decline_reason, decline_note, proposed_at, responded_at")
-          .eq("request_id", id!)
-          .order("matching_round")
-          .order("proposed_at"),
+          .select("id, expert_id, matching_round, status, decline_reason, decline_note, can_start_from_date, proposed_at, responded_at")
+          .eq("request_id", id!).order("matching_round").order("proposed_at"),
         supabase.from("palata_status_events")
           .select("id, entity_type, old_status, new_status, actor_id, note, created_at")
-          .eq("entity_id", id!)
-          .order("created_at"),
+          .eq("entity_id", id!).order("created_at"),
       ]);
 
       if (!reqRes.data || reqRes.error) {
-        setState(
-          reqRes.error?.code === "PGRST116"
-            ? { kind: "not_found" }
-            : { kind: "error", message: reqRes.error?.message ?? "Неизвестная ошибка" }
-        );
+        setState(reqRes.error?.code === "PGRST116"
+          ? { kind: "not_found" }
+          : { kind: "error", message: reqRes.error?.message ?? "Неизвестная ошибка" });
         return;
       }
 
@@ -192,7 +228,6 @@ export default function RequestDetail() {
       const events = (eventsRes.data as StatusEvent[]) ?? [];
       const files = (filesRes.data as RequestFile[]) ?? [];
 
-      // Second wave — need request + matches to know which user IDs to fetch
       const expertIds = [...new Set(matches.map(m => m.expert_id))];
       const actorIds = events.map(e => e.actor_id).filter(Boolean) as string[];
       const userIds = [...new Set([request.customer_id, ...expertIds, ...actorIds])];
@@ -204,9 +239,7 @@ export default function RequestDetail() {
               .in("user_id", expertIds)
           : Promise.resolve({ data: [] as ExpertProfile[], error: null }),
         userIds.length > 0
-          ? supabase.from("palata_users")
-              .select("id, full_name, email")
-              .in("id", userIds)
+          ? supabase.from("palata_users").select("id, full_name, email").in("id", userIds)
           : Promise.resolve({ data: [] as User[], error: null }),
       ]);
 
@@ -218,18 +251,8 @@ export default function RequestDetail() {
     }
 
     load();
-  }, [id]);
+  }, [id, loadKey]);
 
-  if (state.kind === "loading") return <Shell><Spinner /></Shell>;
-  if (state.kind === "not_found") return <Shell><Empty text="Заявка не найдена" /></Shell>;
-  if (state.kind === "error") return <Shell><ErrorMsg text={state.message} /></Shell>;
-
-  return <Shell><Detail data={state.data} /></Shell>;
-}
-
-// ─── Shell ────────────────────────────────────────────────────────────────────
-
-function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
       <button
@@ -238,25 +261,179 @@ function Shell({ children }: { children: React.ReactNode }) {
       >
         ← Назад
       </button>
-      {children}
+      {state.kind === "loading" && <p className="text-sm text-slate-400 py-10 text-center">Загрузка…</p>}
+      {state.kind === "not_found" && <p className="text-sm text-slate-400 py-10 text-center italic">Заявка не найдена</p>}
+      {state.kind === "error" && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-semibold text-red-700 mb-1">Ошибка загрузки</p>
+          <p className="text-xs text-red-600">{state.message}</p>
+        </div>
+      )}
+      {state.kind === "ok" && (
+        <Detail data={state.data} onReload={reload} />
+      )}
     </div>
   );
 }
 
-// ─── Detail layout ────────────────────────────────────────────────────────────
+// ─── Detail ───────────────────────────────────────────────────────────────────
 
-function Detail({ data }: { data: LoadedData }) {
+function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) {
   const { request: r, files, matches, expertProfiles, events, usersMap } = data;
   const profileMap = Object.fromEntries(expertProfiles.map(p => [p.user_id, p]));
-  const orderStatus = ORDER_STATUS[r.status];
   const customer = usersMap[r.customer_id];
+  const orderStatus = ORDER_STATUS[r.status];
+
+  // ── Customer action state ──────────────────────────────────────────────────
+  const [custUI, setCustUI] = useState<CustUIState>({ kind: "idle" });
+
+  async function handleOpenContacts() {
+    const { selectedMatchId } = custUI as { selectedMatchId: string };
+    const match = matches.find(m => m.id === selectedMatchId);
+    if (!match) return;
+    setCustUI({ kind: "submitting" });
+    try {
+      // 1. Check if contact record exists, create if not
+      const { data: existing } = await supabase
+        .from("palata_request_contacts")
+        .select("id")
+        .eq("request_id", r.id)
+        .eq("expert_id", match.expert_id)
+        .maybeSingle();
+      if (!existing) {
+        const { error: ce } = await supabase.from("palata_request_contacts").insert({
+          request_id: r.id, expert_id: match.expert_id,
+        });
+        if (ce) throw ce;
+      }
+      // 2. Update match status
+      const { error: me } = await supabase.from("palata_request_matches")
+        .update({ status: "contacts_opened", responded_at: new Date().toISOString() })
+        .eq("id", match.id);
+      if (me) throw me;
+      // 3. Update order status if needed
+      if (r.status !== "expert_selection" && r.status !== "in_work") {
+        const { error: re } = await supabase.from("palata_requests")
+          .update({ status: "expert_selection" }).eq("id", r.id);
+        if (re) throw re;
+        await logEvent("request", r.id, r.status, "expert_selection", "Открыты контакты с экспертом");
+      } else {
+        await logEvent("match", match.id, match.status, "contacts_opened", "Открыты контакты");
+      }
+      setCustUI({ kind: "idle" });
+      onReload();
+    } catch (e: unknown) {
+      setCustUI({ kind: "error", message: (e as Error).message ?? "Ошибка" });
+    }
+  }
+
+  async function handleOrderStatus(newStatus: "completed" | "cancelled") {
+    setCustUI({ kind: "submitting" });
+    try {
+      const { error } = await supabase.from("palata_requests")
+        .update({ status: newStatus }).eq("id", r.id);
+      if (error) throw error;
+      await logEvent("request", r.id, r.status, newStatus);
+      setCustUI({ kind: "idle" });
+      onReload();
+    } catch (e: unknown) {
+      setCustUI({ kind: "error", message: (e as Error).message ?? "Ошибка" });
+    }
+  }
+
+  // ── Per-match action state ─────────────────────────────────────────────────
+  const [matchUI, setMatchUI] = useState<Record<string, MatchUIState>>({});
+
+  function getMS(id: string): MatchUIState { return matchUI[id] ?? { kind: "idle" }; }
+  function setMS(id: string, s: MatchUIState) { setMatchUI(p => ({ ...p, [id]: s })); }
+
+  async function handleCanStart(match: Match, date: string) {
+    setMS(match.id, { kind: "submitting" });
+    try {
+      const { error } = await supabase.from("palata_request_matches")
+        .update({ status: "can_start_from", can_start_from_date: date, responded_at: new Date().toISOString() })
+        .eq("id", match.id);
+      if (error) throw error;
+      await logEvent("match", match.id, match.status, "can_start_from", `Может взять с ${fmtDate(date)}`);
+      setMS(match.id, { kind: "idle" });
+      onReload();
+    } catch (e: unknown) {
+      setMS(match.id, { kind: "error", message: (e as Error).message ?? "Ошибка" });
+    }
+  }
+
+  async function handleDecline(match: Match, reason: string, note: string) {
+    if (!reason) { setMS(match.id, { kind: "decline_form", reason: "", note, }); return; }
+    setMS(match.id, { kind: "submitting" });
+    try {
+      const { error } = await supabase.from("palata_request_matches")
+        .update({ status: "declined", decline_reason: reason, decline_note: note || null, responded_at: new Date().toISOString() })
+        .eq("id", match.id);
+      if (error) throw error;
+      await logEvent("match", match.id, match.status, "declined", note || undefined);
+      setMS(match.id, { kind: "idle" });
+      onReload();
+    } catch (e: unknown) {
+      setMS(match.id, { kind: "error", message: (e as Error).message ?? "Ошибка" });
+    }
+  }
+
+  async function handleTakeWork(match: Match) {
+    setMS(match.id, { kind: "submitting" });
+    try {
+      // Update this match to accepted_work
+      const { error: me } = await supabase.from("palata_request_matches")
+        .update({ status: "accepted_work", responded_at: new Date().toISOString() })
+        .eq("id", match.id);
+      if (me) throw me;
+      // Close other matches for this request
+      const otherIds = matches
+        .filter(m => m.id !== match.id && ACTIVE_MATCH_STATUSES.has(m.status))
+        .map(m => m.id);
+      if (otherIds.length > 0) {
+        await supabase.from("palata_request_matches")
+          .update({ status: "closed_by_other_expert" })
+          .in("id", otherIds);
+      }
+      // Update order status
+      const { error: re } = await supabase.from("palata_requests")
+        .update({ status: "in_work", assigned_expert_id: match.expert_id }).eq("id", r.id);
+      if (re) throw re;
+      await logEvent("request", r.id, r.status, "in_work", "Эксперт взял в работу");
+      setMS(match.id, { kind: "idle" });
+      onReload();
+    } catch (e: unknown) {
+      setMS(match.id, { kind: "error", message: (e as Error).message ?? "Ошибка" });
+    }
+  }
+
+  async function handleCompleteWork(match: Match) {
+    setMS(match.id, { kind: "submitting" });
+    try {
+      const { error: me } = await supabase.from("palata_request_matches")
+        .update({ status: "completed", responded_at: new Date().toISOString() })
+        .eq("id", match.id);
+      if (me) throw me;
+      const { error: re } = await supabase.from("palata_requests")
+        .update({ status: "completed" }).eq("id", r.id);
+      if (re) throw re;
+      await logEvent("request", r.id, r.status, "completed", "Работа завершена экспертом");
+      setMS(match.id, { kind: "idle" });
+      onReload();
+    } catch (e: unknown) {
+      setMS(match.id, { kind: "error", message: (e as Error).message ?? "Ошибка" });
+    }
+  }
+
+  // ── Selectable matches for customer "open contacts" ──
+  const selectableMatches = matches.filter(m => ACTIVE_MATCH_STATUSES.has(m.status));
+  const isOrderActive = !["completed", "cancelled", "failed"].includes(r.status);
 
   return (
     <div className="space-y-6">
 
-      {/* ── 1. Основная информация ────────────────────────────────────────── */}
+      {/* ── 1. Основная информация ───────────────────────────────────────── */}
       <Card>
-        {/* Header */}
         <div className="flex items-start justify-between gap-4 mb-5">
           <div className="flex-1 min-w-0">
             <p className="text-xs font-mono text-slate-400 mb-1">#{shortId(r.id)}</p>
@@ -267,7 +444,6 @@ function Detail({ data }: { data: LoadedData }) {
           </span>
         </div>
 
-        {/* Description */}
         {r.description ? (
           <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Описание ситуации</p>
@@ -279,58 +455,121 @@ function Detail({ data }: { data: LoadedData }) {
           </div>
         )}
 
-        {/* Fields grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
           <Field label="Заказчик">
-            {customer?.full_name
-              ? customer.full_name
-              : customer?.email
-                ? <span className="font-mono text-xs">{customer.email}</span>
-                : <span className="text-slate-400 italic">Нет данных</span>}
+            {customer ? (userName(customer) ?? <span className="font-mono text-xs">{customer.email}</span>)
+              : <span className="text-slate-400 italic">Нет данных</span>}
           </Field>
           <Field label="Направление экспертизы">{r.expertise_type}</Field>
           <Field label="Регион">{r.region}</Field>
           <Field label="Дата создания">{fmtDate(r.created_at)}</Field>
-          <Field label="Последнее обновление">{fmtDate(r.updated_at)}</Field>
-          <Field label="Раунд подбора">
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block w-5 h-5 rounded-full bg-slate-200 text-slate-600 text-xs font-bold flex items-center justify-center">
-                {r.matching_round}
-              </span>
-            </span>
-          </Field>
+          <Field label="Обновлён">{fmtDate(r.updated_at)}</Field>
+          <Field label="Раунд подбора">{r.matching_round}</Field>
           {(r.budget_min != null || r.budget_max != null) && (
             <Field label="Бюджет">
               {r.budget_min != null && r.budget_max != null
                 ? `${r.budget_min.toLocaleString("ru-RU")} – ${r.budget_max.toLocaleString("ru-RU")} ₽`
-                : r.budget_min != null
-                  ? `от ${r.budget_min.toLocaleString("ru-RU")} ₽`
-                  : `до ${r.budget_max!.toLocaleString("ru-RU")} ₽`}
+                : r.budget_min != null ? `от ${r.budget_min.toLocaleString("ru-RU")} ₽`
+                : `до ${r.budget_max!.toLocaleString("ru-RU")} ₽`}
             </Field>
           )}
-          {r.deadline && (
-            <Field label="Срок выполнения">{fmtDate(r.deadline)}</Field>
+          {r.deadline && <Field label="Срок">{fmtDate(r.deadline)}</Field>}
+          {r.preferred_start && <Field label="Желаемый старт">{fmtDate(r.preferred_start)}</Field>}
+        </div>
+      </Card>
+
+      {/* ── Действия заказчика ───────────────────────────────────────────── */}
+      <Card>
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs font-semibold uppercase tracking-wide text-blue-600">Действия заказчика</span>
+          <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">тестовый режим</span>
+        </div>
+
+        {custUI.kind === "error" && (
+          <div className="mb-3 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+            {custUI.message}
+            <button className="ml-2 underline" onClick={() => setCustUI({ kind: "idle" })}>Закрыть</button>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 items-start">
+          {/* Open contacts */}
+          {isOrderActive && selectableMatches.length > 0 && custUI.kind === "idle" && (
+            <button
+              className="btn-primary"
+              onClick={() => setCustUI({ kind: "open_contacts", selectedMatchId: selectableMatches[0].id })}
+            >
+              Выбрать эксперта для связи
+            </button>
           )}
-          {r.preferred_start && (
-            <Field label="Желаемый старт">{fmtDate(r.preferred_start)}</Field>
+
+          {/* Expert selector panel */}
+          {custUI.kind === "open_contacts" && (
+            <div className="w-full flex flex-wrap items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <select
+                className="text-sm border border-blue-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={custUI.selectedMatchId}
+                onChange={e => setCustUI({ kind: "open_contacts", selectedMatchId: e.target.value })}
+              >
+                {selectableMatches.map(m => {
+                  const u = usersMap[m.expert_id];
+                  return (
+                    <option key={m.id} value={m.id}>
+                      {userName(u) ?? m.expert_id.slice(0, 8)} — {MATCH_STATUS[m.status]?.label ?? m.status}
+                    </option>
+                  );
+                })}
+              </select>
+              <button className="btn-primary" onClick={handleOpenContacts}>
+                Открыть контакты
+              </button>
+              <button className="btn-ghost" onClick={() => setCustUI({ kind: "idle" })}>
+                Отмена
+              </button>
+            </div>
+          )}
+
+          {custUI.kind === "submitting" && <Spinner inline />}
+
+          {/* Complete order */}
+          {isOrderActive && custUI.kind === "idle" && (
+            <button
+              className="btn-success"
+              onClick={() => handleOrderStatus("completed")}
+            >
+              Перевести в «Выполнен»
+            </button>
+          )}
+
+          {/* Cancel order */}
+          {isOrderActive && custUI.kind === "idle" && (
+            <button
+              className="btn-danger"
+              onClick={() => handleOrderStatus("cancelled")}
+            >
+              Перевести в «Неактуален»
+            </button>
+          )}
+
+          {!isOrderActive && (
+            <p className="text-xs text-slate-400 italic">Заказ завершён — действия недоступны</p>
+          )}
+          {isOrderActive && selectableMatches.length === 0 && custUI.kind === "idle" && (
+            <p className="text-xs text-slate-400 italic">Нет активных экспертов для выбора</p>
           )}
         </div>
       </Card>
 
       {/* ── 2. Документы ─────────────────────────────────────────────────── */}
-      <Card title={`Документы`} count={files.length}>
-        {files.length === 0 ? (
-          <Empty text="Файлы не загружены" />
-        ) : (
+      <Card title="Документы" count={files.length}>
+        {files.length === 0 ? <Empty text="Файлы не загружены" /> : (
           <div className="divide-y divide-slate-50 -mx-6 -mb-6">
-            {files.map((f) => (
+            {files.map(f => (
               <div key={f.id} className="px-6 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
                 <span className="text-xl shrink-0">{mimeIcon(f.mime_type)}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{f.file_name}</p>
-                  <p className="text-xs text-slate-400">
-                    {f.mime_type ?? "неизвестный тип"} · {fmtSize(f.size_bytes)}
-                  </p>
+                  <p className="text-xs text-slate-400">{f.mime_type ?? "—"} · {fmtSize(f.size_bytes)}</p>
                 </div>
                 <p className="text-xs text-slate-400 shrink-0">{fmtDate(f.created_at)}</p>
               </div>
@@ -341,29 +580,28 @@ function Detail({ data }: { data: LoadedData }) {
 
       {/* ── 3. Подобранные эксперты ──────────────────────────────────────── */}
       <Card title="Подобранные эксперты" count={matches.length}>
-        {matches.length === 0 ? (
-          <Empty text="Эксперты ещё не подбирались" />
-        ) : (
+        {matches.length === 0 ? <Empty text="Эксперты ещё не подбирались" /> : (
           <div className="space-y-4">
-            {matches.map((m) => {
+            {matches.map(m => {
               const profile = profileMap[m.expert_id];
               const user = usersMap[m.expert_id];
               const ms = MATCH_STATUS[m.status];
+              const ui = getMS(m.id);
+              const canAct = EXPERT_CAN_ACT.has(m.status);
+
               return (
                 <div key={m.id} className="rounded-lg border border-slate-200 overflow-hidden">
-                  {/* Expert header */}
+                  {/* Header */}
                   <div className="px-4 py-3 bg-slate-50 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center shrink-0">
                         <span className="text-xs font-bold text-slate-500">
-                          {(user?.full_name ?? user?.email ?? "?")[0].toUpperCase()}
+                          {(userName(user) ?? user?.email ?? "?")[0]?.toUpperCase() ?? "?"}
                         </span>
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-800 truncate">
-                          {user?.full_name ?? user?.email ?? (
-                            <span className="font-mono text-xs text-slate-400">{m.expert_id.slice(0, 12)}…</span>
-                          )}
+                          {userName(user) ?? <span className="font-mono text-xs text-slate-400">{m.expert_id.slice(0, 12)}…</span>}
                         </p>
                         <p className="text-xs text-slate-400">Раунд {m.matching_round}</p>
                       </div>
@@ -373,21 +611,15 @@ function Detail({ data }: { data: LoadedData }) {
                     </span>
                   </div>
 
-                  {/* Expert profile details */}
+                  {/* Profile fields */}
                   {profile ? (
                     <div className="px-4 py-3 space-y-3">
-
-                      {/* Main fields grid */}
                       <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
                         {profile.specializations.length > 0 && (
-                          <Field label="Направления экспертиз">
-                            {profile.specializations.join(", ")}
-                          </Field>
+                          <Field label="Направления экспертиз">{profile.specializations.join(", ")}</Field>
                         )}
                         {profile.regions.length > 0 && (
-                          <Field label="Регионы работы">
-                            {profile.regions.join(", ")}
-                          </Field>
+                          <Field label="Регионы работы">{profile.regions.join(", ")}</Field>
                         )}
                         {profile.experience_years != null && (
                           <Field label="Опыт">{profile.experience_years} лет</Field>
@@ -401,19 +633,15 @@ function Detail({ data }: { data: LoadedData }) {
                               </span>
                               <span className="text-slate-400 ml-1 text-xs">{profile.avg_customer_rating} / 5</span>
                             </>
-                          ) : (
-                            <span className="text-slate-400 italic">Нет оценок</span>
-                          )}
+                          ) : <span className="text-slate-400 italic">Нет оценок</span>}
                         </Field>
                         <Field label="Выполнено заказов">{profile.completed_orders_count}</Field>
-                        <Field label="Готовность к командировкам">
+                        <Field label="Командировки">
                           {profile.business_trip_ready
                             ? <span className="text-teal-600 font-medium">Готов ✈</span>
                             : <span className="text-slate-400">Без командировок</span>}
                         </Field>
                       </div>
-
-                      {/* Registry section */}
                       <div className="border-t border-slate-100 pt-3 grid grid-cols-2 gap-x-6 gap-y-2.5">
                         <RegistryField
                           label="Палата судебных экспертов РФ"
@@ -426,17 +654,20 @@ function Detail({ data }: { data: LoadedData }) {
                           number={profile.centrsudexpert_registry_number}
                         />
                       </div>
-
-                      {/* Bio */}
                       {profile.bio && (
-                        <p className="text-xs text-slate-500 leading-relaxed border-t border-slate-100 pt-2">
-                          {profile.bio}
-                        </p>
+                        <p className="text-xs text-slate-500 leading-relaxed border-t border-slate-100 pt-2">{profile.bio}</p>
                       )}
                     </div>
                   ) : (
                     <div className="px-4 py-3">
                       <p className="text-xs text-slate-400 italic">Профиль эксперта не найден</p>
+                    </div>
+                  )}
+
+                  {/* can_start_from_date */}
+                  {m.can_start_from_date && (
+                    <div className="px-4 py-2 bg-teal-50 border-t border-teal-100 text-xs text-teal-700">
+                      Может взять с: <span className="font-semibold">{fmtDate(m.can_start_from_date)}</span>
                     </div>
                   )}
 
@@ -446,14 +677,125 @@ function Detail({ data }: { data: LoadedData }) {
                       <span className="text-red-400 text-xs mt-0.5">✗</span>
                       <div>
                         <p className="text-xs font-medium text-red-700">
-                          Причина отказа: {DECLINE_REASON[m.decline_reason] ?? m.decline_reason}
+                          {DECLINE_REASONS.find(r => r.value === m.decline_reason)?.label ?? m.decline_reason}
                         </p>
-                        {m.decline_note && (
-                          <p className="text-xs text-red-600 mt-0.5">{m.decline_note}</p>
-                        )}
+                        {m.decline_note && <p className="text-xs text-red-600 mt-0.5">{m.decline_note}</p>}
                       </div>
                       {m.responded_at && (
                         <p className="ml-auto text-xs text-red-300 shrink-0">{fmtDate(m.responded_at)}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Действия эксперта ───────────────────────────────── */}
+                  {canAct && (
+                    <div className="px-4 py-3 bg-green-50 border-t border-green-100">
+                      <p className="text-xs font-semibold text-green-700 mb-2 uppercase tracking-wide">
+                        Действия эксперта <span className="font-normal text-green-500 normal-case">(тестовый режим)</span>
+                      </p>
+
+                      {ui.kind === "error" && (
+                        <div className="mb-2 p-2 rounded bg-red-100 text-xs text-red-600">
+                          {ui.message}
+                          <button className="ml-2 underline" onClick={() => setMS(m.id, { kind: "idle" })}>×</button>
+                        </div>
+                      )}
+                      {ui.kind === "submitting" && <Spinner inline />}
+
+                      {/* date_picker form */}
+                      {ui.kind === "date_picker" && (
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <span className="text-xs text-slate-600">Дата начала:</span>
+                          <input
+                            type="date"
+                            className="text-sm border border-slate-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                            value={ui.date}
+                            onChange={e => setMS(m.id, { kind: "date_picker", date: e.target.value })}
+                          />
+                          <button
+                            className="btn-success-sm"
+                            disabled={!ui.date}
+                            onClick={() => ui.date && handleCanStart(m, ui.date)}
+                          >
+                            Подтвердить
+                          </button>
+                          <button className="btn-ghost-sm" onClick={() => setMS(m.id, { kind: "idle" })}>
+                            Отмена
+                          </button>
+                        </div>
+                      )}
+
+                      {/* decline_form */}
+                      {ui.kind === "decline_form" && (
+                        <div className="space-y-2 mb-2">
+                          <select
+                            className="w-full text-sm border border-slate-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-red-400"
+                            value={ui.reason}
+                            onChange={e => setMS(m.id, { kind: "decline_form", reason: e.target.value, note: ui.note })}
+                          >
+                            <option value="">— Выберите причину —</option>
+                            {DECLINE_REASONS.map(r => (
+                              <option key={r.value} value={r.value}>{r.label}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Комментарий (необязательно)"
+                            className="w-full text-sm border border-slate-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-400"
+                            value={ui.note}
+                            onChange={e => setMS(m.id, { kind: "decline_form", reason: ui.reason, note: e.target.value })}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              className="btn-danger-sm"
+                              disabled={!ui.reason}
+                              onClick={() => ui.reason && handleDecline(m, ui.reason, ui.note)}
+                            >
+                              Подтвердить отказ
+                            </button>
+                            <button className="btn-ghost-sm" onClick={() => setMS(m.id, { kind: "idle" })}>
+                              Отмена
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      {(ui.kind === "idle" || ui.kind === "error") && (
+                        <div className="flex flex-wrap gap-2">
+                          {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                            <button
+                              className="btn-teal-sm"
+                              onClick={() => setMS(m.id, { kind: "date_picker", date: "" })}
+                            >
+                              Могу взять с даты
+                            </button>
+                          )}
+                          {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                            <button
+                              className="btn-ghost-sm border-red-200 text-red-600 hover:bg-red-50"
+                              onClick={() => setMS(m.id, { kind: "decline_form", reason: "", note: "" })}
+                            >
+                              Не могу взять
+                            </button>
+                          )}
+                          {["can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                            <button
+                              className="btn-primary-sm"
+                              onClick={() => handleTakeWork(m)}
+                            >
+                              Взял в работу
+                            </button>
+                          )}
+                          {["accepted_work", "accepted"].includes(m.status) && (
+                            <button
+                              className="btn-success-sm"
+                              onClick={() => handleCompleteWork(m)}
+                            >
+                              Завершено
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
@@ -466,49 +808,32 @@ function Detail({ data }: { data: LoadedData }) {
 
       {/* ── 4. История событий ───────────────────────────────────────────── */}
       <Card title="История событий" count={events.length}>
-        {events.length === 0 ? (
-          <Empty text="Событий пока не зафиксировано" />
-        ) : (
+        {events.length === 0 ? <Empty text="Событий пока не зафиксировано" /> : (
           <div className="relative -mx-6 -mb-6">
-            {/* Timeline line */}
             <div className="absolute left-9 top-0 bottom-0 w-px bg-slate-100" />
-
             {events.map((e, idx) => {
               const actor = e.actor_id ? usersMap[e.actor_id] : null;
-              const isLast = idx === events.length - 1;
               return (
-                <div key={e.id} className={`px-6 py-4 flex items-start gap-4 ${!isLast ? "border-b border-slate-50" : ""}`}>
-                  {/* Dot */}
-                  <div className="shrink-0 mt-0.5 flex flex-col items-center">
+                <div key={e.id} className={`px-6 py-4 flex items-start gap-4 ${idx < events.length - 1 ? "border-b border-slate-50" : ""}`}>
+                  <div className="shrink-0 mt-1">
                     <div className="w-3 h-3 rounded-full bg-slate-300 border-2 border-white ring-1 ring-slate-200 z-10" />
                   </div>
-
                   <div className="flex-1 min-w-0">
-                    {/* Status transition */}
                     <div className="flex flex-wrap items-center gap-1.5 mb-1">
                       {e.old_status && (
-                        <>
-                          <StatusPill status={e.old_status} />
-                          <span className="text-slate-300 text-xs">→</span>
-                        </>
+                        <><StatusPill status={e.old_status} />
+                        <span className="text-slate-300 text-xs">→</span></>
                       )}
                       <StatusPill status={e.new_status} highlight />
                     </div>
-
-                    {/* Actor + note */}
                     <p className="text-xs text-slate-400">
-                      {actor
-                        ? (actor.full_name ?? actor.email)
-                        : "Система"}
+                      {actor ? (userName(actor) ?? actor.email) : "Система"}
                       {e.entity_type !== "request" && (
                         <span className="ml-1 text-slate-300">· {e.entity_type}</span>
                       )}
                     </p>
-                    {e.note && (
-                      <p className="text-xs text-slate-500 mt-1 italic">{e.note}</p>
-                    )}
+                    {e.note && <p className="text-xs text-slate-500 mt-1 italic">{e.note}</p>}
                   </div>
-
                   <p className="text-xs text-slate-400 shrink-0 pt-0.5">{fmt(e.created_at)}</p>
                 </div>
               );
@@ -516,22 +841,13 @@ function Detail({ data }: { data: LoadedData }) {
           </div>
         )}
       </Card>
-
     </div>
   );
 }
 
-// ─── Small shared components ──────────────────────────────────────────────────
+// ─── Shared UI atoms ──────────────────────────────────────────────────────────
 
-function Card({
-  title,
-  count,
-  children,
-}: {
-  title?: string;
-  count?: number;
-  children: React.ReactNode;
-}) {
+function Card({ title, count, children }: { title?: string; count?: number; children: React.ReactNode }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6">
       {title && (
@@ -556,28 +872,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function RegistryField({
-  label,
-  verified,
-  number,
-}: {
-  label: string;
-  verified: boolean;
-  number: string | null;
-}) {
+function RegistryField({ label, verified, number }: { label: string; verified: boolean; number: string | null }) {
   return (
     <div>
       <p className="text-xs text-slate-400 mb-1">{label}</p>
-      <div className="flex items-center gap-1.5 mb-0.5">
-        {verified ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
-            <span className="text-[10px]">✓</span> Подтверждено
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5">
-            Не подтверждено
-          </span>
-        )}
+      <div className="mb-0.5">
+        {verified
+          ? <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">✓ Подтверждено</span>
+          : <span className="inline-flex items-center text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5">Не подтверждено</span>}
       </div>
       <p className="text-xs text-slate-500">
         <span className="text-slate-400">№ </span>
@@ -587,50 +889,19 @@ function RegistryField({
   );
 }
 
-function Badge({ color, icon, children }: { color: string; icon: string; children: React.ReactNode }) {
-  const cls: Record<string, string> = {
-    blue:   "bg-blue-50 text-blue-700 border-blue-200",
-    indigo: "bg-indigo-50 text-indigo-700 border-indigo-200",
-    teal:   "bg-teal-50 text-teal-700 border-teal-200",
-    slate:  "bg-slate-50 text-slate-500 border-slate-200",
-  };
-  return (
-    <span className={`inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-xs font-medium ${cls[color] ?? cls.slate}`}>
-      <span className="text-[10px]">{icon}</span>
-      {children}
-    </span>
-  );
-}
-
 function StatusPill({ status, highlight }: { status: string; highlight?: boolean }) {
   const s = ORDER_STATUS[status] ?? MATCH_STATUS[status];
-  if (s) {
-    return (
-      <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${highlight ? s.cls : "bg-slate-100 text-slate-500"}`}>
-        {s.label}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-block rounded px-2 py-0.5 text-xs font-mono bg-slate-100 text-slate-500">
-      {status}
-    </span>
-  );
+  return s
+    ? <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${highlight ? s.cls : "bg-slate-100 text-slate-500"}`}>{s.label}</span>
+    : <span className="inline-block rounded px-2 py-0.5 text-xs font-mono bg-slate-100 text-slate-500">{status}</span>;
 }
 
 function Empty({ text }: { text: string }) {
   return <p className="text-sm text-slate-400 text-center py-6 italic">{text}</p>;
 }
 
-function Spinner() {
-  return <p className="text-sm text-slate-400 py-8 text-center">Загрузка…</p>;
-}
-
-function ErrorMsg({ text }: { text: string }) {
-  return (
-    <div className="rounded-xl border border-red-200 bg-red-50 p-5">
-      <p className="text-sm font-semibold text-red-700 mb-1">Ошибка загрузки</p>
-      <p className="text-xs text-red-600">{text}</p>
-    </div>
-  );
+function Spinner({ inline }: { inline?: boolean }) {
+  return inline
+    ? <span className="text-xs text-slate-400">Сохранение…</span>
+    : <p className="text-sm text-slate-400 py-8 text-center">Загрузка…</p>;
 }

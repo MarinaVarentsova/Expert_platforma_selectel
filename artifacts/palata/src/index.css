@@ -390,4 +390,29 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+
+  /* ── Action buttons ──────────────────────────────────────────────────────── */
+
+  .btn-primary, .btn-success, .btn-danger, .btn-ghost,
+  .btn-primary-sm, .btn-success-sm, .btn-danger-sm, .btn-teal-sm, .btn-ghost-sm {
+    @apply inline-flex items-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer;
+  }
+  .btn-primary:disabled, .btn-success:disabled, .btn-danger:disabled, .btn-ghost:disabled,
+  .btn-primary-sm:disabled, .btn-success-sm:disabled, .btn-danger-sm:disabled,
+  .btn-teal-sm:disabled, .btn-ghost-sm:disabled {
+    @apply opacity-40 cursor-not-allowed;
+  }
+
+  /* Normal size */
+  .btn-primary  { @apply px-4 py-2 text-sm bg-blue-600  text-white hover:bg-blue-700  active:bg-blue-800; }
+  .btn-success  { @apply px-4 py-2 text-sm bg-green-600 text-white hover:bg-green-700 active:bg-green-800; }
+  .btn-danger   { @apply px-4 py-2 text-sm bg-red-600   text-white hover:bg-red-700   active:bg-red-800; }
+  .btn-ghost    { @apply px-4 py-2 text-sm bg-transparent border border-slate-200 text-slate-600 hover:bg-slate-100 active:bg-slate-200; }
+
+  /* Small size */
+  .btn-primary-sm { @apply px-3 py-1.5 text-xs bg-blue-600  text-white hover:bg-blue-700  active:bg-blue-800; }
+  .btn-success-sm { @apply px-3 py-1.5 text-xs bg-green-600 text-white hover:bg-green-700 active:bg-green-800; }
+  .btn-danger-sm  { @apply px-3 py-1.5 text-xs bg-red-600   text-white hover:bg-red-700   active:bg-red-800; }
+  .btn-teal-sm    { @apply px-3 py-1.5 text-xs bg-teal-600  text-white hover:bg-teal-700  active:bg-teal-800; }
+  .btn-ghost-sm   { @apply px-3 py-1.5 text-xs bg-transparent border border-slate-200 text-slate-500 hover:bg-slate-100 active:bg-slate-200; }
 }

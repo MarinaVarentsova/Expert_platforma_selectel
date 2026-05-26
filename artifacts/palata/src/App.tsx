@@ -9,6 +9,8 @@ import CustomerDashboard from "@/pages/CustomerDashboard";
 import ExpertDashboard from "@/pages/ExpertDashboard";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdminMetrics from "@/pages/AdminMetrics";
+import AdminExperts from "@/pages/AdminExperts";
+import AdminSettings from "@/pages/AdminSettings";
 import RequestDetail from "@/pages/RequestDetail";
 import NotFound from "@/pages/not-found";
 
@@ -25,6 +27,8 @@ function Router() {
         <Route path="/expert" component={ExpertDashboard} />
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/metrics" component={AdminMetrics} />
+        <Route path="/admin/experts" component={AdminExperts} />
+        <Route path="/admin/settings" component={AdminSettings} />
         <Route path="/requests/:id" component={RequestDetail} />
         <Route component={NotFound} />
       </Switch>

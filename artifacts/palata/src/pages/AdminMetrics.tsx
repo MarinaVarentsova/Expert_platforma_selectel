@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import AdminLayout from "@/components/AdminLayout";
 
 type RequestRow = {
   id: string;
@@ -57,8 +57,8 @@ type Metrics = {
     avg_customer: number | null;
   };
   conversions: ConversionMetric[];
-  byRegion: Array<{ region: string; count: number }>;
-  byExpertise: Array<{ expertise: string; count: number }>;
+  byRegion: Array<{ label: string; count: number }>;
+  byExpertise: Array<{ label: string; count: number }>;
 };
 
 type State =
@@ -79,7 +79,7 @@ function pct(numerator: number, denominator: number): number {
 
 function computeConversions(requests: RequestRow[]): ConversionMetric[] {
   const total = requests.length;
-  const inProgress = requests.filter(r => r.status === "in_progress").length;
+  const inProgress = requests.filter(r => r.status === "in_progress" || r.status === "in_work").length;
   const completed = requests.filter(r => r.status === "completed").length;
   const everWorked = inProgress + completed;
 
@@ -134,7 +134,6 @@ export default function AdminMetrics() {
 
       const cnt = (status: string) => requests.filter(r => r.status === status).length;
 
-      // Requests where ALL matches in any round are declined (and no accepted)
       const byRequest: Record<string, MatchRow[]> = {};
       for (const m of matches) {
         (byRequest[m.request_id] ??= []).push(m);
@@ -145,7 +144,6 @@ export default function AdminMetrics() {
 
       const byRegion = groupCount(requests, r => r.region);
       const byExpertise = groupCount(requests, r => r.expertise_type);
-
       const conversions = computeConversions(requests);
 
       const metrics: Metrics = {
@@ -154,7 +152,7 @@ export default function AdminMetrics() {
           draft: cnt("draft"),
           pending: cnt("pending"),
           matching: cnt("matching"),
-          in_progress: cnt("in_progress"),
+          in_progress: cnt("in_progress") + cnt("in_work"),
           completed: cnt("completed"),
           cancelled: cnt("cancelled"),
           failed: cnt("failed"),
@@ -186,32 +184,23 @@ export default function AdminMetrics() {
   }, []);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <span className="inline-block rounded-full px-3 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 mb-2">
-            Администратор
-          </span>
-          <h1 className="text-2xl font-bold text-slate-800">Метрики заказов</h1>
+    <AdminLayout>
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-slate-900">Метрики</h1>
           <p className="text-sm text-slate-500 mt-1">Данные из Supabase в реальном времени</p>
         </div>
-        <Link href="/admin" className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
-          ← Все заявки
-        </Link>
+
+        {state.kind === "loading" && <p className="text-sm text-slate-400 py-8">Загрузка данных…</p>}
+        {state.kind === "error" && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-6 max-w-xl">
+            <p className="text-sm font-semibold text-red-700 mb-1">Ошибка Supabase</p>
+            <p className="text-xs text-red-600">{state.message}</p>
+          </div>
+        )}
+        {state.kind === "ok" && <MetricsBody m={state.metrics} />}
       </div>
-
-      {state.kind === "loading" && (
-        <p className="text-sm text-slate-400 py-8">Загрузка данных…</p>
-      )}
-      {state.kind === "error" && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-6 max-w-xl">
-          <p className="text-sm font-semibold text-red-700 mb-1">Ошибка Supabase</p>
-          <p className="text-xs text-red-600">{state.message}</p>
-        </div>
-      )}
-
-      {state.kind === "ok" && <MetricsBody m={state.metrics} />}
-    </div>
+    </AdminLayout>
   );
 }
 
@@ -219,51 +208,48 @@ function MetricsBody({ m }: { m: Metrics }) {
   return (
     <div className="space-y-8">
 
-      {/* Заявки */}
       <Section title="Заявки">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label="Всего заявок"       value={m.requests.total}       accent="text-slate-800" />
-          <Stat label="Черновики"          value={m.requests.draft}        accent="text-slate-500" />
-          <Stat label="Идёт подбор"        value={m.requests.pending}      accent="text-yellow-600" />
-          <Stat label="Выбор эксперта"     value={m.requests.matching}     accent="text-blue-600" />
-          <Stat label="В работе"           value={m.requests.in_progress}  accent="text-indigo-600" />
-          <Stat label="Выполнены"          value={m.requests.completed}    accent="text-green-600" />
-          <Stat label="Неактуальны"        value={m.requests.cancelled}    accent="text-slate-400" />
-          <Stat label="Ошибка подбора"     value={m.requests.failed}       accent="text-red-500" />
-          <Stat label="Все эксперты отказали" value={m.requests.all_declined} accent="text-red-600" />
-          <Stat label="Отказов экспертов"  value={m.matches.total_declines} accent="text-orange-600" />
+          <Stat label="Всего заявок"          value={m.requests.total}         accent="text-slate-900" />
+          <Stat label="Черновики"             value={m.requests.draft}          accent="text-slate-500" />
+          <Stat label="Идёт подбор"           value={m.requests.pending}        accent="text-yellow-600" />
+          <Stat label="Выбор эксперта"        value={m.requests.matching}       accent="text-cyan-600" />
+          <Stat label="В работе"              value={m.requests.in_progress}    accent="text-indigo-600" />
+          <Stat label="Выполнены"             value={m.requests.completed}      accent="text-green-600" />
+          <Stat label="Неактуальны"           value={m.requests.cancelled}      accent="text-slate-400" />
+          <Stat label="Ошибка подбора"        value={m.requests.failed}         accent="text-red-500" />
+          <Stat label="Все отказали"          value={m.requests.all_declined}   accent="text-red-600" />
+          <Stat label="Отказов экспертов"     value={m.matches.total_declines}  accent="text-orange-600" />
         </div>
       </Section>
 
-      {/* Эксперты */}
       <Section title="Эксперты">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label="Всего экспертов"    value={m.experts.total}          accent="text-slate-800" />
-          <Stat label="Активные"           value={m.experts.active}         accent="text-green-600" />
-          <Stat label="Реестр Палаты СЭ"   value={m.experts.palata_verified} accent="text-blue-600" />
-          <Stat label="Центр судэксперт"   value={m.experts.centr_verified}  accent="text-indigo-600" />
+          <Stat label="Всего экспертов"       value={m.experts.total}           accent="text-slate-900" />
+          <Stat label="Активные"              value={m.experts.active}          accent="text-green-600" />
+          <Stat label="Реестр Палаты СЭ"      value={m.experts.palata_verified}  accent="text-indigo-600" />
+          <Stat label="Центр судэксперт"      value={m.experts.centr_verified}   accent="text-indigo-500" />
           <Stat
             label="Средний рейтинг (профиль)"
-            value={m.experts.avg_rating != null ? `★ ${m.experts.avg_rating}` : "—"}
+            value={m.experts.avg_rating != null ? `${m.experts.avg_rating}` : "—"}
             accent="text-amber-600"
             raw
           />
           <Stat
             label="Средний рейтинг (оценки)"
-            value={m.ratings.avg_expert != null ? `★ ${m.ratings.avg_expert}` : "—"}
+            value={m.ratings.avg_expert != null ? `${m.ratings.avg_expert}` : "—"}
             accent="text-amber-500"
             raw
           />
           <Stat
             label="Ср. оценка заказчиков"
-            value={m.ratings.avg_customer != null ? `★ ${m.ratings.avg_customer}` : "—"}
+            value={m.ratings.avg_customer != null ? `${m.ratings.avg_customer}` : "—"}
             accent="text-teal-600"
             raw
           />
         </div>
       </Section>
 
-      {/* Конверсии */}
       <Section title="Конверсии">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {m.conversions.map((c) => (
@@ -272,18 +258,9 @@ function MetricsBody({ m }: { m: Metrics }) {
         </div>
       </Section>
 
-      {/* По регионам */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <BreakdownTable
-          title="Заявки по регионам"
-          rows={m.byRegion}
-          total={m.requests.total}
-        />
-        <BreakdownTable
-          title="Заявки по направлениям"
-          rows={m.byExpertise}
-          total={m.requests.total}
-        />
+        <BreakdownTable title="Заявки по регионам"     rows={m.byRegion}    total={m.requests.total} />
+        <BreakdownTable title="Заявки по направлениям" rows={m.byExpertise} total={m.requests.total} />
       </div>
     </div>
   );
@@ -292,7 +269,7 @@ function MetricsBody({ m }: { m: Metrics }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">{title}</h2>
+      <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">{title}</h2>
       {children}
     </div>
   );
@@ -310,31 +287,22 @@ function Stat({ label, value, accent, raw }: { label: string; value: number | st
 }
 
 function ConversionCard({ metric: c }: { metric: ConversionMetric }) {
-  const color =
+  const barColor =
     c.pct >= 66 ? "bg-green-500" :
     c.pct >= 33 ? "bg-amber-400" :
     "bg-red-400";
+  const textColor =
+    c.pct >= 66 ? "text-green-600" :
+    c.pct >= 33 ? "text-amber-500" :
+    "text-red-500";
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">{c.label}</p>
-
-      {/* Big percent */}
-      <p className={`text-4xl font-bold mb-4 ${
-        c.pct >= 66 ? "text-green-600" : c.pct >= 33 ? "text-amber-500" : "text-red-500"
-      }`}>
-        {c.pct}%
-      </p>
-
-      {/* Progress bar */}
-      <div className="w-full bg-slate-100 rounded-full h-2 mb-4">
-        <div
-          className={`${color} h-2 rounded-full transition-all duration-500`}
-          style={{ width: `${c.pct}%` }}
-        />
+      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">{c.label}</p>
+      <p className={`text-4xl font-bold mb-4 ${textColor}`}>{c.pct}%</p>
+      <div className="w-full bg-slate-100 rounded-full h-1.5 mb-4">
+        <div className={`${barColor} h-1.5 rounded-full transition-all duration-500`} style={{ width: `${c.pct}%` }} />
       </div>
-
-      {/* Numerator / denominator */}
       <div className="flex items-center gap-2 text-sm text-slate-500">
         <span className="font-semibold text-slate-800">{c.numerator.toLocaleString("ru-RU")}</span>
         <span>/</span>
@@ -347,15 +315,7 @@ function ConversionCard({ metric: c }: { metric: ConversionMetric }) {
   );
 }
 
-function BreakdownTable({
-  title,
-  rows,
-  total,
-}: {
-  title: string;
-  rows: Array<{ label: string; count: number }>;
-  total: number;
-}) {
+function BreakdownTable({ title, rows, total }: { title: string; rows: Array<{ label: string; count: number }>; total: number }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
@@ -366,15 +326,12 @@ function BreakdownTable({
       ) : (
         <div className="divide-y divide-slate-50">
           {rows.map(({ label, count }) => {
-            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+            const share = total > 0 ? Math.round((count / total) * 100) : 0;
             return (
               <div key={label} className="px-4 py-2.5 flex items-center gap-3">
                 <p className="text-sm text-slate-700 flex-1 truncate">{label}</p>
                 <div className="w-20 bg-slate-100 rounded-full h-1.5 shrink-0">
-                  <div
-                    className="bg-amber-400 h-1.5 rounded-full"
-                    style={{ width: `${pct}%` }}
-                  />
+                  <div className="bg-indigo-400 h-1.5 rounded-full" style={{ width: `${share}%` }} />
                 </div>
                 <p className="text-sm font-semibold text-slate-700 w-5 text-right shrink-0">{count}</p>
               </div>

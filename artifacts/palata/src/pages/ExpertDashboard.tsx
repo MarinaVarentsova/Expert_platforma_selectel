@@ -23,12 +23,12 @@ type State =
   | { kind: "error"; message: string };
 
 const COLUMNS = [
-  { id: "proposed",  label: "Новые предложения", accent: "border-t-blue-400",   statuses: ["proposed"] },
-  { id: "contacts",  label: "Контакты открыты",  accent: "border-t-cyan-400",   statuses: [] as string[] },
-  { id: "cantake",   label: "Могу взять",         accent: "border-t-teal-400",   statuses: [] as string[] },
-  { id: "accepted",  label: "В работе",           accent: "border-t-indigo-400", statuses: ["accepted"] },
-  { id: "completed", label: "Завершено",          accent: "border-t-green-400",  statuses: ["completed"] },
-  { id: "declined",  label: "Отказ / не взял",    accent: "border-t-red-300",    statuses: ["declined", "withdrawn"] },
+  { id: "proposed",  label: "Новые предложения",  accent: "border-t-blue-400",   statuses: ["proposed"] },
+  { id: "contacts",  label: "Контакты открыты",   accent: "border-t-cyan-400",   statuses: ["contacts_opened"] },
+  { id: "cantake",   label: "Могу взять",          accent: "border-t-teal-400",   statuses: ["can_start_from"] },
+  { id: "accepted",  label: "В работе",            accent: "border-t-indigo-400", statuses: ["accepted", "accepted_work"] },
+  { id: "completed", label: "Завершено",           accent: "border-t-green-400",  statuses: ["completed"] },
+  { id: "declined",  label: "Отказ / не взял",     accent: "border-t-slate-300",  statuses: ["declined", "withdrawn", "closed_by_other_expert"] },
 ];
 
 const DECLINE_LABEL: Record<string, string> = {
@@ -58,23 +58,15 @@ export default function ExpertDashboard() {
     label: col.label,
     accent: col.accent,
     items: state.kind === "ok"
-      ? (col.statuses.length === 0
-          ? []
-          : state.rows.filter((r) => col.statuses.includes(r.status)))
+      ? state.rows.filter((r) => col.statuses.includes(r.status))
       : [],
   }));
 
   return (
-    <div className="max-w-full px-6 py-10">
-      <div className="max-w-5xl mb-8">
-        <span className="inline-block rounded-full px-3 py-0.5 text-xs font-semibold bg-green-100 text-green-700 mb-2">
-          Эксперт
-        </span>
-        <h1 className="text-2xl font-bold text-slate-800">Мои обращения</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Канбан по таблице{" "}
-          <code className="font-mono text-xs bg-slate-100 px-1 rounded">palata_request_matches</code>
-        </p>
+    <div className="px-6 py-8">
+      <div className="mb-6">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет</p>
+        <h1 className="text-2xl font-bold text-slate-900">Мои обращения</h1>
       </div>
 
       {state.kind === "loading" && <p className="text-sm text-slate-400 py-8">Загрузка данных…</p>}
@@ -94,18 +86,18 @@ function ExpertCard({ match: m }: { match: Match }) {
   const req = m.palata_requests;
   return (
     <Link href={`/requests/${m.request_id}`}>
-      <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md hover:border-green-300 transition-all cursor-pointer">
+      <div className="bg-white rounded-lg border border-slate-200 p-3 hover:shadow-sm hover:border-indigo-200 transition-all cursor-pointer">
         <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2">
           {req?.title ?? "—"}
         </p>
-        <p className="text-xs text-slate-500 mb-1 truncate">{req?.expertise_type ?? "—"}</p>
-        <p className="text-xs text-slate-400 truncate">📍 {req?.region ?? "—"}</p>
+        <p className="text-xs text-slate-500 mb-0.5 truncate">{req?.expertise_type ?? "—"}</p>
+        <p className="text-xs text-slate-400 truncate">{req?.region ?? "—"}</p>
         {m.decline_reason && (
           <p className="mt-1.5 text-xs text-red-500">
             {DECLINE_LABEL[m.decline_reason] ?? m.decline_reason}
           </p>
         )}
-        <div className="mt-2 flex items-center justify-between">
+        <div className="mt-2 pt-2 border-t border-slate-50 flex items-center justify-between">
           <span className="text-xs text-slate-400">Раунд {m.matching_round}</span>
           {m.responded_at && (
             <span className="text-xs text-slate-300">

@@ -21,10 +21,10 @@ type State =
 const COLUMNS = [
   { id: "new",      label: "Новый",          accent: "border-t-slate-300",  statuses: ["draft"] },
   { id: "pending",  label: "Идёт подбор",    accent: "border-t-yellow-400", statuses: ["pending"] },
-  { id: "matching", label: "Выбор эксперта", accent: "border-t-blue-400",   statuses: ["matching"] },
-  { id: "working",  label: "В работе",       accent: "border-t-indigo-400", statuses: ["in_progress"] },
+  { id: "matching", label: "Выбор эксперта", accent: "border-t-cyan-400",   statuses: ["matching", "expert_selection"] },
+  { id: "working",  label: "В работе",       accent: "border-t-indigo-400", statuses: ["in_progress", "in_work"] },
   { id: "done",     label: "Выполнен",       accent: "border-t-green-400",  statuses: ["completed"] },
-  { id: "closed",   label: "Неактуален",     accent: "border-t-red-300",    statuses: ["cancelled", "failed"] },
+  { id: "closed",   label: "Неактуален",     accent: "border-t-slate-300",  statuses: ["cancelled", "failed"] },
 ];
 
 export default function CustomerDashboard() {
@@ -51,16 +51,10 @@ export default function CustomerDashboard() {
   }));
 
   return (
-    <div className="max-w-full px-6 py-10">
-      <div className="max-w-5xl mb-8">
-        <span className="inline-block rounded-full px-3 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700 mb-2">
-          Заказчик
-        </span>
-        <h1 className="text-2xl font-bold text-slate-800">Мои заказы</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Канбан по таблице{" "}
-          <code className="font-mono text-xs bg-slate-100 px-1 rounded">palata_requests</code>
-        </p>
+    <div className="px-6 py-8">
+      <div className="mb-6">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет</p>
+        <h1 className="text-2xl font-bold text-slate-900">Мои заказы</h1>
       </div>
 
       {state.kind === "loading" && <p className="text-sm text-slate-400 py-8">Загрузка данных…</p>}
@@ -79,11 +73,11 @@ export default function CustomerDashboard() {
 function CustomerCard({ request: r }: { request: Request }) {
   return (
     <Link href={`/requests/${r.id}`}>
-      <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md hover:border-blue-300 transition-all cursor-pointer">
+      <div className="bg-white rounded-lg border border-slate-200 p-3 hover:shadow-sm hover:border-indigo-200 transition-all cursor-pointer">
         <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2">{r.title}</p>
-        <p className="text-xs text-slate-500 mb-1 truncate">{r.expertise_type}</p>
-        <p className="text-xs text-slate-400 truncate">📍 {r.region}</p>
-        <div className="mt-2 flex items-center justify-between">
+        <p className="text-xs text-slate-500 mb-0.5 truncate">{r.expertise_type}</p>
+        <p className="text-xs text-slate-400 truncate">{r.region}</p>
+        <div className="mt-2 pt-2 border-t border-slate-50 flex items-center justify-between">
           <span className="text-xs text-slate-400">Раунд {r.matching_round}</span>
           <span className="text-xs text-slate-300">{new Date(r.created_at).toLocaleDateString("ru-RU")}</span>
         </div>

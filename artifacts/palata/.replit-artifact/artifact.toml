@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Палата судебных экспертов"
+version = "1.0.0"
+id = "artifacts/palata"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19875
+
+[services.development]
+run = "pnpm --filter @workspace/palata run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/palata", "run", "build" ]
+publicDir = "artifacts/palata/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19875"
+BASE_PATH = "/"

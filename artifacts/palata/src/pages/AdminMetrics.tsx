@@ -23,6 +23,13 @@ type MatchRow = {
   status: string;
 };
 
+type ConversionMetric = {
+  label: string;
+  numerator: number;
+  denominator: number;
+  pct: number;
+};
+
 type Metrics = {
   requests: {
     total: number;
@@ -49,6 +56,7 @@ type Metrics = {
     avg_expert: number | null;
     avg_customer: number | null;
   };
+  conversions: ConversionMetric[];
   byRegion: Array<{ region: string; count: number }>;
   byExpertise: Array<{ expertise: string; count: number }>;
 };
@@ -62,6 +70,33 @@ function avg(nums: (number | null)[]): number | null {
   const valid = nums.filter((n): n is number => n != null);
   if (valid.length === 0) return null;
   return Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 100) / 100;
+}
+
+function pct(numerator: number, denominator: number): number {
+  if (denominator === 0) return 0;
+  return Math.round((numerator / denominator) * 100);
+}
+
+function computeConversions(requests: RequestRow[]): ConversionMetric[] {
+  const total = requests.length;
+  const inProgress = requests.filter(r => r.status === "in_progress").length;
+  const completed = requests.filter(r => r.status === "completed").length;
+  const everWorked = inProgress + completed;
+
+  return [
+    {
+      label: "Конверсия в работу",
+      numerator: everWorked,
+      denominator: total,
+      pct: pct(everWorked, total),
+    },
+    {
+      label: "Выполнение из взятых в работу",
+      numerator: completed,
+      denominator: everWorked,
+      pct: pct(completed, everWorked),
+    },
+  ];
 }
 
 function groupCount<T>(arr: T[], key: (item: T) => string): Array<{ label: string; count: number }> {
@@ -111,6 +146,8 @@ export default function AdminMetrics() {
       const byRegion = groupCount(requests, r => r.region);
       const byExpertise = groupCount(requests, r => r.expertise_type);
 
+      const conversions = computeConversions(requests);
+
       const metrics: Metrics = {
         requests: {
           total: requests.length,
@@ -137,6 +174,7 @@ export default function AdminMetrics() {
           avg_expert: avg(expRatings.map(r => r.score)),
           avg_customer: avg(custRatings.map(r => r.score)),
         },
+        conversions,
         byRegion,
         byExpertise,
       };
@@ -225,6 +263,15 @@ function MetricsBody({ m }: { m: Metrics }) {
         </div>
       </Section>
 
+      {/* Конверсии */}
+      <Section title="Конверсии">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {m.conversions.map((c) => (
+            <ConversionCard key={c.label} metric={c} />
+          ))}
+        </div>
+      </Section>
+
       {/* По регионам */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <BreakdownTable
@@ -258,6 +305,44 @@ function Stat({ label, value, accent, raw }: { label: string; value: number | st
       <p className={`text-2xl font-bold ${accent}`}>
         {raw ? value : typeof value === "number" ? value.toLocaleString("ru-RU") : value}
       </p>
+    </div>
+  );
+}
+
+function ConversionCard({ metric: c }: { metric: ConversionMetric }) {
+  const color =
+    c.pct >= 66 ? "bg-green-500" :
+    c.pct >= 33 ? "bg-amber-400" :
+    "bg-red-400";
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">{c.label}</p>
+
+      {/* Big percent */}
+      <p className={`text-4xl font-bold mb-4 ${
+        c.pct >= 66 ? "text-green-600" : c.pct >= 33 ? "text-amber-500" : "text-red-500"
+      }`}>
+        {c.pct}%
+      </p>
+
+      {/* Progress bar */}
+      <div className="w-full bg-slate-100 rounded-full h-2 mb-4">
+        <div
+          className={`${color} h-2 rounded-full transition-all duration-500`}
+          style={{ width: `${c.pct}%` }}
+        />
+      </div>
+
+      {/* Numerator / denominator */}
+      <div className="flex items-center gap-2 text-sm text-slate-500">
+        <span className="font-semibold text-slate-800">{c.numerator.toLocaleString("ru-RU")}</span>
+        <span>/</span>
+        <span>{c.denominator.toLocaleString("ru-RU")}</span>
+        <span className="text-slate-400 text-xs ml-auto">
+          {c.denominator === 0 ? "нет данных" : `${c.numerator} из ${c.denominator}`}
+        </span>
+      </div>
     </div>
   );
 }

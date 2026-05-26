@@ -32,11 +32,11 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function fetchPalataUser(email: string): Promise<PalataUser | null> {
+async function fetchPalataUser(userId: string): Promise<PalataUser | null> {
   const { data, error } = await supabase
     .from("palata_users")
     .select("id, role, full_name, email, is_active")
-    .eq("email", email)
+    .eq("id", userId)
     .single();
 
   if (error || !data) return null;
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState({ kind: "unauthenticated" });
       return;
     }
-    const user = await fetchPalataUser(session.user.email ?? "");
+    const user = await fetchPalataUser(session.user.id);
     if (!user) {
       setState({ kind: "unauthenticated" });
       return;

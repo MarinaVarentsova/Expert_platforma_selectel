@@ -281,12 +281,6 @@ export default function ExpertDashboard() {
 
   const { user } = guard;
 
-  const activeCount = matchState.kind === "ok"
-    ? matchState.rows.filter(r =>
-        ["proposed", "contacts_opened", "can_start_from", "accepted", "accepted_work"].includes(r.status)
-      ).length
-    : null;
-
   const columns = COLUMNS.map((col) => ({
     ...col,
     items: matchState.kind === "ok"
@@ -352,15 +346,6 @@ export default function ExpertDashboard() {
           <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
         </div>
 
-        {activeCount != null && activeCount > 0 && (
-          <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2">
-            <Star className="w-4 h-4 text-indigo-400" />
-            <div>
-              <p className="text-[10px] text-indigo-400 uppercase tracking-wide font-semibold">Активных</p>
-              <p className="text-xl font-bold text-indigo-700 tabular-nums leading-none">{activeCount}</p>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Tabs */}

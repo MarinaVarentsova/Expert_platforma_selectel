@@ -6,7 +6,12 @@ import { KanbanBoard } from "@/components/KanbanBoard";
 import {
   PlusCircle, FileText, User, MapPin, Building2,
   Phone, Mail, ClipboardList, Hash, Star,
+  Zap, Calendar, CheckCircle2, XCircle, ChevronDown, ChevronUp, GraduationCap,
 } from "lucide-react";
+import {
+  loadOpenActionItems, createActionItem, resolveActionItem, cancelRequestActionItems,
+  logStatusEvent, logEmailTestEvent, type ActionItem,
+} from "@/lib/actionItems";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +63,26 @@ type PendingRatingsState =
   | { kind: "ok"; items: PendingExpertRating[] }
   | { kind: "error"; message: string };
 
+type MatchedExpert = {
+  match_id: string;
+  match_status: string;
+  expert_id: string;
+  expert_name: string | null;
+  expert_email: string | null;
+  specializations: string[];
+  regions: string[];
+  experience_years: number | null;
+  business_trip_ready: boolean;
+  palata_registry_verified: boolean;
+  palata_registry_number: string | null;
+  centrsudexpert_verified: boolean;
+  centrsudexpert_registry_number: string | null;
+  avg_customer_rating: number | null;
+  completed_orders_count: number;
+  bio: string | null;
+  decline_reason: string | null;
+};
+
 // ─── Kanban columns ───────────────────────────────────────────────────────────
 
 const COLUMNS = [
@@ -99,12 +124,14 @@ const REGION_LABEL: Record<string, string> = {
 
 export default function CustomerDashboard() {
   const guard = useRequireRole("customer");
-  const [tab, setTab] = useState<"requests" | "rate" | "profile">("requests");
+  const [tab, setTab] = useState<"requests" | "actions" | "rate" | "profile">("requests");
   const [requestState, setRequestState] = useState<RequestState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
   const [pendingRatingsState, setPendingRatingsState] = useState<PendingRatingsState>({ kind: "loading" });
   const [ratedRequestIds, setRatedRequestIds] = useState<Set<string>>(new Set());
   const [ratingForms, setRatingForms] = useState<Record<string, RatingFormState>>({});
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const loadPendingRatings = async (userId: string) => {
     // Fetch completed requests with assigned expert
@@ -192,7 +219,18 @@ export default function CustomerDashboard() {
       });
 
     loadPendingRatings(userId);
+
+    setAiLoading(true);
+    loadOpenActionItems(userId).then(items => {
+      setActionItems(items);
+      setAiLoading(false);
+    });
   }, [guard.status]);
+
+  function reloadActionItems() {
+    if (guard.status !== "ok") return;
+    loadOpenActionItems(guard.user.id).then(setActionItems);
+  }
 
   if (guard.status === "loading" || guard.status === "redirecting") {
     return <LoadingScreen />;
@@ -288,6 +326,15 @@ export default function CustomerDashboard() {
           <ClipboardList className="w-3.5 h-3.5" />
           Мои заказы
         </TabButton>
+        <TabButton active={tab === "actions"} onClick={() => setTab("actions")}>
+          <Zap className="w-3.5 h-3.5" />
+          Требуют действия
+          {actionItems.length > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-rose-500 text-white rounded-full">
+              {actionItems.length}
+            </span>
+          )}
+        </TabButton>
         <TabButton active={tab === "rate"} onClick={() => setTab("rate")}>
           <Star className="w-3.5 h-3.5" />
           Оценить эксперта
@@ -317,6 +364,19 @@ export default function CustomerDashboard() {
             />
           )}
         </>
+      )}
+
+      {/* Tab: Action Items */}
+      {tab === "actions" && (
+        <div>
+          {aiLoading ? <LoadingRows /> : (
+            <CustomerActionInbox
+              items={actionItems}
+              userId={user.id}
+              onDone={reloadActionItems}
+            />
+          )}
+        </div>
       )}
 
       {/* Tab: Rate Expert */}
@@ -643,6 +703,466 @@ function ErrorCard({ message }: { message: string }) {
     <div className="rounded-xl border border-red-200 bg-red-50 p-6 max-w-xl">
       <p className="text-sm font-semibold text-red-700 mb-1">Ошибка загрузки</p>
       <p className="text-xs text-red-600 font-mono">{message}</p>
+    </div>
+  );
+}
+
+// ─── Customer Action Inbox ─────────────────────────────────────────────────────
+
+function CustomerActionInbox({ items, userId, onDone }: {
+  items: ActionItem[];
+  userId: string;
+  onDone: () => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center">
+          <Zap className="w-8 h-8 text-indigo-300" />
+        </div>
+        <div className="text-center">
+          <p className="text-base font-semibold text-slate-700 mb-1">Нет активных задач</p>
+          <p className="text-sm text-slate-400 max-w-xs">
+            Здесь появятся задачи, когда система подберёт экспертов или потребуется ваше решение.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="max-w-2xl space-y-4">
+      {items.map(item => (
+        <CustomerActionCard key={item.id} item={item} userId={userId} onDone={onDone} />
+      ))}
+    </div>
+  );
+}
+
+// ─── Dispatcher for action types ──────────────────────────────────────────────
+
+function CustomerActionCard({ item, userId, onDone }: {
+  item: ActionItem;
+  userId: string;
+  onDone: () => void;
+}) {
+  if (item.action_type === "experts_matched" || item.action_type === "expert_declined") {
+    return <ExpertsMatchedCard item={item} userId={userId} onDone={onDone} />;
+  }
+  if (item.action_type === "expert_can_start_from") {
+    return <ExpertCanStartCard item={item} userId={userId} onDone={onDone} />;
+  }
+  if (item.action_type === "expert_completed_order") {
+    return <ExpertCompletedCard item={item} onDone={onDone} />;
+  }
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <ActionItemHeader item={item} />
+      <p className="text-sm text-slate-600 mt-2">{item.description}</p>
+    </div>
+  );
+}
+
+// ─── experts_matched / expert_declined ────────────────────────────────────────
+
+function ExpertsMatchedCard({ item, userId, onDone }: {
+  item: ActionItem;
+  userId: string;
+  onDone: () => void;
+}) {
+  const [experts, setExperts] = useState<MatchedExpert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [selecting, setSelecting] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const { data: matches } = await supabase
+        .from("palata_request_matches")
+        .select("id, expert_id, status, decline_reason")
+        .eq("request_id", item.request_id)
+        .in("status", ["proposed", "contacts_opened", "can_start_from", "accepted"]);
+
+      if (!matches || matches.length === 0) { setLoading(false); return; }
+
+      const expertIds = matches.map((m: { expert_id: string }) => m.expert_id);
+
+      const [{ data: profiles }, { data: users }] = await Promise.all([
+        supabase.from("palata_expert_profiles").select(
+          "user_id, specializations, regions, experience_years, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count, bio"
+        ).in("user_id", expertIds),
+        supabase.from("palata_users").select("id, full_name, email").in("id", expertIds),
+      ]);
+
+      type PRow = {
+        user_id: string; specializations: string[]; regions: string[];
+        experience_years: number | null; business_trip_ready: boolean;
+        palata_registry_verified: boolean; palata_registry_number: string | null;
+        centrsudexpert_verified: boolean; centrsudexpert_registry_number: string | null;
+        avg_customer_rating: number | null; completed_orders_count: number; bio: string | null;
+      };
+      type URow = { id: string; full_name: string | null; email: string };
+      type MRow = { id: string; expert_id: string; status: string; decline_reason: string | null };
+
+      const pm = Object.fromEntries(((profiles ?? []) as PRow[]).map(p => [p.user_id, p]));
+      const um = Object.fromEntries(((users ?? []) as URow[]).map(u => [u.id, u]));
+
+      setExperts(((matches ?? []) as MRow[]).map(m => {
+        const p = pm[m.expert_id] as PRow | undefined;
+        const u = um[m.expert_id] as URow | undefined;
+        return {
+          match_id: m.id,
+          match_status: m.status,
+          expert_id: m.expert_id,
+          expert_name: u?.full_name ?? null,
+          expert_email: u?.email ?? null,
+          specializations: p?.specializations ?? [],
+          regions: p?.regions ?? [],
+          experience_years: p?.experience_years ?? null,
+          business_trip_ready: p?.business_trip_ready ?? false,
+          palata_registry_verified: p?.palata_registry_verified ?? false,
+          palata_registry_number: p?.palata_registry_number ?? null,
+          centrsudexpert_verified: p?.centrsudexpert_verified ?? false,
+          centrsudexpert_registry_number: p?.centrsudexpert_registry_number ?? null,
+          avg_customer_rating: p?.avg_customer_rating ?? null,
+          completed_orders_count: p?.completed_orders_count ?? 0,
+          bio: p?.bio ?? null,
+          decline_reason: m.decline_reason ?? null,
+        } satisfies MatchedExpert;
+      }));
+      setLoading(false);
+    }
+    load();
+  }, [item.request_id]);
+
+  async function handleSelect(expert: MatchedExpert) {
+    setSelecting(expert.expert_id);
+    await supabase.from("palata_request_matches").update({
+      status: "accepted", responded_at: new Date().toISOString(),
+    }).eq("id", expert.match_id);
+
+    await supabase.from("palata_requests").update({
+      assigned_expert_id: expert.expert_id, status: "expert_selection",
+    }).eq("id", item.request_id);
+
+    await createActionItem({
+      request_id: item.request_id,
+      expert_id: expert.expert_id,
+      customer_id: userId,
+      assigned_to_user_id: expert.expert_id,
+      assigned_role: "expert",
+      action_type: "customer_selected_you",
+      title: "Заказчик выбрал вас",
+      description: "Заказчик выбрал вас для работы над заказом. Ознакомьтесь с деталями и примите решение.",
+      payload: { customer_id: userId, request_id: item.request_id },
+    });
+
+    await resolveActionItem(item.id);
+    await logStatusEvent(item.request_id, "matching", "expert_selection",
+      `Заказчик выбрал эксперта: ${expert.expert_name ?? expert.expert_id}`);
+
+    if (expert.expert_email) {
+      await logEmailTestEvent(expert.expert_id, expert.expert_email,
+        "expert_selected_by_customer", "Заказчик выбрал вас для работы",
+        { request_id: item.request_id });
+    }
+    setSelecting(null);
+    onDone();
+  }
+
+  const isDecline = item.action_type === "expert_declined";
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="p-5">
+        <ActionItemHeader item={item} />
+        <p className="text-sm text-slate-600 mt-2">{item.description}</p>
+
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 hover:text-indigo-900 transition-colors"
+        >
+          {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          {isDecline ? "Выбрать другого эксперта" : "Посмотреть экспертов"}
+          {!loading && experts.length > 0 && (
+            <span className="ml-1 text-indigo-400 font-normal">({experts.length})</span>
+          )}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-slate-100 bg-slate-50/50 p-4 space-y-3">
+          {loading && <div className="flex items-center gap-2 text-xs text-slate-400 py-4"><div className="h-3.5 w-3.5 rounded-full border-2 border-indigo-300 border-t-indigo-600 animate-spin" />Загрузка экспертов…</div>}
+          {!loading && experts.length === 0 && (
+            <p className="text-xs text-slate-400 py-4 text-center">Нет доступных экспертов</p>
+          )}
+          {!loading && experts.map(expert => (
+            <ExpertProfileCard
+              key={expert.expert_id}
+              expert={expert}
+              busy={selecting === expert.expert_id}
+              onSelect={() => handleSelect(expert)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── expert_can_start_from ────────────────────────────────────────────────────
+
+function ExpertCanStartCard({ item, userId, onDone }: {
+  item: ActionItem;
+  userId: string;
+  onDone: () => void;
+}) {
+  const payload = item.payload ?? {};
+  const expertName = payload.expert_name as string | null ?? null;
+  const expertId = item.expert_id ?? payload.expert_id as string | null ?? null;
+  const expertEmail = payload.expert_email as string | null ?? null;
+  const startDate = payload.start_date as string | null ?? null;
+  const comment = payload.comment as string | null ?? null;
+  const [busy, setBusy] = useState<"approve" | "decline" | null>(null);
+
+  async function handleApprove() {
+    if (!expertId) return;
+    setBusy("approve");
+    await supabase.from("palata_requests").update({ status: "in_work" }).eq("id", item.request_id);
+    await supabase.from("palata_request_matches").update({
+      status: "accepted_work", responded_at: new Date().toISOString(),
+    }).eq("request_id", item.request_id).eq("expert_id", expertId);
+    await supabase.from("palata_request_matches").update({ status: "closed_by_other_expert" })
+      .eq("request_id", item.request_id).neq("expert_id", expertId).neq("status", "declined");
+
+    await createActionItem({
+      request_id: item.request_id,
+      expert_id: expertId,
+      customer_id: userId,
+      assigned_to_user_id: expertId,
+      assigned_role: "expert",
+      action_type: "customer_approved_start_date",
+      title: "Заказчик согласовал дату начала",
+      description: `Дата ${startDate ? new Date(startDate).toLocaleDateString("ru-RU") : ""} подтверждена. Заказ передан в работу.`,
+      payload: { start_date: startDate, customer_id: userId },
+    });
+
+    await resolveActionItem(item.id);
+    await cancelRequestActionItems(item.request_id, item.id);
+    await logStatusEvent(item.request_id, "expert_selection", "in_work",
+      `Заказчик согласовал дату начала: ${startDate ?? "—"}`);
+    if (expertEmail) {
+      await logEmailTestEvent(expertId, expertEmail, "customer_approved_start",
+        "Заказчик согласовал дату начала работы", { request_id: item.request_id, start_date: startDate });
+    }
+    setBusy(null);
+    onDone();
+  }
+
+  async function handleDecline() {
+    if (!expertId) return;
+    setBusy("decline");
+    await supabase.from("palata_request_matches").update({ status: "declined" })
+      .eq("request_id", item.request_id).eq("expert_id", expertId);
+    await resolveActionItem(item.id);
+    await logStatusEvent(item.request_id, "expert_selection", "matching",
+      "Заказчик отклонил предложенную дату");
+    setBusy(null);
+    onDone();
+  }
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <ActionItemHeader item={item} />
+      <div className="mt-3 bg-indigo-50 rounded-xl px-4 py-3 space-y-1.5">
+        {expertName && <p className="text-xs text-slate-700"><span className="text-slate-400">Эксперт:</span> <span className="font-semibold">{expertName}</span></p>}
+        {startDate && (
+          <p className="text-xs text-slate-700 flex items-center gap-1.5">
+            <Calendar className="w-3 h-3 text-indigo-400" />
+            <span className="text-slate-400">Готов начать:</span>
+            <span className="font-semibold">{new Date(startDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}</span>
+          </p>
+        )}
+        {comment && <p className="text-xs text-slate-500 italic">«{comment}»</p>}
+      </div>
+      <div className="flex gap-2 mt-4">
+        <button
+          disabled={busy !== null}
+          onClick={handleApprove}
+          className="btn-primary text-xs py-1.5 px-4"
+        >
+          {busy === "approve" ? "Сохранение…" : "Согласовать дату"}
+        </button>
+        <button
+          disabled={busy !== null}
+          onClick={handleDecline}
+          className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-800 transition-colors disabled:opacity-50"
+        >
+          {busy === "decline" ? "…" : "Выбрать другого эксперта"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── expert_completed_order ───────────────────────────────────────────────────
+
+function ExpertCompletedCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
+  const payload = item.payload ?? {};
+  const expertName = payload.expert_name as string | null ?? null;
+  const completedAt = payload.completed_at as string | null ?? item.created_at;
+  const [done, setDone] = useState(false);
+
+  async function handleResolve() {
+    await resolveActionItem(item.id);
+    setDone(true);
+    onDone();
+  }
+
+  if (done) return null;
+
+  return (
+    <div className="bg-white border border-emerald-200 rounded-xl p-5 shadow-sm">
+      <ActionItemHeader item={item} />
+      <div className="mt-3 bg-emerald-50 rounded-xl px-4 py-3 space-y-1">
+        {expertName && <p className="text-xs text-slate-700"><span className="text-slate-400">Эксперт:</span> <span className="font-semibold">{expertName}</span></p>}
+        <p className="text-xs text-slate-700">
+          <span className="text-slate-400">Завершён:</span>{" "}
+          <span className="font-semibold">{new Date(completedAt).toLocaleDateString("ru-RU")}</span>
+        </p>
+      </div>
+      <div className="flex gap-2 mt-4">
+        <Link href={`/requests/${item.request_id}`}>
+          <button className="btn-primary text-xs py-1.5 px-4">Оценить эксперта</button>
+        </Link>
+        <button
+          onClick={handleResolve}
+          className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-500 hover:text-slate-700 transition-colors"
+        >
+          Закрыть
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Expert profile card (for "Выбрать эксперта" list) ───────────────────────
+
+function ExpertProfileCard({ expert: e, busy, onSelect }: {
+  expert: MatchedExpert;
+  busy: boolean;
+  onSelect: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rating = e.avg_customer_rating ? Number(e.avg_customer_rating).toFixed(1) : null;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-800">{e.expert_name ?? "—"}</p>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {rating && (
+                <span className="inline-flex items-center gap-0.5 text-[11px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+                  ★ {rating}
+                </span>
+              )}
+              <span className="text-[11px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded">
+                {e.completed_orders_count} выполнено
+              </span>
+              {e.business_trip_ready && (
+                <span className="text-[11px] text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded">Командировки ✓</span>
+              )}
+            </div>
+          </div>
+          <button
+            disabled={busy}
+            onClick={onSelect}
+            className="shrink-0 btn-primary text-xs py-1.5 px-3"
+          >
+            {busy ? "…" : "Выбрать"}
+          </button>
+        </div>
+
+        {(e.specializations.length > 0 || e.regions.length > 0) && (
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {e.specializations.slice(0, 3).map(s => (
+              <span key={s} className="text-[10px] font-medium text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                {EXPERTISE_LABEL[s] ?? s}
+              </span>
+            ))}
+            {e.regions.slice(0, 2).map(r => (
+              <span key={r} className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                {REGION_LABEL[r] ?? r}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="mt-2 text-[11px] text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          {open ? "Скрыть детали ↑" : "Подробнее ↓"}
+        </button>
+      </div>
+
+      {open && (
+        <div className="border-t border-slate-100 px-4 py-3 bg-slate-50/50 space-y-2.5">
+          {e.bio && <p className="text-xs text-slate-600 leading-relaxed">{e.bio}</p>}
+          {e.experience_years != null && (
+            <p className="text-xs text-slate-600">
+              <span className="text-slate-400">Опыт:</span> {e.experience_years} лет
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {e.palata_registry_verified && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                <GraduationCap className="w-3 h-3" /> Реестр Палаты {e.palata_registry_number && `#${e.palata_registry_number}`}
+              </span>
+            )}
+            {e.centrsudexpert_verified && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                <CheckCircle2 className="w-3 h-3" /> ЦСЭ {e.centrsudexpert_registry_number && `#${e.centrsudexpert_registry_number}`}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Shared: action item header ───────────────────────────────────────────────
+
+const ACTION_LABEL: Record<string, { label: string; color: string }> = {
+  experts_matched:          { label: "Подобраны эксперты", color: "text-indigo-700 bg-indigo-50" },
+  expert_declined:          { label: "Эксперт отказался", color: "text-red-700 bg-red-50" },
+  expert_can_start_from:    { label: "Предложена дата", color: "text-amber-700 bg-amber-50" },
+  expert_completed_order:   { label: "Заказ завершён", color: "text-emerald-700 bg-emerald-50" },
+  customer_selected_you:    { label: "Вас выбрали", color: "text-indigo-700 bg-indigo-50" },
+  customer_approved_start_date: { label: "Дата согласована", color: "text-emerald-700 bg-emerald-50" },
+};
+
+function ActionItemHeader({ item }: { item: ActionItem }) {
+  const meta = ACTION_LABEL[item.action_type] ?? { label: item.action_type, color: "text-slate-600 bg-slate-100" };
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${meta.color}`}>
+            {meta.label}
+          </span>
+          {!item.is_read && (
+            <span className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0" />
+          )}
+        </div>
+        <p className="text-sm font-semibold text-slate-800 leading-snug">{item.title}</p>
+      </div>
+      <span className="text-[10px] text-slate-400 flex-shrink-0 tabular-nums">
+        {new Date(item.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" })}
+      </span>
     </div>
   );
 }

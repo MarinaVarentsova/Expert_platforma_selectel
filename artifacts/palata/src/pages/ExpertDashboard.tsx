@@ -5,8 +5,12 @@ import { useRequireRole } from "@/lib/useRequireRole";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import {
   Inbox, Star, User, CheckCircle2, XCircle, MapPin,
-  Briefcase, FileText, GraduationCap, ClipboardList,
+  Briefcase, FileText, GraduationCap, ClipboardList, Zap, Calendar,
 } from "lucide-react";
+import {
+  loadOpenActionItems, createActionItem, resolveActionItem, cancelRequestActionItems,
+  logStatusEvent, logEmailTestEvent, type ActionItem,
+} from "@/lib/actionItems";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -127,12 +131,14 @@ const COLUMNS = [
 
 export default function ExpertDashboard() {
   const guard = useRequireRole("expert");
-  const [tab, setTab] = useState<"requests" | "rate" | "profile">("requests");
+  const [tab, setTab] = useState<"requests" | "actions" | "rate" | "profile">("requests");
   const [matchState, setMatchState] = useState<MatchState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
   const [pendingRatingsState, setPendingRatingsState] = useState<PendingRatingsState>({ kind: "loading" });
   const [ratedMatchIds, setRatedMatchIds] = useState<Set<string>>(new Set());
   const [ratingForms, setRatingForms] = useState<Record<string, RatingFormState>>({});
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const loadPendingRatings = async (userId: string) => {
     // Fetch completed matches
@@ -256,7 +262,18 @@ export default function ExpertDashboard() {
       });
 
     loadPendingRatings(userId);
+
+    setAiLoading(true);
+    loadOpenActionItems(userId).then(items => {
+      setActionItems(items);
+      setAiLoading(false);
+    });
   }, [guard.status]);
+
+  function reloadActionItems() {
+    if (guard.status !== "ok") return;
+    loadOpenActionItems(guard.user.id).then(setActionItems);
+  }
 
   if (guard.status === "loading" || guard.status === "redirecting") {
     return <LoadingScreen />;
@@ -352,6 +369,15 @@ export default function ExpertDashboard() {
           <ClipboardList className="w-3.5 h-3.5" />
           Мои обращения
         </TabButton>
+        <TabButton active={tab === "actions"} onClick={() => setTab("actions")}>
+          <Zap className="w-3.5 h-3.5" />
+          Требуют действия
+          {actionItems.length > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-rose-500 text-white rounded-full">
+              {actionItems.length}
+            </span>
+          )}
+        </TabButton>
         <TabButton active={tab === "rate"} onClick={() => setTab("rate")}>
           <Star className="w-3.5 h-3.5" />
           Оценить заказчика
@@ -386,6 +412,20 @@ export default function ExpertDashboard() {
             />
           )}
         </>
+      )}
+
+      {/* Tab: Action Items */}
+      {tab === "actions" && (
+        <div>
+          {aiLoading ? <LoadingRows /> : (
+            <ExpertActionInbox
+              items={actionItems}
+              userId={user.id}
+              userEmail={user.email}
+              onDone={reloadActionItems}
+            />
+          )}
+        </div>
       )}
 
       {/* Tab: Rate Customer */}
@@ -796,6 +836,418 @@ function ErrorCard({ message }: { message: string }) {
     <div className="rounded-xl border border-red-200 bg-red-50 p-6 max-w-xl">
       <p className="text-sm font-semibold text-red-700 mb-1">Ошибка загрузки</p>
       <p className="text-xs text-red-600 font-mono">{message}</p>
+    </div>
+  );
+}
+
+// ─── Expert Action Inbox ───────────────────────────────────────────────────────
+
+const ACTION_LABEL_EX: Record<string, { label: string; color: string }> = {
+  customer_selected_you:        { label: "Вас выбрали", color: "text-indigo-700 bg-indigo-50" },
+  customer_approved_start_date: { label: "Дата согласована", color: "text-emerald-700 bg-emerald-50" },
+  experts_matched:              { label: "Подобраны эксперты", color: "text-indigo-700 bg-indigo-50" },
+  expert_declined:              { label: "Эксперт отказался", color: "text-red-700 bg-red-50" },
+  expert_can_start_from:        { label: "Предложена дата", color: "text-amber-700 bg-amber-50" },
+  expert_completed_order:       { label: "Заказ завершён", color: "text-emerald-700 bg-emerald-50" },
+};
+
+function ExpertActionItemHeader({ item }: { item: ActionItem }) {
+  const meta = ACTION_LABEL_EX[item.action_type] ?? { label: item.action_type, color: "text-slate-600 bg-slate-100" };
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${meta.color}`}>
+            {meta.label}
+          </span>
+          {!item.is_read && <span className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0" />}
+        </div>
+        <p className="text-sm font-semibold text-slate-800 leading-snug">{item.title}</p>
+      </div>
+      <span className="text-[10px] text-slate-400 flex-shrink-0 tabular-nums">
+        {new Date(item.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" })}
+      </span>
+    </div>
+  );
+}
+
+function ExpertActionInbox({ items, userId, userEmail, onDone }: {
+  items: ActionItem[];
+  userId: string;
+  userEmail: string;
+  onDone: () => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center">
+          <Zap className="w-8 h-8 text-indigo-300" />
+        </div>
+        <div className="text-center">
+          <p className="text-base font-semibold text-slate-700 mb-1">Нет активных задач</p>
+          <p className="text-sm text-slate-400 max-w-xs">
+            Здесь появятся задачи, когда заказчик выберет вас или нужно будет принять решение.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="max-w-2xl space-y-4">
+      {items.map(item => (
+        <ExpertActionCard key={item.id} item={item} userId={userId} userEmail={userEmail} onDone={onDone} />
+      ))}
+    </div>
+  );
+}
+
+function ExpertActionCard({ item, userId, userEmail, onDone }: {
+  item: ActionItem;
+  userId: string;
+  userEmail: string;
+  onDone: () => void;
+}) {
+  if (item.action_type === "customer_selected_you") {
+    return <CustomerSelectedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} />;
+  }
+  if (item.action_type === "customer_approved_start_date") {
+    return <CustomerApprovedCard item={item} onDone={onDone} />;
+  }
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <ExpertActionItemHeader item={item} />
+      <p className="text-sm text-slate-600 mt-2">{item.description}</p>
+    </div>
+  );
+}
+
+// ─── customer_selected_you ────────────────────────────────────────────────────
+
+type RequestDetails = {
+  title: string;
+  expertise_type: string | null;
+  region: string | null;
+  description: string | null;
+  customer_id: string | null;
+  status: string;
+};
+
+function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
+  item: ActionItem;
+  userId: string;
+  userEmail: string;
+  onDone: () => void;
+}) {
+  const [req, setReq] = useState<RequestDetails | null>(null);
+  const [reqLoading, setReqLoading] = useState(true);
+  const [action, setAction] = useState<"idle" | "take" | "date" | "decline">("idle");
+  const [busy, setBusy] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [comment, setComment] = useState("");
+  const [declineReason, setDeclineReason] = useState("other");
+  const [declineComment, setDeclineComment] = useState("");
+
+  useEffect(() => {
+    supabase.from("palata_requests")
+      .select("title, expertise_type, region, description, customer_id, status")
+      .eq("id", item.request_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setReq(data as RequestDetails | null);
+        setReqLoading(false);
+      });
+  }, [item.request_id]);
+
+  async function getCustomerEmail(customerId: string): Promise<string | null> {
+    const { data } = await supabase.from("palata_users").select("email").eq("id", customerId).maybeSingle();
+    return (data as { email: string } | null)?.email ?? null;
+  }
+
+  async function handleTakeWork() {
+    setBusy(true);
+    const matchId = await getMatchId();
+    if (matchId) {
+      await supabase.from("palata_request_matches").update({
+        status: "accepted_work", responded_at: new Date().toISOString(),
+      }).eq("id", matchId);
+    }
+    await supabase.from("palata_request_matches").update({ status: "closed_by_other_expert" })
+      .eq("request_id", item.request_id).neq("expert_id", userId).neq("status", "declined");
+    await supabase.from("palata_requests").update({ status: "in_work" }).eq("id", item.request_id);
+
+    const custId = item.customer_id ?? req?.customer_id ?? null;
+    if (custId) {
+      const custEmail = await getCustomerEmail(custId);
+      await createActionItem({
+        request_id: item.request_id,
+        expert_id: userId,
+        customer_id: custId,
+        assigned_to_user_id: custId,
+        assigned_role: "customer",
+        action_type: "experts_matched",
+        title: "Эксперт взял заказ в работу",
+        description: "Эксперт принял заказ в работу.",
+        payload: { expert_id: userId, expert_email: userEmail },
+      });
+      if (custEmail) {
+        await logEmailTestEvent(custId, custEmail, "expert_took_work",
+          "Эксперт принял ваш заказ в работу", { request_id: item.request_id });
+      }
+    }
+    await resolveActionItem(item.id);
+    await cancelRequestActionItems(item.request_id, item.id);
+    await logStatusEvent(item.request_id, "expert_selection", "in_work", "Эксперт взял заказ в работу");
+    setBusy(false);
+    onDone();
+  }
+
+  async function handleCanStartFrom() {
+    if (!startDate) return;
+    setBusy(true);
+    const matchId = await getMatchId();
+    if (matchId) {
+      await supabase.from("palata_request_matches").update({
+        status: "can_start_from", responded_at: new Date().toISOString(),
+      }).eq("id", matchId);
+    }
+
+    const custId = item.customer_id ?? req?.customer_id ?? null;
+    if (custId) {
+      const custEmail = await getCustomerEmail(custId);
+      await createActionItem({
+        request_id: item.request_id,
+        expert_id: userId,
+        customer_id: custId,
+        assigned_to_user_id: custId,
+        assigned_role: "customer",
+        action_type: "expert_can_start_from",
+        title: "Эксперт предложил дату начала",
+        description: `Эксперт готов начать работу с ${new Date(startDate).toLocaleDateString("ru-RU")}`,
+        payload: { expert_id: userId, expert_email: userEmail, start_date: startDate, comment },
+      });
+      if (custEmail) {
+        await logEmailTestEvent(custId, custEmail, "expert_can_start",
+          "Эксперт предложил дату начала работы", { request_id: item.request_id, start_date: startDate });
+      }
+    }
+    await resolveActionItem(item.id);
+    await logStatusEvent(item.request_id, "expert_selection", "expert_selection",
+      `Эксперт предложил дату начала: ${startDate}`);
+    setBusy(false);
+    onDone();
+  }
+
+  async function handleDecline() {
+    setBusy(true);
+    const matchId = await getMatchId();
+    if (matchId) {
+      await supabase.from("palata_request_matches").update({
+        status: "declined",
+        decline_reason: declineReason,
+        responded_at: new Date().toISOString(),
+      }).eq("id", matchId);
+    }
+
+    const custId = item.customer_id ?? req?.customer_id ?? null;
+    if (custId) {
+      const custEmail = await getCustomerEmail(custId);
+      await createActionItem({
+        request_id: item.request_id,
+        expert_id: userId,
+        customer_id: custId,
+        assigned_to_user_id: custId,
+        assigned_role: "customer",
+        action_type: "expert_declined",
+        title: "Эксперт отказался от заказа",
+        description: `Причина: ${DECLINE_LABEL[declineReason] ?? declineReason}`,
+        payload: {
+          expert_id: userId,
+          decline_reason: declineReason,
+          comment: declineComment || null,
+        },
+      });
+      if (custEmail) {
+        await logEmailTestEvent(custId, custEmail, "expert_declined_order",
+          "Эксперт отказался от заказа", { request_id: item.request_id, reason: declineReason });
+      }
+    }
+    await resolveActionItem(item.id);
+    await logStatusEvent(item.request_id, "expert_selection", "matching",
+      `Эксперт отказался: ${declineReason} — ${declineComment}`);
+    setBusy(false);
+    onDone();
+  }
+
+  async function getMatchId(): Promise<string | null> {
+    const { data } = await supabase.from("palata_request_matches")
+      .select("id").eq("request_id", item.request_id).eq("expert_id", userId).maybeSingle();
+    return (data as { id: string } | null)?.id ?? null;
+  }
+
+  const SPEC_L: Record<string, string> = {
+    "avtotechnicheskaya": "Автотехническая", "zemleustroitelnaya": "Землеустроительная",
+    "pocherkovedcheskaya": "Почерковедческая", "finansovo-ekonomicheskaya": "Финансово-экономическая",
+    "kompyuterno-tehnicheskaya": "Компьютерно-техническая", "stroitelno-tehnicheskaya": "Строительно-техническая",
+    "pozharno-tehnicheskaya": "Пожарно-техническая", "tovaroved": "Товароведческая",
+    "psihologicheskaya": "Психологическая", "lingvisticheskaya": "Лингвистическая",
+  };
+  const REG_L: Record<string, string> = {
+    "Moskva": "Москва", "Sankt-Peterburg": "Санкт-Петербург", "Krasnodar": "Краснодар",
+    "Nizhny Novgorod": "Нижний Новгород", "Ekaterinburg": "Екатеринбург",
+  };
+
+  return (
+    <div className="bg-white border border-indigo-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="p-5">
+        <ExpertActionItemHeader item={item} />
+        {reqLoading ? (
+          <p className="text-xs text-slate-400 mt-3">Загрузка деталей заказа…</p>
+        ) : req ? (
+          <div className="mt-3 bg-slate-50 rounded-xl px-4 py-3 space-y-1.5">
+            <p className="text-sm font-semibold text-slate-800">{req.title}</p>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {req.expertise_type && (
+                <span className="text-[11px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                  {SPEC_L[req.expertise_type] ?? req.expertise_type}
+                </span>
+              )}
+              {req.region && (
+                <span className="text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                  {REG_L[req.region] ?? req.region}
+                </span>
+              )}
+            </div>
+            {req.description && (
+              <p className="text-xs text-slate-500 leading-relaxed mt-1.5 line-clamp-3">{req.description}</p>
+            )}
+          </div>
+        ) : null}
+
+        {/* Action buttons */}
+        {action === "idle" && (
+          <div className="flex flex-wrap gap-2 mt-4">
+            <button
+              disabled={busy}
+              onClick={handleTakeWork}
+              className="btn-primary text-xs py-1.5 px-4"
+            >
+              {busy ? "Сохранение…" : "Взять в работу"}
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => setAction("date")}
+              className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors"
+            >
+              Могу начать с даты
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => setAction("decline")}
+              className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-red-300 hover:text-red-600 transition-colors"
+            >
+              Отказаться
+            </button>
+          </div>
+        )}
+
+        {/* Date picker form */}
+        {action === "date" && (
+          <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
+            <p className="text-xs font-semibold text-slate-700">Укажите дату готовности начать:</p>
+            <input
+              type="date"
+              className="text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 w-full"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+            />
+            <textarea
+              rows={2}
+              placeholder="Комментарий (необязательно)"
+              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+              value={comment}
+              onChange={e => setComment(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button disabled={busy || !startDate} onClick={handleCanStartFrom} className="btn-primary text-xs py-1.5 px-4">
+                {busy ? "…" : "Подтвердить дату"}
+              </button>
+              <button onClick={() => setAction("idle")} className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors">
+                Отмена
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Decline form */}
+        {action === "decline" && (
+          <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
+            <p className="text-xs font-semibold text-slate-700">Причина отказа:</p>
+            <select
+              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300"
+              value={declineReason}
+              onChange={e => setDeclineReason(e.target.value)}
+            >
+              {Object.entries(DECLINE_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+            <textarea
+              rows={2}
+              placeholder="Комментарий (необязательно)"
+              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
+              value={declineComment}
+              onChange={e => setDeclineComment(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button disabled={busy} onClick={handleDecline}
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50">
+                {busy ? "…" : "Подтвердить отказ"}
+              </button>
+              <button onClick={() => setAction("idle")} className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors">
+                Отмена
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── customer_approved_start_date ─────────────────────────────────────────────
+
+function CustomerApprovedCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
+  const payload = item.payload ?? {};
+  const startDate = payload.start_date as string | null ?? null;
+  const [done, setDone] = useState(false);
+
+  async function handleAck() {
+    await resolveActionItem(item.id);
+    setDone(true);
+    onDone();
+  }
+
+  if (done) return null;
+
+  return (
+    <div className="bg-white border border-emerald-200 rounded-xl p-5 shadow-sm">
+      <ExpertActionItemHeader item={item} />
+      <div className="mt-3 bg-emerald-50 rounded-xl px-4 py-3 space-y-1">
+        {startDate && (
+          <p className="text-xs text-slate-700 flex items-center gap-1.5">
+            <Calendar className="w-3 h-3 text-emerald-500" />
+            <span className="text-slate-400">Дата начала:</span>
+            <span className="font-semibold">{new Date(startDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}</span>
+          </p>
+        )}
+        <p className="text-xs text-emerald-700 font-medium">Заказ передан в работу. Ваши контакты открыты для заказчика.</p>
+      </div>
+      <div className="mt-4">
+        <button onClick={handleAck}
+          className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
+          <CheckCircle2 className="w-3.5 h-3.5" /> Понятно, приступаю
+        </button>
+      </div>
     </div>
   );
 }

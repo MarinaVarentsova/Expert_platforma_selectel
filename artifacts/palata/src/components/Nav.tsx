@@ -53,16 +53,16 @@ export default function Nav() {
   }, [menuOpen]);
 
   return (
-    <nav className="sticky top-0 z-30 border-b border-[#ddd6ce] bg-[#f2ece2]/95 backdrop-blur-sm">
+    <nav className="sticky top-0 z-30 border-b border-[#c8d8cc] bg-[#f0f5f1]/95 backdrop-blur-sm">
       <div className="max-w-7xl mx-auto px-6 flex items-center h-14 gap-2">
 
         {/* Brand */}
         <Link href="/">
           <div className="flex items-center gap-2.5 mr-8 cursor-pointer select-none">
-            <div className="w-8 h-8 rounded-full bg-[#2e2a27] flex items-center justify-center flex-shrink-0">
-              <span className="text-[10px] font-bold text-[#e8891a] tracking-tight">СЭ</span>
+            <div className="w-8 h-8 rounded-full bg-[#1a3d2b] flex items-center justify-center flex-shrink-0">
+              <span className="text-[10px] font-bold text-[#16a34a] tracking-tight">СЭ</span>
             </div>
-            <span className="text-sm font-bold text-[#1c1714] tracking-tight">Палата СЭ</span>
+            <span className="text-sm font-bold text-[#141c17] tracking-tight">Палата СЭ</span>
           </div>
         </Link>
 
@@ -75,8 +75,8 @@ export default function Nav() {
                 <span className={[
                   "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
                   active
-                    ? "text-[#1c1714] font-semibold bg-[#2e2a27]/10"
-                    : "text-[#78716c] hover:text-[#1c1714] hover:bg-[#2e2a27]/6",
+                    ? "text-[#141c17] font-semibold bg-[#1a3d2b]/10"
+                    : "text-[#5a7560] hover:text-[#141c17] hover:bg-[#1a3d2b]/6",
                 ].join(" ")}>
                   {label}
                 </span>
@@ -90,8 +90,8 @@ export default function Nav() {
               <span className={[
                 "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
                 isActive("/login")
-                  ? "text-[#1c1714] font-semibold bg-[#2e2a27]/10"
-                  : "text-[#78716c] hover:text-[#1c1714] hover:bg-[#2e2a27]/6",
+                  ? "text-[#141c17] font-semibold bg-[#1a3d2b]/10"
+                  : "text-[#5a7560] hover:text-[#141c17] hover:bg-[#1a3d2b]/6",
               ].join(" ")}>
                 Вход
               </span>
@@ -109,18 +109,18 @@ export default function Nav() {
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen(v => !v)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all bg-white border border-[#d6cfc4] text-[#2e2a27] font-medium hover:border-[#bab3aa] hover:shadow-sm"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all bg-white border border-[#c0d8c8] text-[#1a3d2b] font-medium hover:border-[#a8c4b0] hover:shadow-sm"
               >
                 <RoleAvatar role={user.role} />
                 <span className="max-w-32 truncate">{user.full_name ?? user.email}</span>
-                <ChevronDown className={["w-3 h-3 text-[#a8a29e] transition-transform", menuOpen ? "rotate-180" : ""].join(" ")} />
+                <ChevronDown className={["w-3 h-3 text-[#8aaa90] transition-transform", menuOpen ? "rotate-180" : ""].join(" ")} />
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 top-full mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-[#e5dfd7] py-1 z-50">
-                  <div className="px-3 py-2.5 border-b border-[#f0ebe3]">
-                    <p className="text-xs font-semibold text-[#1c1714] truncate">{user.full_name ?? "—"}</p>
-                    <p className="text-[10px] text-[#a8a29e] truncate mt-0.5">{user.email}</p>
+                <div className="absolute right-0 top-full mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-[#d4e5d9] py-1 z-50">
+                  <div className="px-3 py-2.5 border-b border-[#e8f2ec]">
+                    <p className="text-xs font-semibold text-[#141c17] truncate">{user.full_name ?? "—"}</p>
+                    <p className="text-[10px] text-[#8aaa90] truncate mt-0.5">{user.email}</p>
                     <RoleBadge role={user.role} />
                   </div>
                   <button
@@ -138,7 +138,7 @@ export default function Nav() {
           {/* Login button — only when definitively unauthenticated */}
           {!isLoading && !isAuthenticated && (
             <Link href="/login">
-              <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold bg-[#2e2a27] hover:bg-[#1c1714] text-[#f2ece2] transition-all cursor-pointer shadow-sm">
+              <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold bg-[#1a3d2b] hover:bg-[#141c17] text-[#f0f5f1] transition-all cursor-pointer shadow-sm">
                 Войти
               </span>
             </Link>

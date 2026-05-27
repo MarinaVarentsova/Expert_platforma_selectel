@@ -38,7 +38,7 @@ const FEATURES = [
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-[#f2ece2]">
+    <div className="min-h-screen bg-[#f0f5f1]">
 
       {/* ── Hero ─────────────────────────────────────────────────────── */}
       <section className="px-6 pt-16 pb-0 max-w-7xl mx-auto">
@@ -47,32 +47,32 @@ export default function Home() {
           {/* Left — headline + CTA */}
           <div className="pb-16">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 border border-[#c4bdb4] text-[#78716c] text-xs font-medium px-3 py-1.5 rounded-full mb-8">
+            <div className="inline-flex items-center gap-2 border border-[#b8ccbe] text-[#5a7560] text-xs font-medium px-3 py-1.5 rounded-full mb-8">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Закрытая профессиональная платформа
             </div>
 
-            <h1 className="text-5xl md:text-6xl font-bold text-[#1c1714] leading-[1.08] tracking-tight mb-5">
+            <h1 className="text-5xl md:text-6xl font-bold text-[#141c17] leading-[1.08] tracking-tight mb-5">
               Платформа,<br />
               которая{" "}
-              <span className="text-[#e8891a]">находит</span>
+              <span className="text-[#16a34a]">находит</span>
               <br />
               нужного эксперта
             </h1>
 
-            <p className="text-lg text-[#78716c] leading-relaxed mb-8 max-w-md">
+            <p className="text-lg text-[#5a7560] leading-relaxed mb-8 max-w-md">
               Автоматизированный подбор аккредитованных судебных экспертов по специализации, региону и репутации.
             </p>
 
             <div className="flex flex-wrap items-center gap-3">
               <Link href="/customer/new-request">
-                <button className="inline-flex items-center gap-2 bg-[#2e2a27] hover:bg-[#1c1714] text-[#f2ece2] font-semibold px-6 py-3 rounded-full transition-all shadow-sm">
+                <button className="inline-flex items-center gap-2 bg-[#1a3d2b] hover:bg-[#141c17] text-[#f0f5f1] font-semibold px-6 py-3 rounded-full transition-all shadow-sm">
                   Создать заказ
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </Link>
               <Link href="/login">
-                <button className="inline-flex items-center gap-2 bg-transparent border border-[#c4bdb4] hover:bg-[#ece6dc] hover:border-[#a89e92] text-[#2e2a27] font-medium px-6 py-3 rounded-full transition-all">
+                <button className="inline-flex items-center gap-2 bg-transparent border border-[#b8ccbe] hover:bg-[#e5f0e9] hover:border-[#9ab8a4] text-[#1a3d2b] font-medium px-6 py-3 rounded-full transition-all">
                   Войти в кабинет
                 </button>
               </Link>
@@ -81,7 +81,7 @@ export default function Home() {
 
           {/* Right — dark panel (terminal-style) */}
           <div className="hidden lg:block">
-            <div className="bg-[#1c1714] rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "4/3" }}>
+            <div className="bg-[#141c17] rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "4/3" }}>
               {/* Terminal header */}
               <div className="flex items-center gap-2 px-5 py-3.5 border-b border-white/8">
                 <span className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
@@ -102,13 +102,13 @@ export default function Home() {
                 ].map((e, i) => (
                   <div
                     key={i}
-                    className={`mb-3 rounded-lg p-3 ${i === 0 ? "bg-[#e8891a]/15 border border-[#e8891a]/30" : "bg-white/4"}`}
+                    className={`mb-3 rounded-lg p-3 ${i === 0 ? "bg-[#16a34a]/15 border border-[#16a34a]/30" : "bg-white/4"}`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className={`text-xs font-semibold ${i === 0 ? "text-[#e8891a]" : "text-white/60"}`}>
+                      <span className={`text-xs font-semibold ${i === 0 ? "text-[#16a34a]" : "text-white/60"}`}>
                         {e.name}
                       </span>
-                      <span className={`text-[10px] font-bold ${i === 0 ? "text-[#e8891a]" : "text-white/30"}`}>
+                      <span className={`text-[10px] font-bold ${i === 0 ? "text-[#16a34a]" : "text-white/30"}`}>
                         {e.status}
                       </span>
                     </div>
@@ -117,11 +117,11 @@ export default function Home() {
                       <div className="flex items-center gap-1.5">
                         <div className="h-1 w-14 rounded-full bg-white/10 overflow-hidden">
                           <div
-                            className={`h-full rounded-full ${i === 0 ? "bg-[#e8891a]" : "bg-white/25"}`}
+                            className={`h-full rounded-full ${i === 0 ? "bg-[#16a34a]" : "bg-white/25"}`}
                             style={{ width: `${e.score}%` }}
                           />
                         </div>
-                        <span className={`text-[10px] font-mono ${i === 0 ? "text-[#e8891a]" : "text-white/40"}`}>
+                        <span className={`text-[10px] font-mono ${i === 0 ? "text-[#16a34a]" : "text-white/40"}`}>
                           {e.score}
                         </span>
                       </div>
@@ -140,40 +140,40 @@ export default function Home() {
       </section>
 
       {/* ── Stats ────────────────────────────────────────────────────── */}
-      <section className="border-t border-[#ddd6ce] py-14 px-6">
+      <section className="border-t border-[#c8d8cc] py-14 px-6">
         <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
           {STATS.map(({ value, label }) => (
             <div key={label} className="text-center">
-              <p className="text-3xl font-bold text-[#1c1714] tabular-nums">{value}</p>
-              <p className="text-sm text-[#a8a29e] mt-1 uppercase tracking-wide text-xs">{label}</p>
+              <p className="text-3xl font-bold text-[#141c17] tabular-nums">{value}</p>
+              <p className="text-sm text-[#8aaa90] mt-1 uppercase tracking-wide text-xs">{label}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* ── How it works ─────────────────────────────────────────────── */}
-      <section className="bg-white border-t border-[#e5dfd7] py-20 px-6">
+      <section className="bg-white border-t border-[#d4e5d9] py-20 px-6">
         <div className="max-w-4xl mx-auto">
 
           <div className="text-center mb-14">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#e8891a] mb-2">Как работает сервис</p>
-            <h2 className="text-2xl font-bold text-[#1c1714]">Три шага до результата</h2>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#16a34a] mb-2">Как работает сервис</p>
+            <h2 className="text-2xl font-bold text-[#141c17]">Три шага до результата</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {STEPS.map(({ Icon, step, title, desc }, i) => (
               <div key={step} className="flex flex-col">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="w-11 h-11 rounded-xl bg-[#f2ece2] border border-[#ddd6ce] flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-[#2e2a27]" />
+                  <div className="w-11 h-11 rounded-xl bg-[#f0f5f1] border border-[#c8d8cc] flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-[#1a3d2b]" />
                   </div>
                   {i < STEPS.length - 1 && (
-                    <div className="hidden md:block flex-1 h-px bg-[#e5dfd7]" />
+                    <div className="hidden md:block flex-1 h-px bg-[#d4e5d9]" />
                   )}
                 </div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-[#e8891a] mb-1">{step}</div>
-                <p className="text-base font-semibold text-[#1c1714] mb-2">{title}</p>
-                <p className="text-sm text-[#78716c] leading-relaxed">{desc}</p>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-[#16a34a] mb-1">{step}</div>
+                <p className="text-base font-semibold text-[#141c17] mb-2">{title}</p>
+                <p className="text-sm text-[#5a7560] leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
@@ -181,56 +181,56 @@ export default function Home() {
       </section>
 
       {/* ── Role CTAs ─────────────────────────────────────────────────── */}
-      <section className="border-t border-[#e5dfd7] py-20 px-6 bg-[#f2ece2]">
+      <section className="border-t border-[#d4e5d9] py-20 px-6 bg-[#f0f5f1]">
         <div className="max-w-4xl mx-auto">
 
           <div className="text-center mb-10">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#e8891a] mb-2">Участники платформы</p>
-            <h2 className="text-2xl font-bold text-[#1c1714]">Выберите свою роль</h2>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#16a34a] mb-2">Участники платформы</p>
+            <h2 className="text-2xl font-bold text-[#141c17]">Выберите свою роль</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
             <Link href="/customer/new-request">
-              <div className="h-full bg-white rounded-2xl border border-[#e5dfd7] p-6 hover:border-[#c4bdb4] hover:shadow-md transition-all cursor-pointer group">
-                <div className="w-10 h-10 rounded-xl bg-[#f2ece2] border border-[#ddd6ce] flex items-center justify-center mb-5">
+              <div className="h-full bg-white rounded-2xl border border-[#d4e5d9] p-6 hover:border-[#b8ccbe] hover:shadow-md transition-all cursor-pointer group">
+                <div className="w-10 h-10 rounded-xl bg-[#f0f5f1] border border-[#c8d8cc] flex items-center justify-center mb-5">
                   <span className="text-lg">⚖️</span>
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-2 group-hover:text-[#e8891a] transition-colors">Заказчик</p>
-                <p className="text-sm text-[#78716c] leading-relaxed mb-5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-2 group-hover:text-[#16a34a] transition-colors">Заказчик</p>
+                <p className="text-sm text-[#5a7560] leading-relaxed mb-5">
                   Создайте заказ на судебную экспертизу. Система автоматически подберёт квалифицированного специалиста.
                 </p>
-                <div className="flex items-center gap-1 text-sm font-semibold text-[#2e2a27] group-hover:gap-2 transition-all">
+                <div className="flex items-center gap-1 text-sm font-semibold text-[#1a3d2b] group-hover:gap-2 transition-all">
                   Создать заказ <ArrowRight className="w-3.5 h-3.5" />
                 </div>
               </div>
             </Link>
 
             <Link href="/expert">
-              <div className="h-full bg-white rounded-2xl border border-[#e5dfd7] p-6 hover:border-[#c4bdb4] hover:shadow-md transition-all cursor-pointer group">
-                <div className="w-10 h-10 rounded-xl bg-[#f2ece2] border border-[#ddd6ce] flex items-center justify-center mb-5">
+              <div className="h-full bg-white rounded-2xl border border-[#d4e5d9] p-6 hover:border-[#b8ccbe] hover:shadow-md transition-all cursor-pointer group">
+                <div className="w-10 h-10 rounded-xl bg-[#f0f5f1] border border-[#c8d8cc] flex items-center justify-center mb-5">
                   <span className="text-lg">🛡️</span>
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-2 group-hover:text-[#e8891a] transition-colors">Эксперт</p>
-                <p className="text-sm text-[#78716c] leading-relaxed mb-5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-2 group-hover:text-[#16a34a] transition-colors">Эксперт</p>
+                <p className="text-sm text-[#5a7560] leading-relaxed mb-5">
                   Принимайте заказы по своей специализации. Управляйте профилем и репутацией на платформе.
                 </p>
-                <div className="flex items-center gap-1 text-sm font-semibold text-[#2e2a27] group-hover:gap-2 transition-all">
+                <div className="flex items-center gap-1 text-sm font-semibold text-[#1a3d2b] group-hover:gap-2 transition-all">
                   Личный кабинет <ArrowRight className="w-3.5 h-3.5" />
                 </div>
               </div>
             </Link>
 
             <Link href="/admin">
-              <div className="h-full bg-white rounded-2xl border border-[#e5dfd7] p-6 hover:border-[#c4bdb4] hover:shadow-md transition-all cursor-pointer group">
-                <div className="w-10 h-10 rounded-xl bg-[#f2ece2] border border-[#ddd6ce] flex items-center justify-center mb-5">
+              <div className="h-full bg-white rounded-2xl border border-[#d4e5d9] p-6 hover:border-[#b8ccbe] hover:shadow-md transition-all cursor-pointer group">
+                <div className="w-10 h-10 rounded-xl bg-[#f0f5f1] border border-[#c8d8cc] flex items-center justify-center mb-5">
                   <span className="text-lg">📊</span>
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-2 group-hover:text-[#e8891a] transition-colors">Администратор</p>
-                <p className="text-sm text-[#78716c] leading-relaxed mb-5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-2 group-hover:text-[#16a34a] transition-colors">Администратор</p>
+                <p className="text-sm text-[#5a7560] leading-relaxed mb-5">
                   Управляйте заказами и экспертным пулом. Полная аналитика платформы в реальном времени.
                 </p>
-                <div className="flex items-center gap-1 text-sm font-semibold text-[#2e2a27] group-hover:gap-2 transition-all">
+                <div className="flex items-center gap-1 text-sm font-semibold text-[#1a3d2b] group-hover:gap-2 transition-all">
                   Панель управления <ArrowRight className="w-3.5 h-3.5" />
                 </div>
               </div>
@@ -241,16 +241,16 @@ export default function Home() {
       </section>
 
       {/* ── Features ─────────────────────────────────────────────────── */}
-      <section className="bg-white border-t border-[#e5dfd7] py-16 px-6">
+      <section className="bg-white border-t border-[#d4e5d9] py-16 px-6">
         <div className="max-w-4xl mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {FEATURES.map(({ Icon, label, desc }) => (
               <div key={label}>
-                <div className="w-9 h-9 rounded-xl bg-[#f2ece2] border border-[#ddd6ce] flex items-center justify-center mb-3">
-                  <Icon className="w-4 h-4 text-[#2e2a27]" />
+                <div className="w-9 h-9 rounded-xl bg-[#f0f5f1] border border-[#c8d8cc] flex items-center justify-center mb-3">
+                  <Icon className="w-4 h-4 text-[#1a3d2b]" />
                 </div>
-                <p className="text-sm font-semibold text-[#1c1714] mb-1">{label}</p>
-                <p className="text-xs text-[#78716c] leading-relaxed">{desc}</p>
+                <p className="text-sm font-semibold text-[#141c17] mb-1">{label}</p>
+                <p className="text-xs text-[#5a7560] leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
@@ -258,7 +258,7 @@ export default function Home() {
       </section>
 
       {/* ── Footer bar ───────────────────────────────────────────────── */}
-      <div className="border-t border-[#ddd6ce] py-3.5 px-6 bg-[#1c1714]">
+      <div className="border-t border-[#c8d8cc] py-3.5 px-6 bg-[#141c17]">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30">Статус системы</p>
           <div className="flex items-center gap-2">

@@ -21,7 +21,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <>
       {/* Admin sub-header */}
       <div className="bg-white border-b border-[#e5dfd7]">
-        <div className="px-6">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between pt-4 pb-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e]">
               Панель управления
@@ -53,7 +53,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </div>
 
-      <div>{children}</div>
+      <div className="min-h-[calc(100vh-theme(spacing.14)-theme(spacing.12))]">{children}</div>
     </>
   );
 }

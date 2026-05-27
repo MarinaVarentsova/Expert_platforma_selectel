@@ -24,9 +24,9 @@ type KanbanBoardProps<T> = {
 
 export function KanbanBoard<T>({ columns, renderCard, emptyText = "Нет заявок" }: KanbanBoardProps<T>) {
   return (
-    <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1" style={{ minHeight: "480px" }}>
+    <div className="flex flex-col md:flex-row gap-3 overflow-x-auto pb-4 -mx-1 px-1" style={{ minHeight: "420px" }}>
       {columns.map((col) => (
-        <div key={col.id} className="flex-shrink-0 w-72 flex flex-col">
+        <div key={col.id} className="w-full md:flex-1 md:min-w-48 md:max-w-xs lg:max-w-none flex flex-col">
 
           {/* Column header */}
           <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-xl border border-b-0 ${col.bgColor}`}>

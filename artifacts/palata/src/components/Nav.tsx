@@ -67,7 +67,7 @@ export default function Nav() {
         </Link>
 
         {/* Main nav links — only rendered when role is known */}
-        <div className="flex items-center gap-1 flex-1">
+        <div className="hidden sm:flex items-center gap-1 flex-1">
           {links.map(({ to, label }) => {
             const active = isActive(to);
             return (
@@ -98,6 +98,8 @@ export default function Nav() {
             </Link>
           )}
         </div>
+        {/* Spacer so user menu stays right on mobile */}
+        <div className="flex-1 sm:hidden" />
 
         {/* Right side */}
         <div className="flex items-center gap-2">

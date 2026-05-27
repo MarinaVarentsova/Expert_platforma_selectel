@@ -335,7 +335,7 @@ export default function AdminMetrics() {
 
   return (
     <AdminLayout>
-      <div className="px-6 py-8 max-w-[1400px] mx-auto">
+      <div className="px-4 sm:px-6 lg:px-8 py-6 lg:py-8 max-w-screen-2xl mx-auto">
 
         {/* Header */}
         <div className="mb-7 flex items-center justify-between">
@@ -406,7 +406,7 @@ function MetricsBody({ m }: { m: Metrics }) {
       </div>
 
       {/* ══ Main area + Right panel ══════════════════════════════════════════ */}
-      <div className="flex gap-6 items-start">
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
 
         {/* Left: Zones 3 + 4 */}
         <div className="flex-1 min-w-0 space-y-8">
@@ -502,7 +502,7 @@ function MetricsBody({ m }: { m: Metrics }) {
         </div>
 
         {/* ══ ZONE 2: Right reference panel ══════════════════════════════════ */}
-        <div className="w-64 shrink-0 space-y-3">
+        <div className="w-full lg:w-64 shrink-0 space-y-3">
 
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] px-1">
             Справочные метрики

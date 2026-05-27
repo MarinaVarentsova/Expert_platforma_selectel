@@ -4,15 +4,17 @@ import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
 
 // ─── Status maps (single source of truth) ─────────────────────────────────────
+// Each status appears in exactly ONE set. No overlap. All metrics share this mapping.
 
-const S_NEW      = new Set(["new", "draft"]);
-const S_MATCH    = new Set(["pending", "matching"]);
+const S_NEW      = new Set(["new"]);
+const S_MATCH    = new Set(["matching"]);
 const S_SEL      = new Set(["expert_selection"]);
-const S_WORK     = new Set(["in_progress", "in_work"]);
+const S_WORK     = new Set(["in_work"]);
 const S_DONE     = new Set(["completed"]);
-const S_CANCEL   = new Set(["cancelled"]);
-const S_FAIL     = new Set(["failed"]);
-const S_INACTIVE = new Set(["cancelled", "failed", "declined"]);
+// Inactive = неактуальные (не участвуют в "активных" заказчиках)
+const S_INACTIVE = new Set(["not_actual", "cancelled", "archived"]);
+// For problem track
+const S_INACTIVE_TRACK = new Set(["not_actual", "cancelled", "archived"]);
 
 const LABEL_MAP: Record<string, string> = {
   avtotechnicheskaya:          "Автотехническая",
@@ -46,7 +48,6 @@ type ReqRow = {
   region: string;
   expertise_type: string;
   created_at: string;
-  updated_at: string;
   customer_id: string | null;
 };
 
@@ -105,7 +106,7 @@ type Metrics = {
   expertBySpec: Distribution;
 };
 
-// ─── Compute function (one place, all metrics) ─────────────────────────────────
+// ─── Compute function (single source of truth for all metrics) ────────────────
 
 function computeMetrics(
   requests: ReqRow[],
@@ -118,62 +119,96 @@ function computeMetrics(
 ): Metrics {
   const total = requests.length;
 
+  // Count requests matching a status set
   function cnt(set: Set<string>) { return requests.filter(r => set.has(r.status)).length; }
+
   function avgScore(arr: { score: number }[]) {
-    if (!arr.length) return null;
-    return Math.round((arr.reduce((a, b) => a + b.score, 0) / arr.length) * 100) / 100;
+    const valid = arr.filter(r => r.score != null && !isNaN(r.score));
+    if (!valid.length) return null;
+    return Math.round((valid.reduce((a, b) => a + b.score, 0) / valid.length) * 100) / 100;
   }
 
-  // Zone 1: average completion time
+  // ── Zone 1: Average completion time ──────────────────────────────────────────
+  // Only use palata_status_events (not updated_at — that would distort the result)
   const completedReqIds = new Set(requests.filter(r => r.status === "completed").map(r => r.id));
   const reqById = Object.fromEntries(requests.map(r => [r.id, r]));
-  const completionEventsMap: Record<string, string> = {};
+
+  // Build map: request_id → earliest completion event timestamp
+  const completionEventAt: Record<string, string> = {};
   for (const e of statusEvents) {
-    if (e.entity_type === "request" && e.new_status === "completed" && completedReqIds.has(e.entity_id)) {
-      // keep earliest completion event
-      if (!completionEventsMap[e.entity_id] || e.created_at < completionEventsMap[e.entity_id]) {
-        completionEventsMap[e.entity_id] = e.created_at;
+    if (completedReqIds.has(e.entity_id)) {
+      if (!completionEventAt[e.entity_id] || e.created_at < completionEventAt[e.entity_id]) {
+        completionEventAt[e.entity_id] = e.created_at;
       }
     }
   }
+
   const completionDays: number[] = [];
   for (const id of completedReqIds) {
     const req = reqById[id];
-    if (!req) continue;
-    const endStr = completionEventsMap[id] ?? req.updated_at;
-    const days = (new Date(endStr).getTime() - new Date(req.created_at).getTime()) / 86_400_000;
+    const completedAt = completionEventAt[id]; // only use event, never updated_at
+    if (!req || !completedAt) continue;
+    const days = (new Date(completedAt).getTime() - new Date(req.created_at).getTime()) / 86_400_000;
     if (days >= 0) completionDays.push(days);
   }
   const avgCompletionDays = completionDays.length
     ? Math.round((completionDays.reduce((a, b) => a + b, 0) / completionDays.length) * 10) / 10
     : null;
 
-  // Zone 2: active customers = distinct customer_ids in non-inactive requests
+  // ── Zone 2: Active customers ──────────────────────────────────────────────────
+  // Active = has ≥1 request NOT in S_INACTIVE
+  // BUT capped to those who exist in palata_customer_profiles (so active ≤ total always)
+  const customerProfileIds = new Set(customerProfiles.map(p => p.user_id));
   const activeCustomerIds = new Set(
-    requests.filter(r => !S_INACTIVE.has(r.status) && r.customer_id).map(r => r.customer_id!)
+    requests
+      .filter(r => !S_INACTIVE.has(r.status) && r.customer_id && customerProfileIds.has(r.customer_id))
+      .map(r => r.customer_id!)
   );
   const totalCustomers = customerProfiles.length;
-  const activeCustomers = activeCustomerIds.size;
+  const activeCustomers = activeCustomerIds.size; // guaranteed ≤ totalCustomers
 
-  // Zone 2: active experts = distinct expert_ids in accepted_work matches
-  const activeExpertIds = new Set(
-    matches.filter(m => m.status === "accepted_work").map(m => m.expert_id)
-  );
+  // ── Zone 2: Active experts ────────────────────────────────────────────────────
+  // Active = expert_id appears in a match for an in_work request, with a non-declined match
+  // Two signal sources, unioned:
+  //   (a) match.status = 'accepted_work'
+  //   (b) request.status IN S_WORK + match not declined/withdrawn/closed
+  const inWorkRequestIds = new Set(requests.filter(r => S_WORK.has(r.status)).map(r => r.id));
+  const DEAD_MATCH = new Set(["declined", "withdrawn", "closed_by_other_expert"]);
+  const activeExpertIds = new Set<string>();
+  for (const m of matches) {
+    if (m.status === "accepted_work") { activeExpertIds.add(m.expert_id); continue; }
+    if (inWorkRequestIds.has(m.request_id) && !DEAD_MATCH.has(m.status)) {
+      activeExpertIds.add(m.expert_id);
+    }
+  }
   const totalExperts = experts.length;
   const activeExperts = activeExpertIds.size;
 
-  // Zone 3 track 2: requests where ALL matches are declined/withdrawn
-  const byReqId: Record<string, MatchRow[]> = {};
-  for (const m of matches) (byReqId[m.request_id] ??= []).push(m);
-  const allDeclined = Object.values(byReqId).filter(ms =>
-    ms.length > 0 && ms.every(m => m.status === "declined" || m.status === "withdrawn")
-  ).length;
+  // ── Zone 3 track 2 ───────────────────────────────────────────────────────────
+  // "Не нашли эксперта": status=matching AND no active (non-dead) matches
+  const matchesByReq: Record<string, MatchRow[]> = {};
+  for (const m of matches) (matchesByReq[m.request_id] ??= []).push(m);
 
-  // Zone 4: distribution helpers
+  const noExpert = requests.filter(r => S_MATCH.has(r.status)).filter(r => {
+    const ms = matchesByReq[r.id] ?? [];
+    return ms.filter(m => !DEAD_MATCH.has(m.status)).length === 0;
+  }).length;
+
+  // "Отказ эксперта": COUNT(DISTINCT request_id) where ≥1 match is declined
+  const declinedRequestIds = new Set(
+    matches.filter(m => m.status === "declined").map(m => m.request_id)
+  );
+  const expertDeclined = declinedRequestIds.size;
+
+  // "Неактуальные": same S_INACTIVE as everywhere
+  const inactive = cnt(S_INACTIVE_TRACK);
+
+  // ── Zone 4: Distributions ─────────────────────────────────────────────────────
   function groupCount(arr: string[]): Distribution {
     const map: Record<string, number> = {};
-    for (const k of arr) map[k] = (map[k] ?? 0) + 1;
-    return Object.entries(map).map(([label, count]) => ({ label: humanLabel(label), count }))
+    for (const k of arr.filter(Boolean)) map[k] = (map[k] ?? 0) + 1;
+    return Object.entries(map)
+      .map(([label, count]) => ({ label: humanLabel(label), count }))
       .sort((a, b) => b.count - a.count);
   }
 
@@ -187,36 +222,36 @@ function computeMetrics(
     avgCompletionDays,
 
     // Zone 2
-    avgRatingExpert: avgScore(expRatings),
-    avgRatingCustomer: avgScore(custRatings),
+    avgRatingExpert:    avgScore(expRatings),
+    avgRatingCustomer:  avgScore(custRatings),
     totalCustomers,
     activeCustomers,
     activeCustomersPct: totalCustomers ? Math.round((activeCustomers / totalCustomers) * 100) : 0,
     totalExperts,
     activeExperts,
-    activeExpertsPct: totalExperts ? Math.round((activeExperts / totalExperts) * 100) : 0,
-    palataVerified: experts.filter(e => e.palata_registry_verified).length,
-    centrVerified: experts.filter(e => e.centrsudexpert_verified).length,
+    activeExpertsPct:   totalExperts ? Math.round((activeExperts / totalExperts) * 100) : 0,
+    palataVerified:     experts.filter(e => e.palata_registry_verified).length,
+    centrVerified:      experts.filter(e => e.centrsudexpert_verified).length,
 
-    // Zone 3 track 1
-    statusNew: cnt(S_NEW),
-    statusMatching: cnt(S_MATCH),
+    // Zone 3 track 1 — каждый статус считается один раз, из одного cnt()
+    statusNew:       cnt(S_NEW),
+    statusMatching:  cnt(S_MATCH),
     statusSelection: cnt(S_SEL),
-    statusInWork: cnt(S_WORK),
-    statusDone: completed,
-    statusCancelled: cnt(S_CANCEL),
-    statusFailed: cnt(S_FAIL),
+    statusInWork:    cnt(S_WORK),
+    statusDone:      completed,
+    statusCancelled: cnt(S_INACTIVE),
+    statusFailed:    0, // merged into S_INACTIVE per new mapping
 
     // Zone 3 track 2
-    noExpert: cnt(S_FAIL),
-    allDeclined,
-    cancelled: cnt(S_CANCEL),
+    noExpert,
+    allDeclined: expertDeclined,
+    cancelled:   inactive,
 
     // Zone 4
-    reqByRegion: groupCount(requests.map(r => r.region).filter(Boolean)),
-    reqBySpec: groupCount(requests.map(r => r.expertise_type).filter(Boolean)),
+    reqByRegion:    groupCount(requests.map(r => r.region)),
+    reqBySpec:      groupCount(requests.map(r => r.expertise_type)),
     expertByRegion: groupCount(experts.flatMap(e => e.regions ?? [])),
-    expertBySpec: groupCount(experts.flatMap(e => e.specializations ?? [])),
+    expertBySpec:   groupCount(experts.flatMap(e => e.specializations ?? [])),
   };
 }
 
@@ -240,7 +275,7 @@ export default function AdminMetrics() {
       const [reqRes, expRes, matchRes, expRatRes, custRatRes, custProfRes, eventsRes] =
         await Promise.all([
           supabase.from("palata_requests")
-            .select("id, status, region, expertise_type, created_at, updated_at, customer_id"),
+            .select("id, status, region, expertise_type, created_at, customer_id"),
           supabase.from("palata_expert_profiles")
             .select("user_id, palata_registry_verified, centrsudexpert_verified, regions, specializations"),
           supabase.from("palata_request_matches")
@@ -350,7 +385,7 @@ function MetricsBody({ m }: { m: Metrics }) {
           label="Среднее время (дни)"
           value={m.avgCompletionDays != null ? m.avgCompletionDays : "—"}
           accent="#0891b2"
-          sub="от создания до completed"
+          sub="status_events: created_at → completed"
           raw
         />
       </div>
@@ -382,7 +417,7 @@ function MetricsBody({ m }: { m: Metrics }) {
                 <Arrow />
                 <FunnelBox label="Выполнено" count={m.statusDone} total={m.total} accent="#059669" />
                 <Arrow />
-                <FunnelBox label="Неактуальные" count={m.statusCancelled} total={m.total} accent="#a8a29e" />
+                <FunnelBox label="Неактуальные" count={m.statusCancelled} total={m.total} accent="#78716c" />
               </div>
             </div>
 
@@ -396,7 +431,7 @@ function MetricsBody({ m }: { m: Metrics }) {
                 <Arrow />
                 <FunnelBox label="Не нашли эксперта" count={m.noExpert} total={m.total} accent="#dc2626" />
                 <Arrow />
-                <FunnelBox label="Все эксперты отказали" count={m.allDeclined} total={m.total} accent="#dc2626" />
+                <FunnelBox label="Отказ эксперта" count={m.allDeclined} total={m.total} accent="#dc2626" />
                 <Arrow />
                 <FunnelBox label="Неактуальные" count={m.cancelled} total={m.total} accent="#a8a29e" />
               </div>

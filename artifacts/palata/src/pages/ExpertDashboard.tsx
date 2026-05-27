@@ -366,9 +366,13 @@ export default function ExpertDashboard() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-slate-200">
+        <TabButton active={tab === "profile"} onClick={() => setTab("profile")}>
+          <User className="w-3.5 h-3.5" />
+          Мой профиль
+        </TabButton>
         <TabButton active={tab === "requests"} onClick={() => setTab("requests")}>
           <ClipboardList className="w-3.5 h-3.5" />
-          Мои обращения
+          Мои заказы
         </TabButton>
         <TabButton active={tab === "actions"} onClick={() => setTab("actions")}>
           <Zap className="w-3.5 h-3.5" />
@@ -387,10 +391,6 @@ export default function ExpertDashboard() {
               {pendingCount}
             </span>
           )}
-        </TabButton>
-        <TabButton active={tab === "profile"} onClick={() => setTab("profile")}>
-          <User className="w-3.5 h-3.5" />
-          Профиль эксперта
         </TabButton>
       </div>
 

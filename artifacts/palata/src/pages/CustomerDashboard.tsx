@@ -5,7 +5,7 @@ import { useRequireRole } from "@/lib/useRequireRole";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import {
   PlusCircle, FileText, User, MapPin, Building2,
-  Phone, Mail, ClipboardList, Hash,
+  Phone, Mail, ClipboardList, Hash, Star,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -29,6 +29,20 @@ type CustomerProfile = {
   notes: string | null;
 };
 
+type PendingExpertRating = {
+  request_id: string;
+  title: string;
+  assigned_expert_id: string;
+  expert_name: string | null;
+  expert_email: string | null;
+  updated_at: string;
+};
+
+type RatingFormState =
+  | { kind: "idle"; score: number; comment: string }
+  | { kind: "submitting" }
+  | { kind: "done" };
+
 type RequestState =
   | { kind: "loading" }
   | { kind: "ok"; rows: Request[] }
@@ -39,57 +53,20 @@ type ProfileState =
   | { kind: "ok"; profile: CustomerProfile | null }
   | { kind: "error"; message: string };
 
+type PendingRatingsState =
+  | { kind: "loading" }
+  | { kind: "ok"; items: PendingExpertRating[] }
+  | { kind: "error"; message: string };
+
 // ─── Kanban columns ───────────────────────────────────────────────────────────
 
 const COLUMNS = [
-  {
-    id: "new",
-    label: "Новый",
-    dotColor: "bg-slate-400",
-    bgColor: "bg-white border-slate-200",
-    accent: "",
-    statuses: ["draft", "new"],
-  },
-  {
-    id: "pending",
-    label: "Идёт подбор",
-    dotColor: "bg-amber-400",
-    bgColor: "bg-amber-50/60 border-amber-200",
-    accent: "",
-    statuses: ["pending", "matching"],
-  },
-  {
-    id: "matching",
-    label: "Выбор эксперта",
-    dotColor: "bg-cyan-400",
-    bgColor: "bg-cyan-50/60 border-cyan-200",
-    accent: "",
-    statuses: ["expert_selection"],
-  },
-  {
-    id: "working",
-    label: "В работе",
-    dotColor: "bg-indigo-500",
-    bgColor: "bg-indigo-50/60 border-indigo-200",
-    accent: "",
-    statuses: ["in_progress", "in_work"],
-  },
-  {
-    id: "done",
-    label: "Выполнен",
-    dotColor: "bg-emerald-400",
-    bgColor: "bg-emerald-50/60 border-emerald-200",
-    accent: "",
-    statuses: ["completed"],
-  },
-  {
-    id: "closed",
-    label: "Неактуален",
-    dotColor: "bg-slate-300",
-    bgColor: "bg-slate-50 border-slate-200",
-    accent: "",
-    statuses: ["cancelled", "failed", "declined"],
-  },
+  { id: "new",     label: "Новый",         dotColor: "bg-slate-400",  bgColor: "bg-white border-slate-200",         accent: "", statuses: ["draft", "new"] },
+  { id: "pending", label: "Идёт подбор",   dotColor: "bg-amber-400",  bgColor: "bg-amber-50/60 border-amber-200",   accent: "", statuses: ["pending", "matching"] },
+  { id: "match",   label: "Выбор эксперта",dotColor: "bg-cyan-400",   bgColor: "bg-cyan-50/60 border-cyan-200",     accent: "", statuses: ["expert_selection"] },
+  { id: "working", label: "В работе",      dotColor: "bg-indigo-500", bgColor: "bg-indigo-50/60 border-indigo-200", accent: "", statuses: ["in_progress", "in_work"] },
+  { id: "done",    label: "Выполнен",      dotColor: "bg-emerald-400",bgColor: "bg-emerald-50/60 border-emerald-200",accent:"", statuses: ["completed"] },
+  { id: "closed",  label: "Неактуален",    dotColor: "bg-slate-300",  bgColor: "bg-slate-50 border-slate-200",      accent: "", statuses: ["cancelled", "failed", "declined"] },
 ];
 
 const EXPERTISE_LABEL: Record<string, string> = {
@@ -122,9 +99,73 @@ const REGION_LABEL: Record<string, string> = {
 
 export default function CustomerDashboard() {
   const guard = useRequireRole("customer");
-  const [tab, setTab] = useState<"requests" | "profile">("requests");
+  const [tab, setTab] = useState<"requests" | "rate" | "profile">("requests");
   const [requestState, setRequestState] = useState<RequestState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
+  const [pendingRatingsState, setPendingRatingsState] = useState<PendingRatingsState>({ kind: "loading" });
+  const [ratedRequestIds, setRatedRequestIds] = useState<Set<string>>(new Set());
+  const [ratingForms, setRatingForms] = useState<Record<string, RatingFormState>>({});
+
+  const loadPendingRatings = async (userId: string) => {
+    // Fetch completed requests with assigned expert
+    const { data: completedReqs, error: reqErr } = await supabase
+      .from("palata_requests")
+      .select("id, title, assigned_expert_id, updated_at")
+      .eq("customer_id", userId)
+      .eq("status", "completed")
+      .not("assigned_expert_id", "is", null);
+
+    if (reqErr) { setPendingRatingsState({ kind: "error", message: reqErr.message }); return; }
+    if (!completedReqs || completedReqs.length === 0) {
+      setPendingRatingsState({ kind: "ok", items: [] });
+      setRatedRequestIds(new Set());
+      return;
+    }
+
+    const reqIds = completedReqs.map((r: { id: string }) => r.id);
+
+    // Fetch existing ratings by this customer
+    const { data: ratings } = await supabase
+      .from("palata_expert_ratings")
+      .select("request_id")
+      .eq("customer_id", userId)
+      .in("request_id", reqIds);
+
+    const ratedIds = new Set((ratings ?? []).map((r: { request_id: string }) => r.request_id));
+    setRatedRequestIds(ratedIds);
+
+    // Filter unrated
+    const unratedReqs = completedReqs.filter((r: { id: string }) => !ratedIds.has(r.id));
+    if (unratedReqs.length === 0) {
+      setPendingRatingsState({ kind: "ok", items: [] });
+      return;
+    }
+
+    // Fetch expert names
+    const expertIds = [...new Set(unratedReqs.map((r: { assigned_expert_id: string }) => r.assigned_expert_id))] as string[];
+    const { data: experts } = await supabase
+      .from("palata_users")
+      .select("id, full_name, email")
+      .in("id", expertIds);
+
+    const expertMap = Object.fromEntries(
+      (experts ?? []).map((u: { id: string; full_name: string | null; email: string }) => [u.id, u])
+    );
+
+    const items: PendingExpertRating[] = unratedReqs.map((r: { id: string; title: string; assigned_expert_id: string; updated_at: string }) => {
+      const expert = expertMap[r.assigned_expert_id];
+      return {
+        request_id: r.id,
+        title: r.title,
+        assigned_expert_id: r.assigned_expert_id,
+        expert_name: expert?.full_name ?? null,
+        expert_email: expert?.email ?? null,
+        updated_at: r.updated_at,
+      };
+    });
+
+    setPendingRatingsState({ kind: "ok", items });
+  };
 
   useEffect(() => {
     if (guard.status !== "ok") return;
@@ -149,6 +190,8 @@ export default function CustomerDashboard() {
         if (error) { setProfileState({ kind: "error", message: error.message }); return; }
         setProfileState({ kind: "ok", profile: data as CustomerProfile | null });
       });
+
+    loadPendingRatings(userId);
   }, [guard.status]);
 
   if (guard.status === "loading" || guard.status === "redirecting") {
@@ -165,6 +208,52 @@ export default function CustomerDashboard() {
   }));
 
   const total = requestState.kind === "ok" ? requestState.rows.length : null;
+  const pendingCount = pendingRatingsState.kind === "ok" ? pendingRatingsState.items.length : null;
+
+  function getRatingForm(requestId: string): RatingFormState {
+    return ratingForms[requestId] ?? { kind: "idle", score: 5, comment: "" };
+  }
+  function setRatingForm(requestId: string, s: RatingFormState) {
+    setRatingForms(p => ({ ...p, [requestId]: s }));
+  }
+
+  async function handleRateExpert(item: PendingExpertRating) {
+    const form = getRatingForm(item.request_id);
+    if (form.kind !== "idle") return;
+    setRatingForm(item.request_id, { kind: "submitting" });
+    const { error } = await supabase.from("palata_expert_ratings").insert({
+      request_id: item.request_id,
+      expert_id: item.assigned_expert_id,
+      customer_id: user.id,
+      score: form.score,
+      comment: form.comment || null,
+    });
+    if (error) { setRatingForm(item.request_id, { kind: "idle", score: 5, comment: "" }); return; }
+    await supabase.from("palata_status_events").insert({
+      entity_type: "request", entity_id: item.request_id,
+      old_status: "completed", new_status: "completed",
+      actor_id: null, note: `Заказчик оценил эксперта: ${form.score}/5`,
+    });
+    if (item.expert_email) {
+      await supabase.from("palata_email_events").insert({
+        recipient_id: item.assigned_expert_id,
+        email_address: item.expert_email,
+        template_name: "expert_rated_by_customer",
+        subject: `Вас оценил заказчик — ${form.score} из 5`,
+        context: { request_id: item.request_id, score: form.score },
+        sent_at: new Date().toISOString(),
+        error: "TEST_MODE",
+      });
+    }
+    setRatingForm(item.request_id, { kind: "done" });
+    setRatedRequestIds(prev => new Set([...prev, item.request_id]));
+    if (pendingRatingsState.kind === "ok") {
+      setPendingRatingsState({
+        kind: "ok",
+        items: pendingRatingsState.items.filter(i => i.request_id !== item.request_id),
+      });
+    }
+  }
 
   return (
     <div className="px-6 py-8 max-w-[1400px]">
@@ -199,6 +288,15 @@ export default function CustomerDashboard() {
           <ClipboardList className="w-3.5 h-3.5" />
           Мои заказы
         </TabButton>
+        <TabButton active={tab === "rate"} onClick={() => setTab("rate")}>
+          <Star className="w-3.5 h-3.5" />
+          Оценить эксперта
+          {pendingCount != null && pendingCount > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-amber-500 text-white rounded-full">
+              {pendingCount}
+            </span>
+          )}
+        </TabButton>
         <TabButton active={tab === "profile"} onClick={() => setTab("profile")}>
           <User className="w-3.5 h-3.5" />
           Профиль
@@ -214,11 +312,95 @@ export default function CustomerDashboard() {
           {requestState.kind === "ok" && requestState.rows.length > 0 && (
             <KanbanBoard
               columns={columns}
-              renderCard={(r: Request) => <CustomerCard request={r} />}
+              renderCard={(r: Request) => <CustomerCard request={r} needsRating={r.status === "completed" && !ratedRequestIds.has(r.id)} />}
               emptyText="Нет заказов"
             />
           )}
         </>
+      )}
+
+      {/* Tab: Rate Expert */}
+      {tab === "rate" && (
+        <div className="max-w-2xl space-y-4">
+          {pendingRatingsState.kind === "loading" && <LoadingRows />}
+          {pendingRatingsState.kind === "error" && <ErrorCard message={pendingRatingsState.message} />}
+          {pendingRatingsState.kind === "ok" && pendingRatingsState.items.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-24 gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center">
+                <Star className="w-8 h-8 text-emerald-300" />
+              </div>
+              <div className="text-center">
+                <p className="text-base font-semibold text-slate-700 mb-1">Нет ожидающих оценок</p>
+                <p className="text-sm text-slate-400 max-w-xs">
+                  Все выполненные заказы уже оценены. Спасибо за обратную связь!
+                </p>
+              </div>
+            </div>
+          )}
+          {pendingRatingsState.kind === "ok" && pendingRatingsState.items.map(item => {
+            const form = getRatingForm(item.request_id);
+            return (
+              <div key={item.request_id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-[10px] font-mono text-slate-400 mb-0.5">#{item.request_id.slice(0, 8).toUpperCase()}</p>
+                    <Link href={`/requests/${item.request_id}`}>
+                      <p className="text-sm font-semibold text-slate-800 hover:text-indigo-700 transition-colors cursor-pointer">
+                        {item.title}
+                      </p>
+                    </Link>
+                    {(item.expert_name || item.expert_email) && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        Эксперт: <span className="font-medium text-slate-700">{item.expert_name ?? item.expert_email}</span>
+                      </p>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-[10px] text-slate-400">
+                    {new Date(item.updated_at).toLocaleDateString("ru-RU")}
+                  </span>
+                </div>
+
+                {form.kind === "done" ? (
+                  <p className="text-sm font-medium text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">
+                    ✓ Оценка сохранена. Спасибо!
+                  </p>
+                ) : (
+                  <div className="space-y-3 border-t border-slate-100 pt-3">
+                    <p className="text-xs text-slate-500 font-medium">Ваша оценка эксперта:</p>
+                    <div className="flex gap-1 items-center">
+                      {[1, 2, 3, 4, 5].map(s => (
+                        <button
+                          key={s}
+                          onClick={() => form.kind === "idle" && setRatingForm(item.request_id, { ...form, score: s })}
+                          disabled={form.kind !== "idle"}
+                          className={`text-2xl transition-colors ${form.kind === "idle" && form.score >= s ? "text-amber-400" : "text-slate-200"}`}
+                        >★</button>
+                      ))}
+                      <span className="ml-2 text-sm text-slate-500">
+                        {form.kind === "idle" ? `${form.score} / 5` : ""}
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Комментарий (необязательно)"
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      disabled={form.kind !== "idle"}
+                      value={form.kind === "idle" ? form.comment : ""}
+                      onChange={e => form.kind === "idle" && setRatingForm(item.request_id, { ...form, comment: e.target.value })}
+                    />
+                    <button
+                      className="btn-primary"
+                      disabled={form.kind !== "idle"}
+                      onClick={() => handleRateExpert(item)}
+                    >
+                      {form.kind === "submitting" ? "Сохранение…" : "Отправить оценку"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {/* Tab: Profile */}
@@ -293,7 +475,6 @@ function ProfileView({
 
         {profile ? (
           <>
-            {/* Company */}
             <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
                 <Building2 className="w-4 h-4 text-slate-400" />
@@ -311,7 +492,6 @@ function ProfileView({
               </div>
             </div>
 
-            {/* Notes */}
             {profile.notes && (
               <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
@@ -363,7 +543,7 @@ function InfoRow({ icon, label, value, mono }: {
 
 // ─── Request card ─────────────────────────────────────────────────────────────
 
-function CustomerCard({ request: r }: { request: Request }) {
+function CustomerCard({ request: r, needsRating }: { request: Request; needsRating?: boolean }) {
   const urgencyColor = r.urgency === "very_urgent" ? "border-l-red-400"
     : r.urgency === "urgent" ? "border-l-amber-400"
     : "border-l-indigo-200";
@@ -395,6 +575,11 @@ function CustomerCard({ request: r }: { request: Request }) {
           {r.urgency && r.urgency !== "normal" && (
             <span className="inline-block text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
               {urgencyLabel[r.urgency] ?? r.urgency}
+            </span>
+          )}
+          {needsRating && (
+            <span className="inline-block text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+              ★ Оцените эксперта
             </span>
           )}
         </div>

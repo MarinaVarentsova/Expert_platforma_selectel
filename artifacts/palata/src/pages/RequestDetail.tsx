@@ -265,6 +265,24 @@ async function logEvent(
   });
 }
 
+async function logEmailEvent(
+  recipientId: string | null,
+  emailAddress: string,
+  templateName: string,
+  subject: string,
+  context: Record<string, unknown>,
+) {
+  await supabase.from("palata_email_events").insert({
+    recipient_id: recipientId ?? null,
+    email_address: emailAddress,
+    template_name: templateName,
+    subject,
+    context,
+    sent_at: new Date().toISOString(),
+    error: "TEST_MODE",
+  });
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function RequestDetail() {
@@ -587,6 +605,17 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       if (customerEmail) payloads.push(mkNotify({ type: "request_completed", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: completedExpert?.full_name ?? undefined, currentStatus: "completed" }));
       if (completedExpert?.email) payloads.push(mkNotify({ type: "request_completed", recipientEmail: completedExpert.email, recipientType: "expert", expertId: match.expert_id, expertName: completedExpert.full_name ?? undefined, currentStatus: "completed" }));
       if (payloads.length) notify(payloads);
+      // Email events (test mode)
+      if (r.customer_id && customerEmail) {
+        await logEmailEvent(r.customer_id, customerEmail, "order_completed_rate_expert",
+          `Заказ выполнен — оцените эксперта`,
+          { request_id: r.id, expert_id: match.expert_id });
+      }
+      if (completedExpert?.email) {
+        await logEmailEvent(match.expert_id, completedExpert.email, "order_completed_rate_customer",
+          `Заказ завершён — оцените заказчика`,
+          { request_id: r.id });
+      }
       setMS(match.id, { kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -662,30 +691,48 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   async function handleRateExpert(expertId: string) {
     if (ratingUI.kind !== "idle") return;
+    const score = ratingUI.score;
+    const comment = ratingUI.comment;
     setRatingUI({ kind: "submitting" });
     const { error } = await supabase.from("palata_expert_ratings").insert({
       request_id: r.id,
       expert_id: expertId,
       customer_id: userId,
-      score: ratingUI.score,
-      comment: ratingUI.comment || null,
+      score,
+      comment: comment || null,
     });
     if (error) { setRatingUI({ kind: "idle", score: 5, comment: "" }); return; }
+    await logEvent("request", r.id, r.status, r.status, `Заказчик оценил эксперта: ${score}/5`);
+    const expertUser = usersMap[expertId];
+    if (expertUser?.email) {
+      await logEmailEvent(expertId, expertUser.email, "expert_rated_by_customer",
+        `Вас оценил заказчик — ${score} из 5`,
+        { request_id: r.id, score });
+    }
     setRatingUI({ kind: "done" });
     onReload();
   }
 
   async function handleRateCustomer() {
     if (ratingUI.kind !== "idle" || !r.customer_id) return;
+    const score = ratingUI.score;
+    const comment = ratingUI.comment;
     setRatingUI({ kind: "submitting" });
     const { error } = await supabase.from("palata_customer_ratings").insert({
       request_id: r.id,
       customer_id: r.customer_id,
       expert_id: userId,
-      score: ratingUI.score,
-      comment: ratingUI.comment || null,
+      score,
+      comment: comment || null,
     });
     if (error) { setRatingUI({ kind: "idle", score: 5, comment: "" }); return; }
+    await logEvent("request", r.id, r.status, r.status, `Эксперт оценил заказчика: ${score}/5`);
+    const custUser = usersMap[r.customer_id];
+    if (custUser?.email) {
+      await logEmailEvent(r.customer_id, custUser.email, "customer_rated_by_expert",
+        `Эксперт оставил вам оценку — ${score} из 5`,
+        { request_id: r.id, score });
+    }
     setRatingUI({ kind: "done" });
     onReload();
   }
@@ -822,13 +869,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             {custUI.kind === "submitting" && <Spinner inline />}
 
             {isOrderActive && custUI.kind === "idle" && (
-              <button className="btn-success" onClick={() => handleOrderStatus("completed")}>
-                Перевести в «Выполнен»
-              </button>
-            )}
-            {isOrderActive && custUI.kind === "idle" && (
               <button className="btn-danger" onClick={() => handleOrderStatus("cancelled")}>
-                Перевести в «Неактуален»
+                Сделать неактуальным
               </button>
             )}
             {!isOrderActive && (
@@ -1007,7 +1049,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                             )}
                             {["accepted_work", "accepted"].includes(m.status) && (
                               <button className="btn-success-sm" onClick={() => handleCompleteWork(m)}>
-                                Завершено
+                                Завершить заказ
                               </button>
                             )}
                           </div>
@@ -1423,7 +1465,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                             )}
                             {["accepted_work", "accepted"].includes(m.status) && (
                               <button className="btn-success-sm" onClick={() => handleCompleteWork(m)}>
-                                Завершено
+                                Завершить заказ
                               </button>
                             )}
                           </div>

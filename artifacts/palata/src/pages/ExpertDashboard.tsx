@@ -22,6 +22,7 @@ type Match = {
     expertise_type: string;
     region: string;
     urgency: string | null;
+    customer_id: string | null;
   } | null;
 };
 
@@ -44,6 +45,21 @@ type ExpertProfile = {
   bio: string | null;
 };
 
+type PendingCustomerRating = {
+  match_id: string;
+  request_id: string;
+  title: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  responded_at: string | null;
+};
+
+type RatingFormState =
+  | { kind: "idle"; score: number; comment: string }
+  | { kind: "submitting" }
+  | { kind: "done" };
+
 type MatchState =
   | { kind: "loading" }
   | { kind: "ok"; rows: Match[] }
@@ -52,6 +68,11 @@ type MatchState =
 type ProfileState =
   | { kind: "loading" }
   | { kind: "ok"; profile: ExpertProfile | null }
+  | { kind: "error"; message: string };
+
+type PendingRatingsState =
+  | { kind: "loading" }
+  | { kind: "ok"; items: PendingCustomerRating[] }
   | { kind: "error"; message: string };
 
 // ─── Lookup tables ────────────────────────────────────────────────────────────
@@ -106,20 +127,110 @@ const COLUMNS = [
 
 export default function ExpertDashboard() {
   const guard = useRequireRole("expert");
-  const [tab, setTab] = useState<"requests" | "profile">("requests");
+  const [tab, setTab] = useState<"requests" | "rate" | "profile">("requests");
   const [matchState, setMatchState] = useState<MatchState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
+  const [pendingRatingsState, setPendingRatingsState] = useState<PendingRatingsState>({ kind: "loading" });
+  const [ratedMatchIds, setRatedMatchIds] = useState<Set<string>>(new Set());
+  const [ratingForms, setRatingForms] = useState<Record<string, RatingFormState>>({});
+
+  const loadPendingRatings = async (userId: string) => {
+    // Fetch completed matches
+    const { data: rawMatches, error: matchErr } = await supabase
+      .from("palata_request_matches")
+      .select(`
+        id, request_id, responded_at,
+        palata_requests ( title, customer_id )
+      `)
+      .eq("expert_id", userId)
+      .eq("status", "completed");
+
+    if (matchErr) { setPendingRatingsState({ kind: "error", message: matchErr.message }); return; }
+
+    type RawMatch = {
+      id: string;
+      request_id: string;
+      responded_at: string | null;
+      palata_requests: { title: string; customer_id: string | null } | { title: string; customer_id: string | null }[] | null;
+    };
+
+    const completedMatches = (rawMatches ?? []) as unknown as RawMatch[];
+
+    function getReq(m: RawMatch): { title: string; customer_id: string | null } | null {
+      if (!m.palata_requests) return null;
+      return Array.isArray(m.palata_requests) ? m.palata_requests[0] ?? null : m.palata_requests;
+    }
+
+    if (completedMatches.length === 0) {
+      setPendingRatingsState({ kind: "ok", items: [] });
+      setRatedMatchIds(new Set());
+      return;
+    }
+
+    const reqIds = completedMatches.map(m => m.request_id);
+
+    // Check which ones have customer ratings by this expert
+    const { data: ratings } = await supabase
+      .from("palata_customer_ratings")
+      .select("request_id")
+      .eq("expert_id", userId)
+      .in("request_id", reqIds);
+
+    const ratedReqIds = new Set((ratings ?? []).map((r: { request_id: string }) => r.request_id));
+    const unratedMatches = completedMatches.filter(m => !ratedReqIds.has(m.request_id));
+
+    // Build ratedMatchIds for kanban card badges
+    const ratedSet = new Set<string>();
+    completedMatches.forEach(m => {
+      if (ratedReqIds.has(m.request_id)) ratedSet.add(m.id);
+    });
+    setRatedMatchIds(ratedSet);
+
+    if (unratedMatches.length === 0) {
+      setPendingRatingsState({ kind: "ok", items: [] });
+      return;
+    }
+
+    // Fetch customer info
+    const customerIds = [...new Set(
+      unratedMatches.map(m => getReq(m)?.customer_id).filter(Boolean)
+    )] as string[];
+
+    const { data: customers } = customerIds.length > 0
+      ? await supabase.from("palata_users").select("id, full_name, email").in("id", customerIds)
+      : { data: [] };
+
+    const custMap = Object.fromEntries(
+      (customers ?? []).map((u: { id: string; full_name: string | null; email: string }) => [u.id, u])
+    );
+
+    const items: PendingCustomerRating[] = unratedMatches.map(m => {
+      const req = getReq(m);
+      const custId = req?.customer_id ?? null;
+      const cust = custId ? custMap[custId] : null;
+      return {
+        match_id: m.id,
+        request_id: m.request_id,
+        title: req?.title ?? "—",
+        customer_id: custId,
+        customer_name: cust?.full_name ?? null,
+        customer_email: cust?.email ?? null,
+        responded_at: m.responded_at,
+      };
+    });
+
+    setPendingRatingsState({ kind: "ok", items });
+  };
 
   useEffect(() => {
     if (guard.status !== "ok") return;
     const userId = guard.user.id;
 
-    // Fetch matches
     supabase
       .from("palata_request_matches")
       .select(`
         id, request_id, status, matching_round, decline_reason, responded_at,
-        palata_requests ( title, expertise_type, region, urgency )
+        palata_requests ( title, expertise_type, region, urgency, customer_id )
       `)
       .eq("expert_id", userId)
       .order("matching_round", { ascending: true })
@@ -128,7 +239,6 @@ export default function ExpertDashboard() {
         setMatchState({ kind: "ok", rows: (data as unknown as Match[]) ?? [] });
       });
 
-    // Fetch expert profile
     supabase
       .from("palata_expert_profiles")
       .select(`
@@ -144,6 +254,8 @@ export default function ExpertDashboard() {
         if (error) { setProfileState({ kind: "error", message: error.message }); return; }
         setProfileState({ kind: "ok", profile: data as ExpertProfile | null });
       });
+
+    loadPendingRatings(userId);
   }, [guard.status]);
 
   if (guard.status === "loading" || guard.status === "redirecting") {
@@ -164,6 +276,53 @@ export default function ExpertDashboard() {
       ? matchState.rows.filter((r) => col.statuses.includes(r.status))
       : [],
   }));
+
+  const pendingCount = pendingRatingsState.kind === "ok" ? pendingRatingsState.items.length : null;
+
+  function getRatingForm(matchId: string): RatingFormState {
+    return ratingForms[matchId] ?? { kind: "idle", score: 5, comment: "" };
+  }
+  function setRatingForm(matchId: string, s: RatingFormState) {
+    setRatingForms(p => ({ ...p, [matchId]: s }));
+  }
+
+  async function handleRateCustomer(item: PendingCustomerRating) {
+    const form = getRatingForm(item.match_id);
+    if (form.kind !== "idle" || !item.customer_id) return;
+    setRatingForm(item.match_id, { kind: "submitting" });
+    const { error } = await supabase.from("palata_customer_ratings").insert({
+      request_id: item.request_id,
+      customer_id: item.customer_id,
+      expert_id: user.id,
+      score: form.score,
+      comment: form.comment || null,
+    });
+    if (error) { setRatingForm(item.match_id, { kind: "idle", score: 5, comment: "" }); return; }
+    await supabase.from("palata_status_events").insert({
+      entity_type: "request", entity_id: item.request_id,
+      old_status: "completed", new_status: "completed",
+      actor_id: null, note: `Эксперт оценил заказчика: ${form.score}/5`,
+    });
+    if (item.customer_email && item.customer_id) {
+      await supabase.from("palata_email_events").insert({
+        recipient_id: item.customer_id,
+        email_address: item.customer_email,
+        template_name: "customer_rated_by_expert",
+        subject: `Эксперт оставил вам оценку — ${form.score} из 5`,
+        context: { request_id: item.request_id, score: form.score },
+        sent_at: new Date().toISOString(),
+        error: "TEST_MODE",
+      });
+    }
+    setRatingForm(item.match_id, { kind: "done" });
+    setRatedMatchIds(prev => new Set([...prev, item.match_id]));
+    if (pendingRatingsState.kind === "ok") {
+      setPendingRatingsState({
+        kind: "ok",
+        items: pendingRatingsState.items.filter(i => i.match_id !== item.match_id),
+      });
+    }
+  }
 
   return (
     <div className="px-6 py-8 max-w-[1400px]">
@@ -193,6 +352,15 @@ export default function ExpertDashboard() {
           <ClipboardList className="w-3.5 h-3.5" />
           Мои обращения
         </TabButton>
+        <TabButton active={tab === "rate"} onClick={() => setTab("rate")}>
+          <Star className="w-3.5 h-3.5" />
+          Оценить заказчика
+          {pendingCount != null && pendingCount > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-amber-500 text-white rounded-full">
+              {pendingCount}
+            </span>
+          )}
+        </TabButton>
         <TabButton active={tab === "profile"} onClick={() => setTab("profile")}>
           <User className="w-3.5 h-3.5" />
           Профиль эксперта
@@ -208,11 +376,102 @@ export default function ExpertDashboard() {
           {matchState.kind === "ok" && matchState.rows.length > 0 && (
             <KanbanBoard
               columns={columns}
-              renderCard={(m: Match) => <ExpertCard match={m} />}
+              renderCard={(m: Match) => (
+                <ExpertCard
+                  match={m}
+                  needsRating={m.status === "completed" && !ratedMatchIds.has(m.id)}
+                />
+              )}
               emptyText="Нет обращений"
             />
           )}
         </>
+      )}
+
+      {/* Tab: Rate Customer */}
+      {tab === "rate" && (
+        <div className="max-w-2xl space-y-4">
+          {pendingRatingsState.kind === "loading" && <LoadingRows />}
+          {pendingRatingsState.kind === "error" && <ErrorCard message={pendingRatingsState.message} />}
+          {pendingRatingsState.kind === "ok" && pendingRatingsState.items.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-24 gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center">
+                <Star className="w-8 h-8 text-emerald-300" />
+              </div>
+              <div className="text-center">
+                <p className="text-base font-semibold text-slate-700 mb-1">Нет ожидающих оценок</p>
+                <p className="text-sm text-slate-400 max-w-xs">
+                  Все завершённые заказы уже оценены. Спасибо за обратную связь!
+                </p>
+              </div>
+            </div>
+          )}
+          {pendingRatingsState.kind === "ok" && pendingRatingsState.items.map(item => {
+            const form = getRatingForm(item.match_id);
+            return (
+              <div key={item.match_id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-[10px] font-mono text-slate-400 mb-0.5">#{item.request_id.slice(0, 8).toUpperCase()}</p>
+                    <Link href={`/requests/${item.request_id}`}>
+                      <p className="text-sm font-semibold text-slate-800 hover:text-indigo-700 transition-colors cursor-pointer">
+                        {item.title}
+                      </p>
+                    </Link>
+                    {(item.customer_name || item.customer_email) && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        Заказчик: <span className="font-medium text-slate-700">{item.customer_name ?? item.customer_email}</span>
+                      </p>
+                    )}
+                  </div>
+                  {item.responded_at && (
+                    <span className="shrink-0 text-[10px] text-slate-400">
+                      {new Date(item.responded_at).toLocaleDateString("ru-RU")}
+                    </span>
+                  )}
+                </div>
+
+                {form.kind === "done" ? (
+                  <p className="text-sm font-medium text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">
+                    ✓ Оценка сохранена. Спасибо!
+                  </p>
+                ) : (
+                  <div className="space-y-3 border-t border-slate-100 pt-3">
+                    <p className="text-xs text-slate-500 font-medium">Ваша оценка заказчика:</p>
+                    <div className="flex gap-1 items-center">
+                      {[1, 2, 3, 4, 5].map(s => (
+                        <button
+                          key={s}
+                          onClick={() => form.kind === "idle" && setRatingForm(item.match_id, { ...form, score: s })}
+                          disabled={form.kind !== "idle"}
+                          className={`text-2xl transition-colors ${form.kind === "idle" && form.score >= s ? "text-amber-400" : "text-slate-200"}`}
+                        >★</button>
+                      ))}
+                      <span className="ml-2 text-sm text-slate-500">
+                        {form.kind === "idle" ? `${form.score} / 5` : ""}
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Комментарий (необязательно)"
+                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      disabled={form.kind !== "idle"}
+                      value={form.kind === "idle" ? form.comment : ""}
+                      onChange={e => form.kind === "idle" && setRatingForm(item.match_id, { ...form, comment: e.target.value })}
+                    />
+                    <button
+                      className="btn-primary"
+                      disabled={form.kind !== "idle"}
+                      onClick={() => handleRateCustomer(item)}
+                    >
+                      {form.kind === "submitting" ? "Сохранение…" : "Отправить оценку"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {/* Tab: Profile */}
@@ -297,18 +556,8 @@ function ProfileView({ profile: p, user }: { profile: ExpertProfile; user: { ful
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Настройки</p>
           <div className="space-y-2.5">
-            <FlagRow
-              active={p.accepts_requests}
-              label="Принимает заказы"
-              activeColor="text-emerald-700 bg-emerald-50"
-              inactiveColor="text-slate-500 bg-slate-50"
-            />
-            <FlagRow
-              active={p.business_trip_ready}
-              label="Готов к командировкам"
-              activeColor="text-teal-700 bg-teal-50"
-              inactiveColor="text-slate-500 bg-slate-50"
-            />
+            <FlagRow active={p.accepts_requests} label="Принимает заказы" activeColor="text-emerald-700 bg-emerald-50" inactiveColor="text-slate-500 bg-slate-50" />
+            <FlagRow active={p.business_trip_ready} label="Готов к командировкам" activeColor="text-teal-700 bg-teal-50" inactiveColor="text-slate-500 bg-slate-50" />
           </div>
         </div>
 
@@ -316,16 +565,8 @@ function ProfileView({ profile: p, user }: { profile: ExpertProfile; user: { ful
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Регистрация</p>
           <div className="space-y-3">
-            <RegistryRow
-              verified={p.palata_registry_verified}
-              label="Палата судебных экспертов РФ"
-              number={p.palata_registry_number}
-            />
-            <RegistryRow
-              verified={p.centrsudexpert_verified}
-              label="Центр судебных экспертиз"
-              number={p.centrsudexpert_registry_number}
-            />
+            <RegistryRow verified={p.palata_registry_verified} label="Палата судебных экспертов РФ" number={p.palata_registry_number} />
+            <RegistryRow verified={p.centrsudexpert_verified} label="Центр судебных экспертиз" number={p.centrsudexpert_registry_number} />
           </div>
         </div>
       </div>
@@ -422,26 +663,17 @@ function ProfileView({ profile: p, user }: { profile: ExpertProfile; user: { ful
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
 function FlagRow({ active, label, activeColor, inactiveColor }: {
-  active: boolean;
-  label: string;
-  activeColor: string;
-  inactiveColor: string;
+  active: boolean; label: string; activeColor: string; inactiveColor: string;
 }) {
   return (
     <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${active ? activeColor : inactiveColor}`}>
-      {active
-        ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
-        : <XCircle className="w-3.5 h-3.5 flex-shrink-0" />}
+      {active ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" /> : <XCircle className="w-3.5 h-3.5 flex-shrink-0" />}
       <span className="text-xs font-medium">{label}</span>
     </div>
   );
 }
 
-function RegistryRow({ verified, label, number }: {
-  verified: boolean;
-  label: string;
-  number: string | null;
-}) {
+function RegistryRow({ verified, label, number }: { verified: boolean; label: string; number: string | null }) {
   return (
     <div className="flex items-start gap-2.5">
       {verified
@@ -449,12 +681,8 @@ function RegistryRow({ verified, label, number }: {
         : <XCircle className="w-4 h-4 text-slate-300 flex-shrink-0 mt-0.5" />}
       <div>
         <p className={`text-xs font-medium ${verified ? "text-slate-800" : "text-slate-400"}`}>{label}</p>
-        {verified && number && (
-          <p className="text-[11px] text-slate-400 font-mono mt-0.5">{number}</p>
-        )}
-        {!verified && (
-          <p className="text-[11px] text-slate-400 mt-0.5">Не подтверждено</p>
-        )}
+        {verified && number && <p className="text-[11px] text-slate-400 font-mono mt-0.5">{number}</p>}
+        {!verified && <p className="text-[11px] text-slate-400 mt-0.5">Не подтверждено</p>}
       </div>
     </div>
   );
@@ -462,7 +690,7 @@ function RegistryRow({ verified, label, number }: {
 
 // ─── Expert request card ──────────────────────────────────────────────────────
 
-function ExpertCard({ match: m }: { match: Match }) {
+function ExpertCard({ match: m, needsRating }: { match: Match; needsRating?: boolean }) {
   const req = m.palata_requests;
   const urgencyColor = req?.urgency === "very_urgent" ? "border-l-red-400"
     : req?.urgency === "urgent" ? "border-l-amber-400"
@@ -488,6 +716,11 @@ function ExpertCard({ match: m }: { match: Match }) {
           {m.decline_reason && (
             <span className="inline-block text-[10px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
               {DECLINE_LABEL[m.decline_reason] ?? m.decline_reason}
+            </span>
+          )}
+          {needsRating && (
+            <span className="inline-block text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+              ★ Оцените заказчика
             </span>
           )}
         </div>

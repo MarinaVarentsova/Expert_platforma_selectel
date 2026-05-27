@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { runMatching } from "@/lib/matching";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import {
@@ -929,6 +930,7 @@ type RequestDetails = {
   region: string | null;
   description: string | null;
   customer_id: string | null;
+  requires_travel: boolean;
   status: string;
 };
 
@@ -949,7 +951,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
 
   useEffect(() => {
     supabase.from("palata_requests")
-      .select("title, expertise_type, region, description, customer_id, status")
+      .select("title, expertise_type, region, description, customer_id, requires_travel, status")
       .eq("id", item.request_id)
       .maybeSingle()
       .then(({ data }) => {
@@ -984,9 +986,9 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
         customer_id: custId,
         assigned_to_user_id: custId,
         assigned_role: "customer",
-        action_type: "experts_matched",
+        action_type: "expert_started_work",
         title: "Эксперт взял заказ в работу",
-        description: "Эксперт принял заказ в работу.",
+        description: "Эксперт принял заказ в работу. Заказ передан на исполнение.",
         payload: { expert_id: userId, expert_email: userEmail },
       });
       if (custEmail) {
@@ -1023,7 +1025,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
         action_type: "expert_can_start_from",
         title: "Эксперт предложил дату начала",
         description: `Эксперт готов начать работу с ${new Date(startDate).toLocaleDateString("ru-RU")}`,
-        payload: { expert_id: userId, expert_email: userEmail, start_date: startDate, comment },
+        payload: { expert_id: userId, expert_email: userEmail, expert_name: userEmail, start_date: startDate, comment },
       });
       if (custEmail) {
         await logEmailTestEvent(custId, custEmail, "expert_can_start",
@@ -1074,6 +1076,34 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
     await resolveActionItem(item.id);
     await logStatusEvent(item.request_id, "expert_selection", "matching",
       `Эксперт отказался: ${declineReason} — ${declineComment}`);
+
+    // Check if all active matches are now declined → trigger repeat matching
+    try {
+      const { data: allMatches } = await supabase
+        .from("palata_request_matches")
+        .select("id, status")
+        .eq("request_id", item.request_id)
+        .not("status", "in", '("closed_by_other_expert","withdrawn")');
+
+      const allDeclined =
+        allMatches != null &&
+        allMatches.length > 0 &&
+        allMatches.every((m: { status: string }) =>
+          m.status === "declined" || m.status === "withdrawn",
+        );
+
+      if (allDeclined && req?.expertise_type && req?.region) {
+        const custId2 = item.customer_id ?? req?.customer_id ?? undefined;
+        await runMatching({
+          requestId: item.request_id,
+          expertiseType: req.expertise_type,
+          region: req.region,
+          requiresTravel: req.requires_travel ?? false,
+          customerId: custId2 ?? undefined,
+        });
+      }
+    } catch { /* non-fatal: repeat matching failed */ }
+
     setBusy(false);
     onDone();
   }

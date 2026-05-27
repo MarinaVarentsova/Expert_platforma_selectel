@@ -229,6 +229,7 @@ export default function NewRequest() {
           expertiseType: form.expertise_type,
           region: form.region,
           requiresTravel: form.requires_travel,
+          customerId: currentUserId ?? undefined,
         });
         matchedCount = result.matched;
       } catch (matchErr) {

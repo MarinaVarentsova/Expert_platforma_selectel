@@ -754,6 +754,12 @@ function CustomerActionCard({ item, userId, onDone }: {
   if (item.action_type === "expert_completed_order") {
     return <ExpertCompletedCard item={item} onDone={onDone} />;
   }
+  if (item.action_type === "expert_started_work") {
+    return <ExpertStartedWorkCard item={item} onDone={onDone} />;
+  }
+  if (item.action_type === "manual_matching_required") {
+    return <ManualMatchingCard item={item} onDone={onDone} />;
+  }
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
       <ActionItemHeader item={item} />
@@ -1005,6 +1011,68 @@ function ExpertCanStartCard({ item, userId, onDone }: {
   );
 }
 
+// ─── expert_started_work ──────────────────────────────────────────────────────
+
+function ExpertStartedWorkCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
+  const [done, setDone] = useState(false);
+
+  async function handleAck() {
+    await resolveActionItem(item.id);
+    setDone(true);
+    onDone();
+  }
+
+  if (done) return null;
+
+  return (
+    <div className="bg-white border border-emerald-200 rounded-xl p-5 shadow-sm">
+      <ActionItemHeader item={item} />
+      <div className="mt-3 bg-emerald-50 rounded-xl px-4 py-3">
+        <p className="text-xs text-emerald-700 font-medium">
+          Эксперт взял заказ в работу. Следите за ходом выполнения в разделе «Мои заказы».
+        </p>
+      </div>
+      <div className="mt-4">
+        <button
+          onClick={handleAck}
+          className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+        >
+          Понятно
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── manual_matching_required ─────────────────────────────────────────────────
+
+function ManualMatchingCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
+  const [done, setDone] = useState(false);
+
+  async function handleAck() {
+    await resolveActionItem(item.id);
+    setDone(true);
+    onDone();
+  }
+
+  if (done) return null;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <ActionItemHeader item={item} />
+      <p className="text-sm text-slate-600 mt-2">{item.description}</p>
+      <div className="mt-4">
+        <button
+          onClick={handleAck}
+          className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:text-slate-800 transition-colors"
+        >
+          Понятно
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── expert_completed_order ───────────────────────────────────────────────────
 
 function ExpertCompletedCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
@@ -1137,12 +1205,14 @@ function ExpertProfileCard({ expert: e, busy, onSelect }: {
 // ─── Shared: action item header ───────────────────────────────────────────────
 
 const ACTION_LABEL: Record<string, { label: string; color: string }> = {
-  experts_matched:          { label: "Подобраны эксперты", color: "text-indigo-700 bg-indigo-50" },
-  expert_declined:          { label: "Эксперт отказался", color: "text-red-700 bg-red-50" },
-  expert_can_start_from:    { label: "Предложена дата", color: "text-amber-700 bg-amber-50" },
-  expert_completed_order:   { label: "Заказ завершён", color: "text-emerald-700 bg-emerald-50" },
-  customer_selected_you:    { label: "Вас выбрали", color: "text-indigo-700 bg-indigo-50" },
+  experts_matched:            { label: "Подобраны эксперты", color: "text-indigo-700 bg-indigo-50" },
+  expert_declined:            { label: "Эксперт отказался", color: "text-red-700 bg-red-50" },
+  expert_can_start_from:      { label: "Предложена дата", color: "text-amber-700 bg-amber-50" },
+  expert_completed_order:     { label: "Заказ завершён", color: "text-emerald-700 bg-emerald-50" },
+  expert_started_work:        { label: "Эксперт взял в работу", color: "text-emerald-700 bg-emerald-50" },
+  customer_selected_you:      { label: "Вас выбрали", color: "text-indigo-700 bg-indigo-50" },
   customer_approved_start_date: { label: "Дата согласована", color: "text-emerald-700 bg-emerald-50" },
+  manual_matching_required:   { label: "Нет доступных экспертов", color: "text-slate-600 bg-slate-100" },
 };
 
 function ActionItemHeader({ item }: { item: ActionItem }) {

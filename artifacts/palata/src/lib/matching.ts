@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { createActionItem } from "./actionItems";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ export type MatchingInput = {
   expertiseType: string;
   region: string;
   requiresTravel: boolean;
+  customerId?: string;
 };
 
 export type MatchingResult = {
@@ -243,6 +245,22 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
       note: "Автоподбор: подходящие эксперты не найдены — требуется ручной подбор",
     });
 
+    if (input.customerId) {
+      try {
+        await createActionItem({
+          request_id: requestId,
+          expert_id: null,
+          customer_id: input.customerId,
+          assigned_to_user_id: input.customerId,
+          assigned_role: "customer",
+          action_type: "manual_matching_required",
+          title: "Эксперты не найдены автоматически",
+          description: "По вашему заказу не удалось подобрать экспертов. Администратор займётся подбором вручную.",
+          payload: { round: nextRound },
+        });
+      } catch { /* non-fatal */ }
+    }
+
     return { matched: 0, round: nextRound, experts: [] };
   }
 
@@ -268,6 +286,25 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
     actor_id: null,
     note: `Автоподбор раунд ${nextRound}: ${selected.length} эксперт(ов) предложено`,
   });
+
+  // Notify customer that experts have been found
+  if (input.customerId) {
+    const n = selected.length;
+    const suffix = n === 1 ? "а" : n < 5 ? "а" : "ов";
+    try {
+      await createActionItem({
+        request_id: requestId,
+        expert_id: null,
+        customer_id: input.customerId,
+        assigned_to_user_id: input.customerId,
+        assigned_role: "customer",
+        action_type: "experts_matched",
+        title: `Подобраны эксперты для вашего заказа`,
+        description: `Система подобрала ${n} эксперт${suffix}. Ознакомьтесь с профилями и выберите подходящего специалиста.`,
+        payload: { matched_count: n, round: nextRound },
+      });
+    } catch { /* non-fatal */ }
+  }
 
   return { matched: selected.length, round: nextRound, experts: selected };
 }

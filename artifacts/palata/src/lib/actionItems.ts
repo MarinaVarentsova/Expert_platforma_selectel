@@ -7,8 +7,10 @@ export type ActionType =
   | "expert_declined"
   | "expert_can_start_from"
   | "expert_completed_order"
+  | "expert_started_work"
   | "customer_selected_you"
-  | "customer_approved_start_date";
+  | "customer_approved_start_date"
+  | "manual_matching_required";
 
 export type ActionItem = {
   id: string;

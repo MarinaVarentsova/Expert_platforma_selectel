@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrentUser } from "@/lib/authContext";
 import { runMatching } from "@/lib/matching";
 import { notify, type NotifyItem } from "@/lib/notifyApi";
 
@@ -51,6 +52,17 @@ type Match = {
   responded_at: string | null;
 };
 
+type ContactRecord = {
+  id: string;
+  request_id: string;
+  expert_id: string;
+  revealed_at: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
+  expert_phone: string | null;
+  expert_email: string | null;
+};
+
 type ExpertProfile = {
   user_id: string;
   specializations: string[];
@@ -66,17 +78,6 @@ type ExpertProfile = {
   completed_orders_count: number;
 };
 
-type ContactRecord = {
-  id: string;
-  request_id: string;
-  expert_id: string;
-  revealed_at: string | null;
-  customer_phone: string | null;
-  customer_email: string | null;
-  expert_phone: string | null;
-  expert_email: string | null;
-};
-
 type StatusEvent = {
   id: string;
   entity_type: string;
@@ -84,6 +85,37 @@ type StatusEvent = {
   new_status: string;
   actor_id: string | null;
   note: string | null;
+  created_at: string;
+};
+
+type EmailEvent = {
+  id: string;
+  recipient_id: string | null;
+  email_address: string;
+  template_name: string;
+  subject: string | null;
+  context: Record<string, unknown> | null;
+  sent_at: string;
+  error: string | null;
+};
+
+type ExpertRating = {
+  id: string;
+  request_id: string;
+  expert_id: string;
+  customer_id: string;
+  score: number;
+  comment: string | null;
+  created_at: string;
+};
+
+type CustomerRating = {
+  id: string;
+  request_id: string;
+  customer_id: string;
+  expert_id: string;
+  score: number;
+  comment: string | null;
   created_at: string;
 };
 
@@ -100,6 +132,9 @@ type LoadedData = {
   contacts: ContactRecord[];
   expertProfiles: ExpertProfile[];
   events: StatusEvent[];
+  emailEvents: EmailEvent[];
+  expertRatings: ExpertRating[];
+  customerRatings: CustomerRating[];
   usersMap: Record<string, User>;
 };
 
@@ -109,7 +144,6 @@ type PageState =
   | { kind: "error"; message: string }
   | { kind: "not_found" };
 
-// Per-match inline action state
 type MatchUIState =
   | { kind: "idle" }
   | { kind: "date_picker"; date: string }
@@ -117,14 +151,18 @@ type MatchUIState =
   | { kind: "submitting" }
   | { kind: "error"; message: string };
 
-// Customer panel state
 type CustUIState =
   | { kind: "idle" }
   | { kind: "open_contacts"; selectedMatchId: string }
   | { kind: "submitting" }
   | { kind: "error"; message: string };
 
-// ─── Labels & colors ──────────────────────────────────────────────────────────
+type RatingUIState =
+  | { kind: "idle"; score: number; comment: string }
+  | { kind: "submitting" }
+  | { kind: "done" };
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
   new:              { label: "Новый",           cls: "bg-slate-100 text-slate-600" },
@@ -164,10 +202,20 @@ const DECLINE_REASONS: { value: string; label: string }[] = [
   { value: "other",         label: "Другое" },
 ];
 
-// Matches eligible for customer contact-opening
+const ALL_ORDER_STATUSES = [
+  { value: "new",              label: "Новый" },
+  { value: "pending",          label: "Ожидает" },
+  { value: "matching",         label: "Идёт подбор" },
+  { value: "expert_selection", label: "Выбор эксперта" },
+  { value: "in_work",          label: "В работе" },
+  { value: "completed",        label: "Выполнен" },
+  { value: "cancelled",        label: "Неактуален" },
+  { value: "failed",           label: "Ошибка подбора" },
+];
+
 const ACTIVE_MATCH_STATUSES = new Set(["proposed", "can_start_from", "contacts_opened", "accepted", "accepted_work"]);
-// Matches where expert can still act
 const EXPERT_CAN_ACT = new Set(["proposed", "can_start_from", "contacts_opened", "accepted", "accepted_work"]);
+const CONTACTS_REVEALED = new Set(["contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -201,6 +249,9 @@ function filePublicUrl(bucketPath: string): string {
 function userName(u: User | undefined) {
   return u?.full_name ?? u?.email ?? null;
 }
+function starRating(score: number) {
+  return "★".repeat(score) + "☆".repeat(5 - score);
+}
 
 async function logEvent(
   entityType: string, entityId: string,
@@ -231,7 +282,7 @@ export default function RequestDetail() {
     setState({ kind: "loading" });
 
     async function load() {
-      const [reqRes, filesRes, matchesRes, eventsRes, contactsRes] = await Promise.all([
+      const [reqRes, filesRes, matchesRes, eventsRes, contactsRes, emailEventsRes] = await Promise.all([
         supabase.from("palata_requests").select("*").eq("id", id!).single(),
         supabase.from("palata_request_files")
           .select("id, file_name, mime_type, size_bytes, bucket_path, created_at")
@@ -245,6 +296,11 @@ export default function RequestDetail() {
         supabase.from("palata_request_contacts")
           .select("id, request_id, expert_id, revealed_at, customer_phone, customer_email, expert_phone, expert_email")
           .eq("request_id", id!),
+        supabase.from("palata_email_events")
+          .select("id, recipient_id, email_address, template_name, subject, context, sent_at, error")
+          .contains("context", { request_id: id! })
+          .order("sent_at", { ascending: false })
+          .limit(50),
       ]);
 
       if (!reqRes.data || reqRes.error) {
@@ -258,6 +314,8 @@ export default function RequestDetail() {
       const matches = (matchesRes.data as Match[]) ?? [];
       const events = (eventsRes.data as StatusEvent[]) ?? [];
       const files = (filesRes.data as RequestFile[]) ?? [];
+      const contacts = (contactsRes.data as ContactRecord[]) ?? [];
+      const emailEvents = (emailEventsRes.data as EmailEvent[]) ?? [];
 
       const expertIds = [...new Set(matches.map(m => m.expert_id))];
       const actorIds = events.map(e => e.actor_id).filter(Boolean) as string[];
@@ -265,7 +323,7 @@ export default function RequestDetail() {
         [request.customer_id, ...expertIds, ...actorIds].filter((id): id is string => id != null)
       )];
 
-      const [profilesRes, usersRes] = await Promise.all([
+      const [profilesRes, usersRes, expRatRes, custRatRes] = await Promise.all([
         expertIds.length > 0
           ? supabase.from("palata_expert_profiles")
               .select("user_id, specializations, regions, experience_years, bio, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count")
@@ -274,14 +332,20 @@ export default function RequestDetail() {
         userIds.length > 0
           ? supabase.from("palata_users").select("id, full_name, email").in("id", userIds)
           : Promise.resolve({ data: [] as User[], error: null }),
+        supabase.from("palata_expert_ratings").select("*").eq("request_id", id!),
+        supabase.from("palata_customer_ratings").select("*").eq("request_id", id!),
       ]);
 
       const expertProfiles = (profilesRes.data as ExpertProfile[]) ?? [];
       const users = (usersRes.data as User[]) ?? [];
       const usersMap = Object.fromEntries(users.map(u => [u.id, u]));
-      const contacts = (contactsRes.data as ContactRecord[]) ?? [];
+      const expertRatings = (expRatRes.data as ExpertRating[]) ?? [];
+      const customerRatings = (custRatRes.data as CustomerRating[]) ?? [];
 
-      setState({ kind: "ok", data: { request, files, matches, contacts, expertProfiles, events, usersMap } });
+      setState({ kind: "ok", data: {
+        request, files, matches, contacts, expertProfiles,
+        events, emailEvents, expertRatings, customerRatings, usersMap,
+      }});
     }
 
     load();
@@ -313,24 +377,46 @@ export default function RequestDetail() {
 // ─── Detail ───────────────────────────────────────────────────────────────────
 
 function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) {
-  const { request: r, files, matches, contacts, expertProfiles, events, usersMap } = data;
+  const currentUser = useCurrentUser();
+  const role = currentUser?.role ?? null;
+  const userId = currentUser?.id ?? null;
+
+  const { request: r, files, matches, contacts, expertProfiles,
+          events, emailEvents, expertRatings, customerRatings, usersMap } = data;
+
   const contactsMap = Object.fromEntries(contacts.map(c => [c.expert_id, c]));
   const profileMap = Object.fromEntries(expertProfiles.map(p => [p.user_id, p]));
   const customer = r.customer_id ? usersMap[r.customer_id] : undefined;
   const orderStatus = ORDER_STATUS[r.status];
+  const isOrderActive = !["completed", "cancelled", "failed"].includes(r.status);
 
-  // ── Notification helpers ───────────────────────────────────────────────────
+  // Expert's own matches for this request
+  const myMatches = userId ? matches.filter(m => m.expert_id === userId) : [];
+  const myContact = userId ? contactsMap[userId] : undefined;
+  const myActiveMatch = myMatches.find(m => EXPERT_CAN_ACT.has(m.status));
+  const myCompletedMatch = myMatches.find(m => m.status === "completed");
+
+  // Rating checks
+  const hasRatedExpert = userId
+    ? expertRatings.some(er => er.customer_id === userId)
+    : false;
+  const hasRatedCustomer = userId
+    ? customerRatings.some(cr => cr.expert_id === userId)
+    : false;
+  const assignedExpertId = r.assigned_expert_id;
+
+  // Notification helpers
   const customerEmail = r.customer_email || customer?.email || "";
   const requestShortId = shortId(r.id);
 
   function mkNotify(override: Partial<NotifyItem> & Pick<NotifyItem, "type" | "recipientEmail" | "recipientType">): NotifyItem {
     return {
-      requestId:      r.id,
+      requestId:     r.id,
       requestShortId,
-      requestTitle:   r.title,
-      expertiseType:  r.expertise_type,
-      region:         r.region,
-      currentStatus:  r.status,
+      requestTitle:  r.title,
+      expertiseType: r.expertise_type,
+      region:        r.region,
+      currentStatus: r.status,
       ...override,
     };
   }
@@ -343,44 +429,31 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setMatchingRunning(true);
     try {
       await runMatching({
-        requestId: r.id,
-        expertiseType: r.expertise_type,
-        region: r.region,
-        requiresTravel: r.requires_travel ?? false,
+        requestId: r.id, expertiseType: r.expertise_type,
+        region: r.region, requiresTravel: r.requires_travel ?? false,
       });
-    } catch (e) {
-      console.error("Rematch error:", e);
-    } finally {
-      setMatchingRunning(false);
-      onReload();
-    }
+    } catch (e) { console.error("Rematch error:", e); }
+    finally { setMatchingRunning(false); onReload(); }
   }
 
-  async function handleOpenContacts() {
-    const { selectedMatchId } = custUI as { selectedMatchId: string };
-    const match = matches.find(m => m.id === selectedMatchId);
+  async function handleOpenContacts(matchId?: string) {
+    const targetMatchId = matchId ?? (custUI as { selectedMatchId?: string }).selectedMatchId;
+    const match = matches.find(m => m.id === targetMatchId);
     if (!match) return;
     setCustUI({ kind: "submitting" });
     try {
-      // 1. Check if contact record exists, create if not
       const { data: existing } = await supabase
-        .from("palata_request_contacts")
-        .select("id")
-        .eq("request_id", r.id)
-        .eq("expert_id", match.expert_id)
-        .maybeSingle();
+        .from("palata_request_contacts").select("id")
+        .eq("request_id", r.id).eq("expert_id", match.expert_id).maybeSingle();
       if (!existing) {
-        const { error: ce } = await supabase.from("palata_request_contacts").insert({
-          request_id: r.id, expert_id: match.expert_id,
-        });
+        const { error: ce } = await supabase.from("palata_request_contacts")
+          .insert({ request_id: r.id, expert_id: match.expert_id });
         if (ce) throw ce;
       }
-      // 2. Update match status
       const { error: me } = await supabase.from("palata_request_matches")
         .update({ status: "contacts_opened", responded_at: new Date().toISOString() })
         .eq("id", match.id);
       if (me) throw me;
-      // 3. Update order status if needed
       if (r.status !== "expert_selection" && r.status !== "in_work") {
         const { error: re } = await supabase.from("palata_requests")
           .update({ status: "expert_selection" }).eq("id", r.id);
@@ -389,17 +462,13 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       } else {
         await logEvent("match", match.id, match.status, "contacts_opened", "Открыты контакты");
       }
-      // Notify customer + expert about contacts opened
-      const match2 = matches.find(m => m.id === (custUI as { selectedMatchId: string }).selectedMatchId);
-      if (match2) {
-        const expertUser = usersMap[match2.expert_id];
-        const expertName = expertUser?.full_name ?? undefined;
-        const expertEmail = expertUser?.email;
-        const payloads = [];
-        if (customerEmail) payloads.push(mkNotify({ type: "contacts_opened_customer", recipientEmail: customerEmail, recipientType: "customer", expertId: match2.expert_id, expertName }));
-        if (expertEmail)   payloads.push(mkNotify({ type: "contacts_opened_expert",   recipientEmail: expertEmail,   recipientType: "expert",   expertId: match2.expert_id, expertName, recipientName: expertName }));
-        if (payloads.length) notify(payloads);
-      }
+      const expertUser = usersMap[match.expert_id];
+      const expertEmail = expertUser?.email;
+      const expertName = expertUser?.full_name ?? undefined;
+      const payloads: NotifyItem[] = [];
+      if (customerEmail) payloads.push(mkNotify({ type: "contacts_opened_customer", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName }));
+      if (expertEmail) payloads.push(mkNotify({ type: "contacts_opened_expert", recipientEmail: expertEmail, recipientType: "expert", expertId: match.expert_id, expertName, recipientName: expertName }));
+      if (payloads.length) notify(payloads);
       setCustUI({ kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -414,15 +483,14 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .update({ status: newStatus }).eq("id", r.id);
       if (error) throw error;
       await logEvent("request", r.id, r.status, newStatus);
-      // Notify customer (and expert if assigned)
       const emailType = newStatus === "completed" ? "request_completed" : "request_cancelled";
-      const notifyPayloads = [];
-      if (customerEmail) notifyPayloads.push(mkNotify({ type: emailType, recipientEmail: customerEmail, recipientType: "customer", currentStatus: newStatus }));
-      if (r.assigned_expert_id) {
-        const assignedExpert = usersMap[r.assigned_expert_id];
-        if (assignedExpert?.email) notifyPayloads.push(mkNotify({ type: emailType, recipientEmail: assignedExpert.email, recipientType: "expert", expertId: r.assigned_expert_id, expertName: assignedExpert.full_name ?? undefined, currentStatus: newStatus }));
+      const payloads: NotifyItem[] = [];
+      if (customerEmail) payloads.push(mkNotify({ type: emailType, recipientEmail: customerEmail, recipientType: "customer", currentStatus: newStatus }));
+      if (assignedExpertId) {
+        const ae = usersMap[assignedExpertId];
+        if (ae?.email) payloads.push(mkNotify({ type: emailType, recipientEmail: ae.email, recipientType: "expert", expertId: assignedExpertId, expertName: ae.full_name ?? undefined, currentStatus: newStatus }));
       }
-      if (notifyPayloads.length) notify(notifyPayloads);
+      if (payloads.length) notify(payloads);
       setCustUI({ kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -430,9 +498,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     }
   }
 
-  // ── Per-match action state ─────────────────────────────────────────────────
+  // ── Per-match expert action state ──────────────────────────────────────────
   const [matchUI, setMatchUI] = useState<Record<string, MatchUIState>>({});
-
   function getMS(id: string): MatchUIState { return matchUI[id] ?? { kind: "idle" }; }
   function setMS(id: string, s: MatchUIState) { setMatchUI(p => ({ ...p, [id]: s })); }
 
@@ -444,7 +511,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .eq("id", match.id);
       if (error) throw error;
       await logEvent("match", match.id, match.status, "can_start_from", `Может взять с ${fmtDate(date)}`);
-      // Notify customer that expert confirmed readiness
       if (customerEmail) {
         const expertUser = usersMap[match.expert_id];
         notify(mkNotify({ type: "expert_can_take", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: expertUser?.full_name ?? undefined, canStartFrom: fmtDate(date) }));
@@ -457,7 +523,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   }
 
   async function handleDecline(match: Match, reason: string, note: string) {
-    if (!reason) { setMS(match.id, { kind: "decline_form", reason: "", note, }); return; }
+    if (!reason) { setMS(match.id, { kind: "decline_form", reason: "", note }); return; }
     setMS(match.id, { kind: "submitting" });
     try {
       const { error } = await supabase.from("palata_request_matches")
@@ -475,37 +541,30 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleTakeWork(match: Match) {
     setMS(match.id, { kind: "submitting" });
     try {
-      // Update this match to accepted_work
       const { error: me } = await supabase.from("palata_request_matches")
         .update({ status: "accepted_work", responded_at: new Date().toISOString() })
         .eq("id", match.id);
       if (me) throw me;
-      // Close other matches for this request
       const otherIds = matches
         .filter(m => m.id !== match.id && ACTIVE_MATCH_STATUSES.has(m.status))
         .map(m => m.id);
       if (otherIds.length > 0) {
         await supabase.from("palata_request_matches")
-          .update({ status: "closed_by_other_expert" })
-          .in("id", otherIds);
+          .update({ status: "closed_by_other_expert" }).in("id", otherIds);
       }
-      // Update order status
       const { error: re } = await supabase.from("palata_requests")
         .update({ status: "in_work", assigned_expert_id: match.expert_id }).eq("id", r.id);
       if (re) throw re;
       await logEvent("request", r.id, r.status, "in_work", "Эксперт взял в работу");
-      // Notify customer that work has started; notify other experts their match is closed
       const takenExpert = usersMap[match.expert_id];
-      const inWorkPayloads: NotifyItem[] = [];
-      if (customerEmail) inWorkPayloads.push(mkNotify({ type: "request_in_progress", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: takenExpert?.full_name ?? undefined, currentStatus: "in_work" }));
-      // Notify other active experts that order was taken
+      const payloads: NotifyItem[] = [];
+      if (customerEmail) payloads.push(mkNotify({ type: "request_in_progress", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: takenExpert?.full_name ?? undefined, currentStatus: "in_work" }));
       for (const m of matches) {
-        if (m.id === match.id) continue;
-        if (!ACTIVE_MATCH_STATUSES.has(m.status)) continue;
-        const otherExpert = usersMap[m.expert_id];
-        if (otherExpert?.email) inWorkPayloads.push(mkNotify({ type: "taken_by_other", recipientEmail: otherExpert.email, recipientType: "expert", expertId: m.expert_id, expertName: otherExpert.full_name ?? undefined }));
+        if (m.id === match.id || !ACTIVE_MATCH_STATUSES.has(m.status)) continue;
+        const oe = usersMap[m.expert_id];
+        if (oe?.email) payloads.push(mkNotify({ type: "taken_by_other", recipientEmail: oe.email, recipientType: "expert", expertId: m.expert_id, expertName: oe.full_name ?? undefined }));
       }
-      if (inWorkPayloads.length) notify(inWorkPayloads);
+      if (payloads.length) notify(payloads);
       setMS(match.id, { kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -517,19 +576,17 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setMS(match.id, { kind: "submitting" });
     try {
       const { error: me } = await supabase.from("palata_request_matches")
-        .update({ status: "completed", responded_at: new Date().toISOString() })
-        .eq("id", match.id);
+        .update({ status: "completed", responded_at: new Date().toISOString() }).eq("id", match.id);
       if (me) throw me;
       const { error: re } = await supabase.from("palata_requests")
         .update({ status: "completed" }).eq("id", r.id);
       if (re) throw re;
       await logEvent("request", r.id, r.status, "completed", "Работа завершена экспертом");
-      // Notify customer and expert about completion
       const completedExpert = usersMap[match.expert_id];
-      const completedPayloads: NotifyItem[] = [];
-      if (customerEmail) completedPayloads.push(mkNotify({ type: "request_completed", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: completedExpert?.full_name ?? undefined, currentStatus: "completed" }));
-      if (completedExpert?.email) completedPayloads.push(mkNotify({ type: "request_completed", recipientEmail: completedExpert.email, recipientType: "expert", expertId: match.expert_id, expertName: completedExpert.full_name ?? undefined, currentStatus: "completed" }));
-      if (completedPayloads.length) notify(completedPayloads);
+      const payloads: NotifyItem[] = [];
+      if (customerEmail) payloads.push(mkNotify({ type: "request_completed", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: completedExpert?.full_name ?? undefined, currentStatus: "completed" }));
+      if (completedExpert?.email) payloads.push(mkNotify({ type: "request_completed", recipientEmail: completedExpert.email, recipientType: "expert", expertId: match.expert_id, expertName: completedExpert.full_name ?? undefined, currentStatus: "completed" }));
+      if (payloads.length) notify(payloads);
       setMS(match.id, { kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -537,14 +594,109 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     }
   }
 
-  // ── Selectable matches for customer "open contacts" ──
+  // ── Admin action state ─────────────────────────────────────────────────────
+  const [adminStatus, setAdminStatus] = useState(r.status);
+  const [adminComment, setAdminComment] = useState("");
+  const [adminAssignMatchId, setAdminAssignMatchId] = useState(
+    matches.find(m => m.expert_id === r.assigned_expert_id)?.id ?? ""
+  );
+  const [adminSubmitting, setAdminSubmitting] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
+
+  async function handleAdminStatusChange() {
+    if (adminStatus === r.status) return;
+    setAdminSubmitting(true); setAdminError(null);
+    const { error } = await supabase.from("palata_requests")
+      .update({ status: adminStatus }).eq("id", r.id);
+    if (error) { setAdminError(error.message); setAdminSubmitting(false); return; }
+    await logEvent("request", r.id, r.status, adminStatus, "Статус изменён администратором");
+    setAdminSubmitting(false);
+    onReload();
+  }
+
+  async function handleAdminAssign() {
+    const match = matches.find(m => m.id === adminAssignMatchId);
+    if (!match) return;
+    setAdminSubmitting(true); setAdminError(null);
+    const { error } = await supabase.from("palata_requests")
+      .update({ assigned_expert_id: match.expert_id }).eq("id", r.id);
+    if (error) { setAdminError(error.message); setAdminSubmitting(false); return; }
+    const expertName = userName(usersMap[match.expert_id]) ?? match.expert_id;
+    await logEvent("request", r.id, r.status, r.status, `Назначен эксперт: ${expertName}`);
+    setAdminSubmitting(false);
+    onReload();
+  }
+
+  async function handleAdminReturnToMatching() {
+    setAdminSubmitting(true); setAdminError(null);
+    const newRound = r.matching_round + 1;
+    const { error } = await supabase.from("palata_requests")
+      .update({ status: "matching", matching_round: newRound }).eq("id", r.id);
+    if (error) { setAdminError(error.message); setAdminSubmitting(false); return; }
+    await logEvent("request", r.id, r.status, "matching", `Возвращён в подбор администратором (раунд ${newRound})`);
+    setAdminSubmitting(false);
+    onReload();
+  }
+
+  async function handleAdminComment() {
+    if (!adminComment.trim()) return;
+    setAdminSubmitting(true); setAdminError(null);
+    await logEvent("request", r.id, r.status, r.status, `[Администратор] ${adminComment.trim()}`);
+    setAdminComment("");
+    setAdminSubmitting(false);
+    onReload();
+  }
+
+  async function handleAdminClose() {
+    setAdminSubmitting(true); setAdminError(null);
+    const { error } = await supabase.from("palata_requests")
+      .update({ status: "cancelled" }).eq("id", r.id);
+    if (error) { setAdminError(error.message); setAdminSubmitting(false); return; }
+    await logEvent("request", r.id, r.status, "cancelled", "Закрыт администратором");
+    setAdminSubmitting(false);
+    onReload();
+  }
+
+  // ── Rating state ───────────────────────────────────────────────────────────
+  const [ratingUI, setRatingUI] = useState<RatingUIState>({ kind: "idle", score: 5, comment: "" });
+
+  async function handleRateExpert(expertId: string) {
+    if (ratingUI.kind !== "idle") return;
+    setRatingUI({ kind: "submitting" });
+    const { error } = await supabase.from("palata_expert_ratings").insert({
+      request_id: r.id,
+      expert_id: expertId,
+      customer_id: userId,
+      score: ratingUI.score,
+      comment: ratingUI.comment || null,
+    });
+    if (error) { setRatingUI({ kind: "idle", score: 5, comment: "" }); return; }
+    setRatingUI({ kind: "done" });
+    onReload();
+  }
+
+  async function handleRateCustomer() {
+    if (ratingUI.kind !== "idle" || !r.customer_id) return;
+    setRatingUI({ kind: "submitting" });
+    const { error } = await supabase.from("palata_customer_ratings").insert({
+      request_id: r.id,
+      customer_id: r.customer_id,
+      expert_id: userId,
+      score: ratingUI.score,
+      comment: ratingUI.comment || null,
+    });
+    if (error) { setRatingUI({ kind: "idle", score: 5, comment: "" }); return; }
+    setRatingUI({ kind: "done" });
+    onReload();
+  }
+
+  // ── Derived ────────────────────────────────────────────────────────────────
   const selectableMatches = matches.filter(m => ACTIVE_MATCH_STATUSES.has(m.status));
-  const isOrderActive = !["completed", "cancelled", "failed"].includes(r.status);
 
   return (
     <div className="space-y-6">
 
-      {/* ── 1. Основная информация ───────────────────────────────────────── */}
+      {/* ══ 1. ОСНОВНАЯ ИНФОРМАЦИЯ ══════════════════════════════════════════ */}
       <Card>
         <div className="flex items-start justify-between gap-4 mb-5">
           <div className="flex-1 min-w-0">
@@ -575,15 +727,19 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         )}
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-          <Field label="Заказчик">
-            {customer
-              ? (userName(customer) ?? <span className="font-mono text-xs">{customer.email}</span>)
-              : r.customer_name
-                ? r.customer_name
-                : <span className="text-slate-400 italic">Нет данных</span>}
-          </Field>
-          {r.customer_phone && <Field label="Телефон заказчика">{r.customer_phone}</Field>}
-          {r.customer_email && <Field label="Email заказчика">{r.customer_email}</Field>}
+          {/* Customer contacts — visible to customer and admin, not expert */}
+          {role !== "expert" && (
+            <Field label="Заказчик">
+              {customer
+                ? (userName(customer) ?? <span className="font-mono text-xs">{customer.email}</span>)
+                : r.customer_name
+                  ? r.customer_name
+                  : <span className="text-slate-400 italic">Нет данных</span>}
+            </Field>
+          )}
+          {role !== "expert" && r.customer_phone && <Field label="Телефон заказчика">{r.customer_phone}</Field>}
+          {role !== "expert" && r.customer_email && <Field label="Email заказчика">{r.customer_email}</Field>}
+
           <Field label="Направление экспертизы">{r.expertise_type}</Field>
           <Field label="Регион">{r.region}</Field>
           <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
@@ -601,103 +757,429 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           )}
           {r.deadline && <Field label="Срок">{fmtDate(r.deadline)}</Field>}
           {r.preferred_start && <Field label="Желаемый старт">{fmtDate(r.preferred_start)}</Field>}
+          {role === "admin" && r.assigned_expert_id && (
+            <Field label="Назначен эксперт">
+              {userName(usersMap[r.assigned_expert_id]) ?? r.assigned_expert_id.slice(0, 8)}
+            </Field>
+          )}
         </div>
       </Card>
 
-      {/* ── Действия заказчика ───────────────────────────────────────────── */}
-      <Card>
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-xs font-semibold uppercase tracking-wide text-blue-600">Действия заказчика</span>
-          <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">тестовый режим</span>
-        </div>
-
-        {custUI.kind === "error" && (
-          <div className="mb-3 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
-            {custUI.message}
-            <button className="ml-2 underline" onClick={() => setCustUI({ kind: "idle" })}>Закрыть</button>
+      {/* ══ 2. ДЕЙСТВИЯ ЗАКАЗЧИКА ══════════════════════════════════════════ */}
+      {role === "customer" && (
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-2 h-2 rounded-full bg-blue-400" />
+            <h2 className="text-sm font-semibold text-slate-700">Действия заказчика</h2>
           </div>
-        )}
 
-        <div className="flex flex-wrap gap-2 items-start">
-          {/* Rematch: visible when no experts found or still pending */}
-          {isOrderActive && (r.status === "pending" || r.status === "matching") && custUI.kind === "idle" && (
-            <button
-              className="btn-primary"
-              onClick={handleRematch}
-              disabled={matchingRunning}
-            >
-              {matchingRunning ? "Идёт подбор…" : "Запустить подбор экспертов"}
-            </button>
-          )}
-
-          {/* Open contacts */}
-          {isOrderActive && selectableMatches.length > 0 && custUI.kind === "idle" && (
-            <button
-              className="btn-primary"
-              onClick={() => setCustUI({ kind: "open_contacts", selectedMatchId: selectableMatches[0].id })}
-            >
-              Выбрать эксперта для связи
-            </button>
-          )}
-
-          {/* Expert selector panel */}
-          {custUI.kind === "open_contacts" && (
-            <div className="w-full flex flex-wrap items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <select
-                className="text-sm border border-blue-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={custUI.selectedMatchId}
-                onChange={e => setCustUI({ kind: "open_contacts", selectedMatchId: e.target.value })}
-              >
-                {selectableMatches.map(m => {
-                  const u = usersMap[m.expert_id];
-                  return (
-                    <option key={m.id} value={m.id}>
-                      {userName(u) ?? m.expert_id.slice(0, 8)} — {MATCH_STATUS[m.status]?.label ?? m.status}
-                    </option>
-                  );
-                })}
-              </select>
-              <button className="btn-primary" onClick={handleOpenContacts}>
-                Открыть контакты
-              </button>
-              <button className="btn-ghost" onClick={() => setCustUI({ kind: "idle" })}>
-                Отмена
-              </button>
+          {custUI.kind === "error" && (
+            <div className="mb-3 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+              {custUI.message}
+              <button className="ml-2 underline" onClick={() => setCustUI({ kind: "idle" })}>Закрыть</button>
             </div>
           )}
 
-          {custUI.kind === "submitting" && <Spinner inline />}
+          <div className="flex flex-wrap gap-2 items-start">
+            {isOrderActive && (r.status === "pending" || r.status === "matching") && custUI.kind === "idle" && (
+              <button className="btn-primary" onClick={handleRematch} disabled={matchingRunning}>
+                {matchingRunning ? "Идёт подбор…" : "Запустить подбор экспертов"}
+              </button>
+            )}
 
-          {/* Complete order */}
-          {isOrderActive && custUI.kind === "idle" && (
-            <button
-              className="btn-success"
-              onClick={() => handleOrderStatus("completed")}
-            >
-              Перевести в «Выполнен»
-            </button>
+            {isOrderActive && selectableMatches.length > 0 && custUI.kind === "idle" && (
+              <button
+                className="btn-primary"
+                onClick={() => setCustUI({ kind: "open_contacts", selectedMatchId: selectableMatches[0].id })}
+              >
+                Открыть контакты с экспертом
+              </button>
+            )}
+
+            {custUI.kind === "open_contacts" && (
+              <div className="w-full flex flex-wrap items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <select
+                  className="text-sm border border-blue-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  value={custUI.selectedMatchId}
+                  onChange={e => setCustUI({ kind: "open_contacts", selectedMatchId: e.target.value })}
+                >
+                  {selectableMatches.map(m => {
+                    const u = usersMap[m.expert_id];
+                    return (
+                      <option key={m.id} value={m.id}>
+                        {userName(u) ?? m.expert_id.slice(0, 8)} — {MATCH_STATUS[m.status]?.label ?? m.status}
+                      </option>
+                    );
+                  })}
+                </select>
+                <button className="btn-primary" onClick={() => handleOpenContacts(custUI.selectedMatchId)}>
+                  Подтвердить выбор
+                </button>
+                <button className="btn-ghost" onClick={() => setCustUI({ kind: "idle" })}>Отмена</button>
+              </div>
+            )}
+
+            {custUI.kind === "submitting" && <Spinner inline />}
+
+            {isOrderActive && custUI.kind === "idle" && (
+              <button className="btn-success" onClick={() => handleOrderStatus("completed")}>
+                Перевести в «Выполнен»
+              </button>
+            )}
+            {isOrderActive && custUI.kind === "idle" && (
+              <button className="btn-danger" onClick={() => handleOrderStatus("cancelled")}>
+                Перевести в «Неактуален»
+              </button>
+            )}
+            {!isOrderActive && (
+              <p className="text-xs text-slate-400 italic">Заказ завершён — действия недоступны</p>
+            )}
+            {isOrderActive && selectableMatches.length === 0 && custUI.kind === "idle" && (
+              <p className="text-xs text-slate-400 italic">Нет активных экспертов для связи</p>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* ══ 3. СТАТУС ЭКСПЕРТА ПО ЭТОМУ ЗАКАЗУ ══════════════════════════════ */}
+      {role === "expert" && (
+        <>
+          {myMatches.length === 0 ? (
+            <Card>
+              <p className="text-sm text-slate-400 italic">У вас нет матча по этому заказу</p>
+            </Card>
+          ) : (
+            myMatches.map(m => {
+              const ms = MATCH_STATUS[m.status];
+              const ui = getMS(m.id);
+              const canAct = EXPERT_CAN_ACT.has(m.status);
+              const contactsOpen = CONTACTS_REVEALED.has(m.status) && myContact;
+
+              return (
+                <div key={m.id} className="space-y-4">
+
+                  {/* Expert match status card */}
+                  <Card>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-green-400" />
+                        <h2 className="text-sm font-semibold text-slate-700">Мой статус по заказу</h2>
+                        <span className="text-xs text-slate-400">Раунд {m.matching_round}</span>
+                      </div>
+                      <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${ms?.cls ?? "bg-slate-100 text-slate-500"}`}>
+                        {ms?.label ?? m.status}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-4">
+                      <Field label="Направление">{r.expertise_type}</Field>
+                      <Field label="Регион">{r.region}</Field>
+                      <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
+                      <Field label="Предложено">{fmtDate(m.proposed_at)}</Field>
+                      {m.can_start_from_date && <Field label="Могу взять с">{fmtDate(m.can_start_from_date)}</Field>}
+                      {m.responded_at && <Field label="Ответ дан">{fmtDate(m.responded_at)}</Field>}
+                    </div>
+
+                    {/* Customer contacts — visible only when contacts are opened */}
+                    {contactsOpen && myContact && (
+                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 mb-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-2">
+                          Контакты заказчика
+                        </p>
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+                          {myContact.customer_phone && (
+                            <div>
+                              <p className="text-[10px] text-blue-400 mb-0.5">Телефон</p>
+                              <p className="text-sm font-semibold text-blue-800">{myContact.customer_phone}</p>
+                            </div>
+                          )}
+                          {myContact.customer_email && (
+                            <div>
+                              <p className="text-[10px] text-blue-400 mb-0.5">Email</p>
+                              <p className="text-sm font-semibold text-blue-800">{myContact.customer_email}</p>
+                            </div>
+                          )}
+                        </div>
+                        {myContact.revealed_at && (
+                          <p className="text-[10px] text-blue-300 mt-1.5">Открыты: {fmtDate(myContact.revealed_at)}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Decline reason */}
+                    {m.decline_reason && (
+                      <div className="p-3 bg-red-50 rounded-lg border border-red-100 mb-4 flex items-start gap-2">
+                        <span className="text-red-400 text-xs mt-0.5">✗</span>
+                        <div>
+                          <p className="text-xs font-medium text-red-700">
+                            {DECLINE_REASONS.find(dr => dr.value === m.decline_reason)?.label ?? m.decline_reason}
+                          </p>
+                          {m.decline_note && <p className="text-xs text-red-600 mt-0.5">{m.decline_note}</p>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Expert actions */}
+                    {canAct && (
+                      <div className="border-t border-slate-100 pt-4">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Действия</p>
+
+                        {ui.kind === "error" && (
+                          <div className="mb-2 p-2 rounded bg-red-100 text-xs text-red-600">
+                            {ui.message}
+                            <button className="ml-2 underline" onClick={() => setMS(m.id, { kind: "idle" })}>×</button>
+                          </div>
+                        )}
+                        {ui.kind === "submitting" && <Spinner inline />}
+
+                        {ui.kind === "date_picker" && (
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <span className="text-xs text-slate-600">Дата начала:</span>
+                            <input
+                              type="date"
+                              className="text-sm border border-slate-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                              value={ui.date}
+                              onChange={e => setMS(m.id, { kind: "date_picker", date: e.target.value })}
+                            />
+                            <button
+                              className="btn-success-sm"
+                              disabled={!ui.date}
+                              onClick={() => ui.date && handleCanStart(m, ui.date)}
+                            >
+                              Подтвердить
+                            </button>
+                            <button className="btn-ghost-sm" onClick={() => setMS(m.id, { kind: "idle" })}>Отмена</button>
+                          </div>
+                        )}
+
+                        {ui.kind === "decline_form" && (
+                          <div className="space-y-2 mb-2">
+                            <select
+                              className="w-full text-sm border border-slate-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-red-400"
+                              value={ui.reason}
+                              onChange={e => setMS(m.id, { kind: "decline_form", reason: e.target.value, note: ui.note })}
+                            >
+                              <option value="">— Причина отказа —</option>
+                              {DECLINE_REASONS.map(dr => <option key={dr.value} value={dr.value}>{dr.label}</option>)}
+                            </select>
+                            <input
+                              type="text"
+                              placeholder="Комментарий (необязательно)"
+                              className="w-full text-sm border border-slate-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-400"
+                              value={ui.note}
+                              onChange={e => setMS(m.id, { kind: "decline_form", reason: ui.reason, note: e.target.value })}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                className="btn-danger-sm"
+                                disabled={!ui.reason}
+                                onClick={() => ui.reason && handleDecline(m, ui.reason, ui.note)}
+                              >
+                                Подтвердить отказ
+                              </button>
+                              <button className="btn-ghost-sm" onClick={() => setMS(m.id, { kind: "idle" })}>Отмена</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {(ui.kind === "idle" || ui.kind === "error") && (
+                          <div className="flex flex-wrap gap-2">
+                            {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                              <button
+                                className="btn-teal-sm"
+                                onClick={() => setMS(m.id, { kind: "date_picker", date: "" })}
+                              >
+                                Могу взять с даты
+                              </button>
+                            )}
+                            {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                              <button
+                                className="btn-ghost-sm border-red-200 text-red-600 hover:bg-red-50"
+                                onClick={() => setMS(m.id, { kind: "decline_form", reason: "", note: "" })}
+                              >
+                                Не могу взять
+                              </button>
+                            )}
+                            {["can_start_from", "contacts_opened", "accepted"].includes(m.status) && r.status !== "in_work" && (
+                              <button className="btn-primary-sm" onClick={() => handleTakeWork(m)}>
+                                Взял в работу
+                              </button>
+                            )}
+                            {["accepted_work", "accepted"].includes(m.status) && (
+                              <button className="btn-success-sm" onClick={() => handleCompleteWork(m)}>
+                                Завершено
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Card>
+                </div>
+              );
+            })
           )}
 
-          {/* Cancel order */}
-          {isOrderActive && custUI.kind === "idle" && (
-            <button
-              className="btn-danger"
-              onClick={() => handleOrderStatus("cancelled")}
-            >
-              Перевести в «Неактуален»
-            </button>
+          {/* Rate customer — after expert's match is completed */}
+          {myCompletedMatch && !hasRatedCustomer && (
+            <Card>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                <h2 className="text-sm font-semibold text-slate-700">Оценить заказчика</h2>
+              </div>
+              {ratingUI.kind === "done" ? (
+                <p className="text-sm text-emerald-600 font-medium">Оценка сохранена. Спасибо!</p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <button
+                        key={s}
+                        onClick={() => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, score: s })}
+                        className={`text-2xl transition-colors ${ratingUI.kind === "idle" && ratingUI.score >= s ? "text-amber-400" : "text-slate-200"}`}
+                      >★</button>
+                    ))}
+                    <span className="ml-2 text-sm text-slate-500 self-center">
+                      {ratingUI.kind === "idle" ? `${ratingUI.score} / 5` : ""}
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Комментарий (необязательно)"
+                    className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    value={ratingUI.kind === "idle" ? ratingUI.comment : ""}
+                    onChange={e => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, comment: e.target.value })}
+                  />
+                  <button
+                    className="btn-primary"
+                    onClick={handleRateCustomer}
+                    disabled={ratingUI.kind === "submitting"}
+                  >
+                    {ratingUI.kind === "submitting" ? "Сохранение…" : "Отправить оценку"}
+                  </button>
+                </div>
+              )}
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* ══ 4. АДМИНИСТРАТИВНЫЕ ДЕЙСТВИЯ ═════════════════════════════════════ */}
+      {role === "admin" && (
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-2 h-2 rounded-full bg-purple-400" />
+            <h2 className="text-sm font-semibold text-slate-700">Административные действия</h2>
+          </div>
+
+          {adminError && (
+            <div className="mb-3 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+              {adminError}
+              <button className="ml-2 underline" onClick={() => setAdminError(null)}>Закрыть</button>
+            </div>
           )}
 
-          {!isOrderActive && (
-            <p className="text-xs text-slate-400 italic">Заказ завершён — действия недоступны</p>
-          )}
-          {isOrderActive && selectableMatches.length === 0 && custUI.kind === "idle" && (
-            <p className="text-xs text-slate-400 italic">Нет активных экспертов для выбора</p>
-          )}
-        </div>
-      </Card>
+          <div className="space-y-4">
+            {/* Status change */}
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-xs text-slate-500 shrink-0 w-28">Изменить статус:</label>
+              <select
+                className="text-sm border border-slate-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                value={adminStatus}
+                onChange={e => setAdminStatus(e.target.value)}
+              >
+                {ALL_ORDER_STATUSES.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+              <button
+                className="btn-primary-sm"
+                disabled={adminSubmitting || adminStatus === r.status}
+                onClick={handleAdminStatusChange}
+              >
+                Применить
+              </button>
+            </div>
 
-      {/* ── 2. Документы ─────────────────────────────────────────────────── */}
+            {/* Assign expert from matches */}
+            {matches.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs text-slate-500 shrink-0 w-28">Назначить эксперта:</label>
+                <select
+                  className="text-sm border border-slate-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  value={adminAssignMatchId}
+                  onChange={e => setAdminAssignMatchId(e.target.value)}
+                >
+                  <option value="">— Выберите из матчей —</option>
+                  {matches.map(m => {
+                    const u = usersMap[m.expert_id];
+                    return (
+                      <option key={m.id} value={m.id}>
+                        {userName(u) ?? m.expert_id.slice(0, 8)} ({MATCH_STATUS[m.status]?.label ?? m.status})
+                      </option>
+                    );
+                  })}
+                </select>
+                <button
+                  className="btn-primary-sm"
+                  disabled={adminSubmitting || !adminAssignMatchId}
+                  onClick={handleAdminAssign}
+                >
+                  Назначить
+                </button>
+              </div>
+            )}
+
+            {/* Quick actions */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="btn-ghost-sm"
+                disabled={adminSubmitting}
+                onClick={handleAdminReturnToMatching}
+              >
+                ↩ Вернуть в подбор
+              </button>
+              <button
+                className="btn-ghost-sm border-red-200 text-red-600 hover:bg-red-50"
+                disabled={adminSubmitting}
+                onClick={handleAdminClose}
+              >
+                Закрыть заказ
+              </button>
+              {selectableMatches.length > 0 && (
+                <button
+                  className="btn-ghost-sm"
+                  disabled={adminSubmitting}
+                  onClick={() => handleOpenContacts(selectableMatches[0].id)}
+                >
+                  Открыть контакты (1й матч)
+                </button>
+              )}
+            </div>
+
+            {/* Admin comment */}
+            <div className="flex gap-2 items-start border-t border-slate-100 pt-4">
+              <input
+                type="text"
+                placeholder="Добавить комментарий администратора…"
+                className="flex-1 text-sm border border-slate-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                value={adminComment}
+                onChange={e => setAdminComment(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleAdminComment()}
+              />
+              <button
+                className="btn-primary-sm shrink-0"
+                disabled={adminSubmitting || !adminComment.trim()}
+                onClick={handleAdminComment}
+              >
+                Добавить
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* ══ 5. ДОКУМЕНТЫ ════════════════════════════════════════════════════ */}
       <Card title="Документы" count={files.length}>
         {files.length === 0 ? <Empty text="Файлы не загружены" /> : (
           <div className="divide-y divide-slate-50 -mx-6 -mb-6">
@@ -713,8 +1195,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                 {f.bucket_path && (
                   <a
                     href={filePublicUrl(f.bucket_path)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    target="_blank" rel="noopener noreferrer"
                     className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline shrink-0 transition-colors"
                   >
                     Скачать
@@ -726,276 +1207,325 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         )}
       </Card>
 
-      {/* ── 3. Подобранные эксперты ──────────────────────────────────────── */}
-      <Card title="Подобранные эксперты" count={matches.length}>
-        {matches.length === 0 ? <Empty text="Эксперты ещё не подбирались" /> : (
-          <div className="space-y-4">
-            {matches.map(m => {
-              const profile = profileMap[m.expert_id];
-              const user = usersMap[m.expert_id];
-              const ms = MATCH_STATUS[m.status];
-              const ui = getMS(m.id);
-              const canAct = EXPERT_CAN_ACT.has(m.status);
+      {/* ══ 6. ПОДОБРАННЫЕ ЭКСПЕРТЫ (customer + admin) ══════════════════════ */}
+      {(role === "customer" || role === "admin") && (
+        <Card title="Подобранные эксперты" count={matches.length}>
+          {matches.length === 0 ? <Empty text="Эксперты ещё не подбирались" /> : (
+            <div className="space-y-4">
+              {matches.map(m => {
+                const profile = profileMap[m.expert_id];
+                const user = usersMap[m.expert_id];
+                const ms = MATCH_STATUS[m.status];
+                const ui = getMS(m.id);
+                const contact = contactsMap[m.expert_id];
+                const hasContacts = CONTACTS_REVEALED.has(m.status) && contact;
+                // For admin: also show expert actions; for customer: no expert actions
+                const isAdminView = role === "admin";
+                const canAct = isAdminView && EXPERT_CAN_ACT.has(m.status);
 
-              return (
-                <div key={m.id} className="rounded-lg border border-slate-200 overflow-hidden">
-                  {/* Header */}
-                  <div className="px-4 py-3 bg-slate-50 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center shrink-0">
-                        <span className="text-xs font-bold text-slate-500">
-                          {(userName(user) ?? user?.email ?? "?")[0]?.toUpperCase() ?? "?"}
-                        </span>
+                return (
+                  <div key={m.id} className="rounded-lg border border-slate-200 overflow-hidden">
+                    {/* Header */}
+                    <div className="px-4 py-3 bg-slate-50 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center shrink-0">
+                          <span className="text-xs font-bold text-slate-500">
+                            {(userName(user) ?? user?.email ?? "?")[0]?.toUpperCase() ?? "?"}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 truncate">
+                            {userName(user) ?? <span className="font-mono text-xs text-slate-400">{m.expert_id.slice(0, 12)}…</span>}
+                          </p>
+                          <p className="text-xs text-slate-400">Раунд {m.matching_round}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-800 truncate">
-                          {userName(user) ?? <span className="font-mono text-xs text-slate-400">{m.expert_id.slice(0, 12)}…</span>}
-                        </p>
-                        <p className="text-xs text-slate-400">Раунд {m.matching_round}</p>
-                      </div>
+                      <span className={`shrink-0 inline-block rounded px-2 py-0.5 text-xs font-medium ${ms?.cls ?? "bg-slate-100 text-slate-500"}`}>
+                        {ms?.label ?? m.status}
+                      </span>
                     </div>
-                    <span className={`shrink-0 inline-block rounded px-2 py-0.5 text-xs font-medium ${ms?.cls ?? "bg-slate-100 text-slate-500"}`}>
-                      {ms?.label ?? m.status}
-                    </span>
+
+                    {/* Expert profile */}
+                    {profile ? (
+                      <div className="px-4 py-3 space-y-3">
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
+                          {profile.specializations.length > 0 && (
+                            <Field label="Направления экспертиз">{profile.specializations.join(", ")}</Field>
+                          )}
+                          {profile.regions.length > 0 && (
+                            <Field label="Регионы работы">{profile.regions.join(", ")}</Field>
+                          )}
+                          {profile.experience_years != null && (
+                            <Field label="Опыт">{profile.experience_years} лет</Field>
+                          )}
+                          <Field label="Рейтинг">
+                            {profile.avg_customer_rating != null ? (
+                              <>
+                                <span className="text-amber-500">
+                                  {"★".repeat(Math.round(profile.avg_customer_rating))}
+                                  {"☆".repeat(5 - Math.round(profile.avg_customer_rating))}
+                                </span>
+                                <span className="text-slate-400 ml-1 text-xs">{profile.avg_customer_rating} / 5</span>
+                              </>
+                            ) : <span className="text-slate-400 italic">Нет оценок</span>}
+                          </Field>
+                          <Field label="Выполнено заказов">{profile.completed_orders_count}</Field>
+                          <Field label="Командировки">
+                            {profile.business_trip_ready
+                              ? <span className="text-teal-600 font-medium">Готов ✈</span>
+                              : <span className="text-slate-400">Без командировок</span>}
+                          </Field>
+                        </div>
+                        <div className="border-t border-slate-100 pt-3 grid grid-cols-2 gap-x-6 gap-y-2.5">
+                          <RegistryField
+                            label="Палата судебных экспертов РФ"
+                            verified={profile.palata_registry_verified}
+                            number={profile.palata_registry_number}
+                          />
+                          <RegistryField
+                            label="Центр судебных экспертиз"
+                            verified={profile.centrsudexpert_verified}
+                            number={profile.centrsudexpert_registry_number}
+                          />
+                        </div>
+                        {profile.bio && (
+                          <p className="text-xs text-slate-500 leading-relaxed border-t border-slate-100 pt-2">{profile.bio}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="px-4 py-3">
+                        <p className="text-xs text-slate-400 italic">Профиль эксперта не найден</p>
+                      </div>
+                    )}
+
+                    {/* Contacts — role-aware */}
+                    {hasContacts && contact && (
+                      <div className="px-4 py-3 bg-blue-50 border-t border-blue-100">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-2">Контакты открыты</p>
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+                          {/* Customer sees expert contacts */}
+                          {contact.expert_phone && (
+                            <div>
+                              <p className="text-[10px] text-blue-400 mb-0.5">Телефон эксперта</p>
+                              <p className="text-sm font-semibold text-blue-800">{contact.expert_phone}</p>
+                            </div>
+                          )}
+                          {contact.expert_email && (
+                            <div>
+                              <p className="text-[10px] text-blue-400 mb-0.5">Email эксперта</p>
+                              <p className="text-sm font-semibold text-blue-800">{contact.expert_email}</p>
+                            </div>
+                          )}
+                          {/* Admin also sees customer contacts */}
+                          {isAdminView && contact.customer_phone && (
+                            <div>
+                              <p className="text-[10px] text-blue-400 mb-0.5">Телефон заказчика</p>
+                              <p className="text-sm font-semibold text-blue-800">{contact.customer_phone}</p>
+                            </div>
+                          )}
+                          {isAdminView && contact.customer_email && (
+                            <div>
+                              <p className="text-[10px] text-blue-400 mb-0.5">Email заказчика</p>
+                              <p className="text-sm font-semibold text-blue-800">{contact.customer_email}</p>
+                            </div>
+                          )}
+                        </div>
+                        {contact.revealed_at && (
+                          <p className="text-[10px] text-blue-300 mt-2">Открыты: {fmtDate(contact.revealed_at)}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* can_start_from_date */}
+                    {m.can_start_from_date && (
+                      <div className="px-4 py-2 bg-teal-50 border-t border-teal-100 text-xs text-teal-700">
+                        Может взять с: <span className="font-semibold">{fmtDate(m.can_start_from_date)}</span>
+                      </div>
+                    )}
+
+                    {/* Decline reason */}
+                    {m.decline_reason && (
+                      <div className="px-4 py-2.5 bg-red-50 border-t border-red-100 flex items-start gap-2">
+                        <span className="text-red-400 text-xs mt-0.5">✗</span>
+                        <div>
+                          <p className="text-xs font-medium text-red-700">
+                            {DECLINE_REASONS.find(dr => dr.value === m.decline_reason)?.label ?? m.decline_reason}
+                          </p>
+                          {m.decline_note && <p className="text-xs text-red-600 mt-0.5">{m.decline_note}</p>}
+                        </div>
+                        {m.responded_at && (
+                          <p className="ml-auto text-xs text-red-300 shrink-0">{fmtDate(m.responded_at)}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Admin: expert actions (simulate/override) */}
+                    {canAct && isAdminView && (
+                      <div className="px-4 py-3 bg-purple-50 border-t border-purple-100">
+                        <p className="text-xs font-semibold text-purple-600 mb-2 uppercase tracking-wide">
+                          Действия от имени эксперта
+                        </p>
+                        {ui.kind === "error" && (
+                          <div className="mb-2 p-2 rounded bg-red-100 text-xs text-red-600">
+                            {ui.message}
+                            <button className="ml-2 underline" onClick={() => setMS(m.id, { kind: "idle" })}>×</button>
+                          </div>
+                        )}
+                        {ui.kind === "submitting" && <Spinner inline />}
+                        {ui.kind === "date_picker" && (
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <input
+                              type="date"
+                              className="text-sm border border-slate-300 rounded-md px-2 py-1 focus:outline-none"
+                              value={ui.date}
+                              onChange={e => setMS(m.id, { kind: "date_picker", date: e.target.value })}
+                            />
+                            <button className="btn-success-sm" disabled={!ui.date} onClick={() => ui.date && handleCanStart(m, ui.date)}>
+                              Подтвердить
+                            </button>
+                            <button className="btn-ghost-sm" onClick={() => setMS(m.id, { kind: "idle" })}>Отмена</button>
+                          </div>
+                        )}
+                        {ui.kind === "decline_form" && (
+                          <div className="space-y-2 mb-2">
+                            <select
+                              className="w-full text-sm border border-slate-300 rounded-md px-3 py-1.5 bg-white focus:outline-none"
+                              value={ui.reason}
+                              onChange={e => setMS(m.id, { kind: "decline_form", reason: e.target.value, note: ui.note })}
+                            >
+                              <option value="">— Причина —</option>
+                              {DECLINE_REASONS.map(dr => <option key={dr.value} value={dr.value}>{dr.label}</option>)}
+                            </select>
+                            <div className="flex gap-2">
+                              <button className="btn-danger-sm" disabled={!ui.reason} onClick={() => ui.reason && handleDecline(m, ui.reason, ui.note)}>
+                                Отказ
+                              </button>
+                              <button className="btn-ghost-sm" onClick={() => setMS(m.id, { kind: "idle" })}>Отмена</button>
+                            </div>
+                          </div>
+                        )}
+                        {(ui.kind === "idle" || ui.kind === "error") && (
+                          <div className="flex flex-wrap gap-2">
+                            {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                              <button className="btn-teal-sm" onClick={() => setMS(m.id, { kind: "date_picker", date: "" })}>
+                                Может взять с даты
+                              </button>
+                            )}
+                            {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                              <button className="btn-ghost-sm border-red-200 text-red-600 hover:bg-red-50" onClick={() => setMS(m.id, { kind: "decline_form", reason: "", note: "" })}>
+                                Отказ
+                              </button>
+                            )}
+                            {["can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                              <button className="btn-primary-sm" onClick={() => handleTakeWork(m)}>
+                                Взял в работу
+                              </button>
+                            )}
+                            {["accepted_work", "accepted"].includes(m.status) && (
+                              <button className="btn-success-sm" onClick={() => handleCompleteWork(m)}>
+                                Завершено
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
 
-                  {/* Profile fields */}
-                  {profile ? (
-                    <div className="px-4 py-3 space-y-3">
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
-                        {profile.specializations.length > 0 && (
-                          <Field label="Направления экспертиз">{profile.specializations.join(", ")}</Field>
-                        )}
-                        {profile.regions.length > 0 && (
-                          <Field label="Регионы работы">{profile.regions.join(", ")}</Field>
-                        )}
-                        {profile.experience_years != null && (
-                          <Field label="Опыт">{profile.experience_years} лет</Field>
-                        )}
-                        <Field label="Рейтинг">
-                          {profile.avg_customer_rating != null ? (
-                            <>
-                              <span className="text-amber-500">
-                                {"★".repeat(Math.round(profile.avg_customer_rating))}
-                                {"☆".repeat(5 - Math.round(profile.avg_customer_rating))}
-                              </span>
-                              <span className="text-slate-400 ml-1 text-xs">{profile.avg_customer_rating} / 5</span>
-                            </>
-                          ) : <span className="text-slate-400 italic">Нет оценок</span>}
-                        </Field>
-                        <Field label="Выполнено заказов">{profile.completed_orders_count}</Field>
-                        <Field label="Командировки">
-                          {profile.business_trip_ready
-                            ? <span className="text-teal-600 font-medium">Готов ✈</span>
-                            : <span className="text-slate-400">Без командировок</span>}
-                        </Field>
-                      </div>
-                      <div className="border-t border-slate-100 pt-3 grid grid-cols-2 gap-x-6 gap-y-2.5">
-                        <RegistryField
-                          label="Палата судебных экспертов РФ"
-                          verified={profile.palata_registry_verified}
-                          number={profile.palata_registry_number}
-                        />
-                        <RegistryField
-                          label="Центр судебных экспертиз"
-                          verified={profile.centrsudexpert_verified}
-                          number={profile.centrsudexpert_registry_number}
-                        />
-                      </div>
-                      {profile.bio && (
-                        <p className="text-xs text-slate-500 leading-relaxed border-t border-slate-100 pt-2">{profile.bio}</p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="px-4 py-3">
-                      <p className="text-xs text-slate-400 italic">Профиль эксперта не найден</p>
-                    </div>
-                  )}
+      {/* ══ 7. ОЦЕНИТЬ ЭКСПЕРТА (customer) ══════════════════════════════════ */}
+      {role === "customer" && r.status === "completed" && assignedExpertId && !hasRatedExpert && (
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <h2 className="text-sm font-semibold text-slate-700">Оценить эксперта</h2>
+          </div>
+          {ratingUI.kind === "done" ? (
+            <p className="text-sm text-emerald-600 font-medium">Оценка сохранена. Спасибо!</p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500">
+                Оцените работу эксперта{assignedExpertId ? ` ${userName(usersMap[assignedExpertId]) ?? ""}` : ""}:
+              </p>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map(s => (
+                  <button
+                    key={s}
+                    onClick={() => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, score: s })}
+                    className={`text-2xl transition-colors ${ratingUI.kind === "idle" && ratingUI.score >= s ? "text-amber-400" : "text-slate-200"}`}
+                  >★</button>
+                ))}
+                <span className="ml-2 text-sm text-slate-500 self-center">
+                  {ratingUI.kind === "idle" ? `${ratingUI.score} / 5` : ""}
+                </span>
+              </div>
+              <input
+                type="text"
+                placeholder="Комментарий (необязательно)"
+                className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                value={ratingUI.kind === "idle" ? ratingUI.comment : ""}
+                onChange={e => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, comment: e.target.value })}
+              />
+              <button
+                className="btn-primary"
+                onClick={() => handleRateExpert(assignedExpertId)}
+                disabled={ratingUI.kind === "submitting"}
+              >
+                {ratingUI.kind === "submitting" ? "Сохранение…" : "Отправить оценку"}
+              </button>
+            </div>
+          )}
+        </Card>
+      )}
 
-                  {/* Opened contacts */}
-                  {["contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"].includes(m.status) &&
-                    contactsMap[m.expert_id] && (() => {
-                      const c = contactsMap[m.expert_id];
-                      return (
-                        <div className="px-4 py-3 bg-blue-50 border-t border-blue-100">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-2">Контакты открыты</p>
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
-                            {c.customer_phone && (
-                              <div>
-                                <p className="text-[10px] text-blue-400 mb-0.5">Телефон заказчика</p>
-                                <p className="text-sm font-semibold text-blue-800">{c.customer_phone}</p>
-                              </div>
-                            )}
-                            {c.customer_email && (
-                              <div>
-                                <p className="text-[10px] text-blue-400 mb-0.5">Email заказчика</p>
-                                <p className="text-sm font-semibold text-blue-800">{c.customer_email}</p>
-                              </div>
-                            )}
-                            {c.expert_phone && (
-                              <div>
-                                <p className="text-[10px] text-blue-400 mb-0.5">Телефон эксперта</p>
-                                <p className="text-sm font-semibold text-blue-800">{c.expert_phone}</p>
-                              </div>
-                            )}
-                            {c.expert_email && (
-                              <div>
-                                <p className="text-[10px] text-blue-400 mb-0.5">Email эксперта</p>
-                                <p className="text-sm font-semibold text-blue-800">{c.expert_email}</p>
-                              </div>
-                            )}
-                          </div>
-                          {c.revealed_at && (
-                            <p className="text-[10px] text-blue-300 mt-2">Открыты: {fmtDate(c.revealed_at)}</p>
-                          )}
-                        </div>
-                      );
-                    })()
-                  }
-
-                  {/* can_start_from_date */}
-                  {m.can_start_from_date && (
-                    <div className="px-4 py-2 bg-teal-50 border-t border-teal-100 text-xs text-teal-700">
-                      Может взять с: <span className="font-semibold">{fmtDate(m.can_start_from_date)}</span>
-                    </div>
-                  )}
-
-                  {/* Decline reason */}
-                  {m.decline_reason && (
-                    <div className="px-4 py-2.5 bg-red-50 border-t border-red-100 flex items-start gap-2">
-                      <span className="text-red-400 text-xs mt-0.5">✗</span>
-                      <div>
-                        <p className="text-xs font-medium text-red-700">
-                          {DECLINE_REASONS.find(r => r.value === m.decline_reason)?.label ?? m.decline_reason}
-                        </p>
-                        {m.decline_note && <p className="text-xs text-red-600 mt-0.5">{m.decline_note}</p>}
-                      </div>
-                      {m.responded_at && (
-                        <p className="ml-auto text-xs text-red-300 shrink-0">{fmtDate(m.responded_at)}</p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ── Действия эксперта ───────────────────────────────── */}
-                  {canAct && (
-                    <div className="px-4 py-3 bg-green-50 border-t border-green-100">
-                      <p className="text-xs font-semibold text-green-700 mb-2 uppercase tracking-wide">
-                        Действия эксперта <span className="font-normal text-green-500 normal-case">(тестовый режим)</span>
-                      </p>
-
-                      {ui.kind === "error" && (
-                        <div className="mb-2 p-2 rounded bg-red-100 text-xs text-red-600">
-                          {ui.message}
-                          <button className="ml-2 underline" onClick={() => setMS(m.id, { kind: "idle" })}>×</button>
-                        </div>
-                      )}
-                      {ui.kind === "submitting" && <Spinner inline />}
-
-                      {/* date_picker form */}
-                      {ui.kind === "date_picker" && (
-                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                          <span className="text-xs text-slate-600">Дата начала:</span>
-                          <input
-                            type="date"
-                            className="text-sm border border-slate-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-teal-400"
-                            value={ui.date}
-                            onChange={e => setMS(m.id, { kind: "date_picker", date: e.target.value })}
-                          />
-                          <button
-                            className="btn-success-sm"
-                            disabled={!ui.date}
-                            onClick={() => ui.date && handleCanStart(m, ui.date)}
-                          >
-                            Подтвердить
-                          </button>
-                          <button className="btn-ghost-sm" onClick={() => setMS(m.id, { kind: "idle" })}>
-                            Отмена
-                          </button>
-                        </div>
-                      )}
-
-                      {/* decline_form */}
-                      {ui.kind === "decline_form" && (
-                        <div className="space-y-2 mb-2">
-                          <select
-                            className="w-full text-sm border border-slate-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-red-400"
-                            value={ui.reason}
-                            onChange={e => setMS(m.id, { kind: "decline_form", reason: e.target.value, note: ui.note })}
-                          >
-                            <option value="">— Выберите причину —</option>
-                            {DECLINE_REASONS.map(r => (
-                              <option key={r.value} value={r.value}>{r.label}</option>
-                            ))}
-                          </select>
-                          <input
-                            type="text"
-                            placeholder="Комментарий (необязательно)"
-                            className="w-full text-sm border border-slate-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-red-400"
-                            value={ui.note}
-                            onChange={e => setMS(m.id, { kind: "decline_form", reason: ui.reason, note: e.target.value })}
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              className="btn-danger-sm"
-                              disabled={!ui.reason}
-                              onClick={() => ui.reason && handleDecline(m, ui.reason, ui.note)}
-                            >
-                              Подтвердить отказ
-                            </button>
-                            <button className="btn-ghost-sm" onClick={() => setMS(m.id, { kind: "idle" })}>
-                              Отмена
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Action buttons */}
-                      {(ui.kind === "idle" || ui.kind === "error") && (
-                        <div className="flex flex-wrap gap-2">
-                          {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
-                            <button
-                              className="btn-teal-sm"
-                              onClick={() => setMS(m.id, { kind: "date_picker", date: "" })}
-                            >
-                              Могу взять с даты
-                            </button>
-                          )}
-                          {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
-                            <button
-                              className="btn-ghost-sm border-red-200 text-red-600 hover:bg-red-50"
-                              onClick={() => setMS(m.id, { kind: "decline_form", reason: "", note: "" })}
-                            >
-                              Не могу взять
-                            </button>
-                          )}
-                          {["can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
-                            <button
-                              className="btn-primary-sm"
-                              onClick={() => handleTakeWork(m)}
-                            >
-                              Взял в работу
-                            </button>
-                          )}
-                          {["accepted_work", "accepted"].includes(m.status) && (
-                            <button
-                              className="btn-success-sm"
-                              onClick={() => handleCompleteWork(m)}
-                            >
-                              Завершено
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
+      {/* ══ 8. РЕЙТИНГИ (admin) ══════════════════════════════════════════════ */}
+      {role === "admin" && (expertRatings.length > 0 || customerRatings.length > 0) && (
+        <Card title="Оценки по заказу">
+          <div className="space-y-3">
+            {expertRatings.map(er => {
+              const expert = usersMap[er.expert_id];
+              const rater = usersMap[er.customer_id];
+              return (
+                <div key={er.id} className="flex items-start gap-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-500 mb-0.5">
+                      Оценка эксперту <span className="font-semibold text-slate-700">{userName(expert) ?? "—"}</span>
+                      {rater && <span className="text-slate-400"> от {userName(rater)}</span>}
+                    </p>
+                    <p className="text-lg text-amber-500">{starRating(er.score)}</p>
+                    {er.comment && <p className="text-xs text-slate-600 mt-1 italic">"{er.comment}"</p>}
+                  </div>
+                  <p className="text-xs text-slate-400 shrink-0">{fmtDate(er.created_at)}</p>
+                </div>
+              );
+            })}
+            {customerRatings.map(cr => {
+              const expert = usersMap[cr.expert_id];
+              const cust = usersMap[cr.customer_id];
+              return (
+                <div key={cr.id} className="flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-100">
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-500 mb-0.5">
+                      Оценка заказчику <span className="font-semibold text-slate-700">{userName(cust) ?? "—"}</span>
+                      {expert && <span className="text-slate-400"> от {userName(expert)}</span>}
+                    </p>
+                    <p className="text-lg text-green-500">{starRating(cr.score)}</p>
+                    {cr.comment && <p className="text-xs text-slate-600 mt-1 italic">"{cr.comment}"</p>}
+                  </div>
+                  <p className="text-xs text-slate-400 shrink-0">{fmtDate(cr.created_at)}</p>
                 </div>
               );
             })}
           </div>
-        )}
-      </Card>
+        </Card>
+      )}
 
-      {/* ── 4. История событий ───────────────────────────────────────────── */}
+      {/* ══ 9. ИСТОРИЯ СОБЫТИЙ ═══════════════════════════════════════════════ */}
       <Card title="История событий" count={events.length}>
         {events.length === 0 ? <Empty text="Событий пока не зафиксировано" /> : (
           <div className="relative -mx-6 -mb-6">
@@ -1030,6 +1560,37 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           </div>
         )}
       </Card>
+
+      {/* ══ 10. EMAIL-СОБЫТИЯ (admin) ════════════════════════════════════════ */}
+      {role === "admin" && (
+        <Card title="Email-события" count={emailEvents.length}>
+          {emailEvents.length === 0 ? <Empty text="Email-событий не зафиксировано" /> : (
+            <div className="divide-y divide-slate-50 -mx-6 -mb-6">
+              {emailEvents.map(e => (
+                <div key={e.id} className="px-6 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[10px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
+                        {e.template_name}
+                      </span>
+                      {e.error && (
+                        <span className="text-[10px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
+                          Ошибка
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs font-medium text-slate-700 truncate">{e.subject ?? "—"}</p>
+                    <p className="text-xs text-slate-400 truncate">{e.email_address}</p>
+                    {e.error && <p className="text-xs text-red-500 mt-0.5 italic truncate">{e.error}</p>}
+                  </div>
+                  <p className="text-xs text-slate-400 shrink-0">{fmt(e.sent_at)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
     </div>
   );
 }

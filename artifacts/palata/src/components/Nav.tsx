@@ -1,13 +1,29 @@
 import { Link, useLocation } from "wouter";
 import { LogOut, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/authContext";
+import type { PalataRole } from "@/lib/authContext";
 import { useState, useRef, useEffect } from "react";
 
-const LINKS = [
-  { to: "/customer", label: "ЛК заказчика",  exact: false },
-  { to: "/expert",   label: "ЛК эксперта",   exact: false },
-  { to: "/admin",    label: "Панель",         exact: false },
-];
+// ─── Role-specific nav links ──────────────────────────────────────────────────
+
+type NavLink = { to: string; label: string };
+
+const ROLE_LINKS: Record<PalataRole, NavLink[]> = {
+  customer: [
+    { to: "/customer", label: "ЛК заказчика" },
+  ],
+  expert: [
+    { to: "/expert", label: "ЛК эксперта" },
+  ],
+  admin: [
+    { to: "/admin",          label: "Панель" },
+    { to: "/admin/metrics",  label: "Метрики" },
+    { to: "/admin/experts",  label: "Эксперты" },
+    { to: "/admin/settings", label: "Настройки" },
+  ],
+};
+
+// ─── Nav ──────────────────────────────────────────────────────────────────────
 
 export default function Nav() {
   const [location] = useLocation();
@@ -15,11 +31,14 @@ export default function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const isLoggedIn = state.kind === "authenticated";
-  const user = isLoggedIn ? state.user : null;
+  const isLoading       = state.kind === "loading";
+  const isAuthenticated = state.kind === "authenticated";
+  const user            = isAuthenticated ? state.user : null;
 
-  function isActive(to: string, exact = false) {
-    if (exact) return location === to;
+  // Role-specific links — empty during loading to prevent flicker
+  const links: NavLink[] = isAuthenticated ? (ROLE_LINKS[user!.role] ?? []) : [];
+
+  function isActive(to: string) {
     return location === to || location.startsWith(to + "/");
   }
 
@@ -39,20 +58,18 @@ export default function Nav() {
 
         {/* Brand */}
         <Link href="/">
-          <div className="flex items-center gap-2.5 mr-8 cursor-pointer select-none group">
+          <div className="flex items-center gap-2.5 mr-8 cursor-pointer select-none">
             <div className="w-8 h-8 rounded-full bg-[#2e2a27] flex items-center justify-center flex-shrink-0">
               <span className="text-[10px] font-bold text-[#e8891a] tracking-tight">СЭ</span>
             </div>
-            <span className="text-sm font-bold text-[#1c1714] tracking-tight">
-              Палата СЭ
-            </span>
+            <span className="text-sm font-bold text-[#1c1714] tracking-tight">Палата СЭ</span>
           </div>
         </Link>
 
-        {/* Main nav links */}
+        {/* Main nav links — only rendered when role is known */}
         <div className="flex items-center gap-1 flex-1">
-          {LINKS.map(({ to, label, exact }) => {
-            const active = isActive(to, exact);
+          {links.map(({ to, label }) => {
+            const active = isActive(to);
             return (
               <Link key={to} href={to}>
                 <span className={[
@@ -67,11 +84,12 @@ export default function Nav() {
             );
           })}
 
-          {!isLoggedIn && (
+          {/* "Вход" link — only when unauthenticated (not during loading) */}
+          {!isLoading && !isAuthenticated && (
             <Link href="/login">
               <span className={[
                 "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
-                isActive("/login", true)
+                isActive("/login")
                   ? "text-[#1c1714] font-semibold bg-[#2e2a27]/10"
                   : "text-[#78716c] hover:text-[#1c1714] hover:bg-[#2e2a27]/6",
               ].join(" ")}>
@@ -85,7 +103,7 @@ export default function Nav() {
         <div className="flex items-center gap-2">
 
           {/* User menu when logged in */}
-          {isLoggedIn && user && (
+          {isAuthenticated && user && (
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen(v => !v)}
@@ -115,8 +133,8 @@ export default function Nav() {
             </div>
           )}
 
-          {/* Login button when not logged in */}
-          {!isLoggedIn && state.kind !== "loading" && (
+          {/* Login button — only when definitively unauthenticated */}
+          {!isLoading && !isAuthenticated && (
             <Link href="/login">
               <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold bg-[#2e2a27] hover:bg-[#1c1714] text-[#f2ece2] transition-all cursor-pointer shadow-sm">
                 Войти
@@ -130,6 +148,8 @@ export default function Nav() {
   );
 }
 
+// ─── Atoms ────────────────────────────────────────────────────────────────────
+
 function RoleAvatar({ role }: { role: string }) {
   const colors: Record<string, string> = {
     customer: "bg-amber-100 text-amber-800",
@@ -137,9 +157,7 @@ function RoleAvatar({ role }: { role: string }) {
     admin:    "bg-stone-200 text-stone-700",
   };
   const letters: Record<string, string> = {
-    customer: "З",
-    expert:   "Э",
-    admin:    "А",
+    customer: "З", expert: "Э", admin: "А",
   };
   return (
     <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${colors[role] ?? "bg-stone-100 text-stone-500"}`}>
@@ -155,9 +173,7 @@ function RoleBadge({ role }: { role: string }) {
     admin:    "bg-stone-100 text-stone-700 border border-stone-200",
   };
   const labels: Record<string, string> = {
-    customer: "Заказчик",
-    expert:   "Эксперт",
-    admin:    "Администратор",
+    customer: "Заказчик", expert: "Эксперт", admin: "Администратор",
   };
   return (
     <span className={`inline-block mt-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${styles[role] ?? "bg-stone-50 text-stone-500"}`}>

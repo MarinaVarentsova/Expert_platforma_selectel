@@ -170,15 +170,17 @@ function computeMetrics(
   const activeCustomers = activeCustomerIds.size; // guaranteed ≤ totalCustomers
 
   // ── Zone 2: Active experts ────────────────────────────────────────────────────
-  // Active = expert_id appears in a match for an in_work request, with a non-declined match
-  // Two signal sources, unioned:
-  //   (a) match.status = 'accepted_work'
-  //   (b) request.status IN S_WORK + match not declined/withdrawn/closed
+  // Active = expert has any "live" match engagement (not dead, not completed/withdrawn)
+  // Dead match statuses — everything else is considered "active engagement"
+  const DEAD_MATCH = new Set(["declined", "withdrawn", "closed_by_other_expert", "completed"]);
+  // Live match statuses that indicate an expert is actively engaged
+  const ACTIVE_MATCH = new Set(["accepted_work", "accepted", "contacts_opened", "can_start_from"]);
   const inWorkRequestIds = new Set(requests.filter(r => S_WORK.has(r.status)).map(r => r.id));
-  const DEAD_MATCH = new Set(["declined", "withdrawn", "closed_by_other_expert"]);
   const activeExpertIds = new Set<string>();
   for (const m of matches) {
-    if (m.status === "accepted_work") { activeExpertIds.add(m.expert_id); continue; }
+    // Signal (a): explicit active match status
+    if (ACTIVE_MATCH.has(m.status)) { activeExpertIds.add(m.expert_id); continue; }
+    // Signal (b): request is in_work and match is not dead
     if (inWorkRequestIds.has(m.request_id) && !DEAD_MATCH.has(m.status)) {
       activeExpertIds.add(m.expert_id);
     }
@@ -206,9 +208,13 @@ function computeMetrics(
   const inactive = cnt(S_INACTIVE_TRACK);
 
   // ── Zone 4: Distributions ─────────────────────────────────────────────────────
-  function groupCount(arr: string[]): Distribution {
+  // Null/empty values → "Без региона" / "Без направления" so total always matches
+  function groupCount(arr: string[], fallback = "Не указано"): Distribution {
     const map: Record<string, number> = {};
-    for (const k of arr.filter(Boolean)) map[k] = (map[k] ?? 0) + 1;
+    for (const k of arr) {
+      const key = k?.trim() || fallback;
+      map[key] = (map[key] ?? 0) + 1;
+    }
     return Object.entries(map)
       .map(([label, count]) => ({ label: humanLabel(label), count }))
       .sort((a, b) => b.count - a.count);
@@ -249,11 +255,18 @@ function computeMetrics(
     allDeclined: expertDeclined,
     cancelled:   inactive,
 
-    // Zone 4
-    reqByRegion:    groupCount(requests.map(r => r.region)),
-    reqBySpec:      groupCount(requests.map(r => r.expertise_type)),
-    expertByRegion: groupCount(experts.flatMap(e => e.regions ?? [])),
-    expertBySpec:   groupCount(experts.flatMap(e => e.specializations ?? [])),
+    // Zone 4 — each row uses explicit fallback so the sum == total
+    reqByRegion:    groupCount(requests.map(r => r.region), "Без региона"),
+    reqBySpec:      groupCount(requests.map(r => r.expertise_type), "Без направления"),
+    // For experts: experts with empty arrays count as "Не указано" (so sum == totalExperts)
+    expertByRegion: groupCount(
+      experts.flatMap(e => (e.regions?.length ? e.regions : ["Не указано"])),
+      "Не указано"
+    ),
+    expertBySpec: groupCount(
+      experts.flatMap(e => (e.specializations?.length ? e.specializations : ["Не указано"])),
+      "Не указано"
+    ),
   };
 }
 
@@ -669,11 +682,21 @@ function PctBar({ pct, color }: { pct: number; color: string }) {
 function DistTable({ title, rows, total, subtitle }: {
   title: string; rows: Array<{ label: string; count: number }>; total: number; subtitle: string;
 }) {
+  const rowSum = rows.reduce((s, r) => s + r.count, 0);
   return (
     <div className="bg-[#faf8f5] rounded-xl border border-[#e5dfd7] overflow-hidden">
-      <div className="px-4 py-3 border-b border-[#e5dfd7] flex items-baseline justify-between">
-        <p className="text-xs font-semibold text-[#2e2a27]">{title}</p>
-        <p className="text-[10px] text-[#c4bdb4] font-mono">{subtitle}</p>
+      <div className="px-4 py-3 border-b border-[#e5dfd7]">
+        <div className="flex items-baseline justify-between mb-1">
+          <p className="text-xs font-semibold text-[#2e2a27]">{title}</p>
+          <p className="text-[10px] text-[#c4bdb4] font-mono">{subtitle}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-bold text-[#e8891a] tabular-nums">{rowSum.toLocaleString("ru-RU")}</span>
+          <span className="text-[10px] text-[#a8a29e]">итого</span>
+          {rowSum !== total && (
+            <span className="text-[10px] text-red-400 ml-1">≠ {total} total</span>
+          )}
+        </div>
       </div>
       {rows.length === 0 ? (
         <p className="px-4 py-8 text-xs text-[#c4bdb4] text-center italic">Нет данных</p>

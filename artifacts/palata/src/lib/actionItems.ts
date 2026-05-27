@@ -66,13 +66,18 @@ export async function cancelRequestActionItems(requestId: string, exceptId?: str
 }
 
 export async function loadOpenActionItems(userId: string): Promise<ActionItem[]> {
-  const { data } = await supabase
-    .from("palata_action_items")
-    .select("*")
-    .eq("assigned_to_user_id", userId)
-    .eq("is_resolved", false)
-    .order("created_at", { ascending: false });
-  return (data ?? []) as ActionItem[];
+  try {
+    const { data, error } = await supabase
+      .from("palata_action_items")
+      .select("*")
+      .eq("assigned_to_user_id", userId)
+      .eq("is_resolved", false)
+      .order("created_at", { ascending: false });
+    if (error) return [];
+    return (data ?? []) as ActionItem[];
+  } catch {
+    return [];
+  }
 }
 
 // ─── Logging helpers (same TEST_MODE pattern used across the app) ─────────────

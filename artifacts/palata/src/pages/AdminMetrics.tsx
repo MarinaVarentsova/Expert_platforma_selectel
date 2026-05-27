@@ -378,7 +378,7 @@ function MetricsBody({ m }: { m: Metrics }) {
       {/* ══ ZONE 1: Top KPI row ══════════════════════════════════════════════ */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <TopKpi
-          label="Всего заявок"
+          label="Всего заказов"
           value={m.total}
           accent="#e8891a"
           sub="palata_requests · всего"
@@ -387,7 +387,7 @@ function MetricsBody({ m }: { m: Metrics }) {
           label="Выполнено"
           value={m.completed}
           accent="#059669"
-          sub={`status = completed`}
+          sub="status = completed"
         />
         <TopKpi
           label="% выполнения"
@@ -411,15 +411,15 @@ function MetricsBody({ m }: { m: Metrics }) {
         {/* Left: Zones 3 + 4 */}
         <div className="flex-1 min-w-0 space-y-8">
 
-          {/* ── ZONE 3: Заявки ──────────────────────────────────────── */}
-          <Section label="Заявки">
+          {/* ── ZONE 3: Заказы ──────────────────────────────────────── */}
+          <Section label="Заказы">
 
             {/* Track 1 — основная раскладка */}
-            <div className="mb-6">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-3">
+            <div className="mb-8">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-4">
                 Раскладка по статусам
               </p>
-              <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex flex-wrap gap-3 items-center justify-center">
                 <FunnelBox label="Всего" count={m.total} total={m.total} accent="#78716c" first />
                 <Arrow />
                 <FunnelBox label="Новые" count={m.statusNew} total={m.total} accent="#78716c" />
@@ -438,10 +438,10 @@ function MetricsBody({ m }: { m: Metrics }) {
 
             {/* Track 2 — проблемная воронка */}
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-3">
-                Проблемные заявки
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-4">
+                Проблемные заказы
               </p>
-              <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex flex-wrap gap-3 items-center justify-center">
                 <FunnelBox label="Всего" count={m.total} total={m.total} accent="#78716c" first />
                 <Arrow />
                 <FunnelBox label="Не нашли эксперта" count={m.noExpert} total={m.total} accent="#dc2626" />
@@ -553,13 +553,29 @@ function MetricsBody({ m }: { m: Metrics }) {
           <div className="h-px bg-[#e5dfd7] mx-1" />
 
           <RefCard label="Реестр Палаты СЭ" accent="#059669">
-            <p className="text-2xl font-bold text-[#2e2a27] tabular-nums">{m.palataVerified}</p>
-            <p className="text-[10px] text-[#a8a29e]">palata_registry_verified = true</p>
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-2xl font-bold text-[#2e2a27] tabular-nums">{m.palataVerified}</p>
+                <p className="text-[10px] text-[#a8a29e]">из {m.totalExperts} экспертов</p>
+              </div>
+              <p className="text-lg font-bold text-emerald-600 tabular-nums">
+                {m.totalExperts ? Math.round((m.palataVerified / m.totalExperts) * 100) : 0}%
+              </p>
+            </div>
+            <PctBar pct={m.totalExperts ? Math.round((m.palataVerified / m.totalExperts) * 100) : 0} color="bg-emerald-400" />
           </RefCard>
 
           <RefCard label="Центр судэксперт" accent="#059669">
-            <p className="text-2xl font-bold text-[#2e2a27] tabular-nums">{m.centrVerified}</p>
-            <p className="text-[10px] text-[#a8a29e]">centrsudexpert_verified = true</p>
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-2xl font-bold text-[#2e2a27] tabular-nums">{m.centrVerified}</p>
+                <p className="text-[10px] text-[#a8a29e]">из {m.totalExperts} экспертов</p>
+              </div>
+              <p className="text-lg font-bold text-emerald-600 tabular-nums">
+                {m.totalExperts ? Math.round((m.centrVerified / m.totalExperts) * 100) : 0}%
+              </p>
+            </div>
+            <PctBar pct={m.totalExperts ? Math.round((m.centrVerified / m.totalExperts) * 100) : 0} color="bg-emerald-400" />
           </RefCard>
         </div>
       </div>
@@ -602,20 +618,20 @@ function FunnelBox({ label, count, total, accent, first }: {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
     <div
-      className="rounded-xl border p-3 min-w-[88px] text-center transition-shadow hover:shadow-md"
+      className="rounded-2xl border px-5 py-4 min-w-[104px] text-center transition-shadow hover:shadow-md"
       style={{
-        borderColor: first ? "#e5dfd7" : `${accent}44`,
-        background: first ? "#faf8f5" : `${accent}0d`,
+        borderColor: first ? "#e5dfd7" : `${accent}55`,
+        background: first ? "#faf8f5" : `${accent}11`,
       }}
     >
-      <p className="text-[10px] font-medium text-[#a8a29e] leading-tight mb-1.5 max-w-[80px] mx-auto">
+      <p className="text-[11px] font-semibold text-[#a8a29e] leading-tight mb-2 max-w-[90px] mx-auto">
         {label}
       </p>
-      <p className="text-xl font-bold tabular-nums" style={{ color: first ? "#78716c" : accent }}>
+      <p className="text-2xl font-bold tabular-nums" style={{ color: first ? "#78716c" : accent }}>
         {count.toLocaleString("ru-RU")}
       </p>
       {!first && (
-        <p className="text-[10px] font-semibold mt-0.5" style={{ color: accent }}>
+        <p className="text-xs font-bold mt-1" style={{ color: accent }}>
           {pct}%
         </p>
       )}

@@ -215,7 +215,7 @@ const ALL_ORDER_STATUSES = [
 
 const ACTIVE_MATCH_STATUSES = new Set(["proposed", "can_start_from", "contacts_opened", "accepted", "accepted_work"]);
 const EXPERT_CAN_ACT = new Set(["proposed", "can_start_from", "contacts_opened", "accepted", "accepted_work"]);
-const CONTACTS_REVEALED = new Set(["contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"]);
+const CONTACTS_REVEALED = new Set(["proposed", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -468,25 +468,12 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           .insert({ request_id: r.id, expert_id: match.expert_id });
         if (ce) throw ce;
       }
-      const { error: me } = await supabase.from("palata_request_matches")
-        .update({ status: "contacts_opened", responded_at: new Date().toISOString() })
-        .eq("id", match.id);
-      if (me) throw me;
       if (r.status !== "expert_selection" && r.status !== "in_work") {
         const { error: re } = await supabase.from("palata_requests")
           .update({ status: "expert_selection" }).eq("id", r.id);
         if (re) throw re;
-        await logEvent("request", r.id, r.status, "expert_selection", "Открыты контакты с экспертом");
-      } else {
-        await logEvent("match", match.id, match.status, "contacts_opened", "Открыты контакты");
+        await logEvent("request", r.id, r.status, "expert_selection", "Выбран эксперт");
       }
-      const expertUser = usersMap[match.expert_id];
-      const expertEmail = expertUser?.email;
-      const expertName = expertUser?.full_name ?? undefined;
-      const payloads: NotifyItem[] = [];
-      if (customerEmail) payloads.push(mkNotify({ type: "contacts_opened_customer", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName }));
-      if (expertEmail) payloads.push(mkNotify({ type: "contacts_opened_expert", recipientEmail: expertEmail, recipientType: "expert", expertId: match.expert_id, expertName, recipientName: expertName }));
-      if (payloads.length) notify(payloads);
       setCustUI({ kind: "idle" });
       onReload();
     } catch (e: unknown) {

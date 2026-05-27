@@ -120,8 +120,7 @@ const DECLINE_LABEL: Record<string, string> = {
 // ─── Kanban config ─────────────────────────────────────────────────────────────
 
 const COLUMNS = [
-  { id: "proposed",  label: "Новые предложения", accent: "", dotColor: "bg-blue-400",    bgColor: "bg-blue-50/60 border-blue-200",     statuses: ["proposed"] },
-  { id: "contacts",  label: "Контакты открыты",  accent: "", dotColor: "bg-cyan-400",    bgColor: "bg-cyan-50/60 border-cyan-200",     statuses: ["contacts_opened"] },
+  { id: "proposed",  label: "Новые предложения", accent: "", dotColor: "bg-blue-400",    bgColor: "bg-blue-50/60 border-blue-200",     statuses: ["proposed", "contacts_opened"] },
   { id: "cantake",   label: "Могу взять",        accent: "", dotColor: "bg-teal-400",    bgColor: "bg-teal-50/60 border-teal-200",     statuses: ["can_start_from"] },
   { id: "accepted",  label: "В работе",          accent: "", dotColor: "bg-indigo-500",  bgColor: "bg-indigo-50/60 border-indigo-200", statuses: ["accepted", "accepted_work"] },
   { id: "completed", label: "Завершено",         accent: "", dotColor: "bg-emerald-400", bgColor: "bg-emerald-50/60 border-emerald-200", statuses: ["completed"] },

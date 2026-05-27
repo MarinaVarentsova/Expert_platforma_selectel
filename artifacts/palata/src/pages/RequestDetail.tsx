@@ -1042,9 +1042,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                                 Не могу взять
                               </button>
                             )}
-                            {["can_start_from", "contacts_opened", "accepted"].includes(m.status) && r.status !== "in_work" && (
+                            {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && r.status !== "in_work" && (
                               <button className="btn-primary-sm" onClick={() => handleTakeWork(m)}>
-                                Взял в работу
+                                Взять в работу
                               </button>
                             )}
                             {["accepted_work", "accepted"].includes(m.status) && (

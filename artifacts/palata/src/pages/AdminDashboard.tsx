@@ -38,7 +38,7 @@ const COLUMNS = [
     dotColor: "bg-amber-400",
     bgColor: "bg-amber-50/60 border-amber-200",
     accent: "",
-    statuses: ["pending"],
+    statuses: ["pending", "matching"],
   },
   {
     id: "matching",
@@ -62,7 +62,7 @@ const COLUMNS = [
     dotColor: "bg-red-400",
     bgColor: "bg-red-50/60 border-red-200",
     accent: "",
-    statuses: ["failed", "matching"],
+    statuses: ["failed"],
   },
   {
     id: "done",
@@ -141,7 +141,7 @@ export default function AdminDashboard() {
           />
           <KpiCard
             label="Идёт подбор"
-            value={state.kind === "ok" ? count("pending") : "—"}
+            value={state.kind === "ok" ? count("pending", "matching") : "—"}
             Icon={Zap}
             colorClass="kpi-yellow"
             loading={state.kind === "loading"}
@@ -162,7 +162,7 @@ export default function AdminDashboard() {
           />
           <KpiCard
             label="Проблемные"
-            value={state.kind === "ok" ? count("failed", "matching") : "—"}
+            value={state.kind === "ok" ? count("failed") : "—"}
             Icon={AlertTriangle}
             colorClass="kpi-red"
             loading={state.kind === "loading"}

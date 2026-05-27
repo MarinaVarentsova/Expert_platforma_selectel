@@ -38,6 +38,7 @@ type Metrics = {
     draft: number;
     pending: number;
     matching: number;
+    expert_selection: number;
     in_progress: number;
     completed: number;
     cancelled: number;
@@ -152,6 +153,7 @@ export default function AdminMetrics() {
           draft: cnt("draft"),
           pending: cnt("pending"),
           matching: cnt("matching"),
+          expert_selection: cnt("expert_selection"),
           in_progress: cnt("in_progress") + cnt("in_work"),
           completed: cnt("completed"),
           cancelled: cnt("cancelled"),
@@ -235,12 +237,12 @@ function MetricsBody({ m }: { m: Metrics }) {
       <Section title="Заявки" Icon={TrendingUp} iconColor="text-indigo-500">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <StatCard label="Всего" value={m.requests.total} size="lg" colorClass="kpi-indigo" />
-          <StatCard label="Идёт подбор" value={m.requests.pending} colorClass="kpi-yellow" />
+          <StatCard label="Идёт подбор" value={m.requests.pending + m.requests.matching} colorClass="kpi-yellow" />
           <StatCard label="В работе" value={m.requests.in_progress} colorClass="kpi-cyan" />
           <StatCard label="Выполнены" value={m.requests.completed} colorClass="kpi-emerald" />
           <StatCard label="Ошибка подбора" value={m.requests.failed} colorClass="kpi-red" />
           <StatCard label="Черновики" value={m.requests.draft} colorClass="kpi-slate" />
-          <StatCard label="Выбор эксперта" value={m.requests.matching} colorClass="kpi-cyan" />
+          <StatCard label="Выбор эксперта" value={m.requests.expert_selection} colorClass="kpi-cyan" />
           <StatCard label="Неактуальны" value={m.requests.cancelled} colorClass="kpi-slate" />
           <StatCard label="Все отказали" value={m.requests.all_declined} colorClass="kpi-red" />
           <StatCard label="Отказов экспертов" value={m.matches.total_declines} colorClass="kpi-red" />

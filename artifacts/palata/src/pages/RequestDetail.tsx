@@ -66,6 +66,17 @@ type ExpertProfile = {
   completed_orders_count: number;
 };
 
+type ContactRecord = {
+  id: string;
+  request_id: string;
+  expert_id: string;
+  revealed_at: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
+  expert_phone: string | null;
+  expert_email: string | null;
+};
+
 type StatusEvent = {
   id: string;
   entity_type: string;
@@ -86,6 +97,7 @@ type LoadedData = {
   request: Request;
   files: RequestFile[];
   matches: Match[];
+  contacts: ContactRecord[];
   expertProfiles: ExpertProfile[];
   events: StatusEvent[];
   usersMap: Record<string, User>;
@@ -219,7 +231,7 @@ export default function RequestDetail() {
     setState({ kind: "loading" });
 
     async function load() {
-      const [reqRes, filesRes, matchesRes, eventsRes] = await Promise.all([
+      const [reqRes, filesRes, matchesRes, eventsRes, contactsRes] = await Promise.all([
         supabase.from("palata_requests").select("*").eq("id", id!).single(),
         supabase.from("palata_request_files")
           .select("id, file_name, mime_type, size_bytes, bucket_path, created_at")
@@ -230,6 +242,9 @@ export default function RequestDetail() {
         supabase.from("palata_status_events")
           .select("id, entity_type, old_status, new_status, actor_id, note, created_at")
           .eq("entity_id", id!).order("created_at"),
+        supabase.from("palata_request_contacts")
+          .select("id, request_id, expert_id, revealed_at, customer_phone, customer_email, expert_phone, expert_email")
+          .eq("request_id", id!),
       ]);
 
       if (!reqRes.data || reqRes.error) {
@@ -264,8 +279,9 @@ export default function RequestDetail() {
       const expertProfiles = (profilesRes.data as ExpertProfile[]) ?? [];
       const users = (usersRes.data as User[]) ?? [];
       const usersMap = Object.fromEntries(users.map(u => [u.id, u]));
+      const contacts = (contactsRes.data as ContactRecord[]) ?? [];
 
-      setState({ kind: "ok", data: { request, files, matches, expertProfiles, events, usersMap } });
+      setState({ kind: "ok", data: { request, files, matches, contacts, expertProfiles, events, usersMap } });
     }
 
     load();
@@ -297,7 +313,8 @@ export default function RequestDetail() {
 // ─── Detail ───────────────────────────────────────────────────────────────────
 
 function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) {
-  const { request: r, files, matches, expertProfiles, events, usersMap } = data;
+  const { request: r, files, matches, contacts, expertProfiles, events, usersMap } = data;
+  const contactsMap = Object.fromEntries(contacts.map(c => [c.expert_id, c]));
   const profileMap = Object.fromEntries(expertProfiles.map(p => [p.user_id, p]));
   const customer = r.customer_id ? usersMap[r.customer_id] : undefined;
   const orderStatus = ORDER_STATUS[r.status];
@@ -794,6 +811,47 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                       <p className="text-xs text-slate-400 italic">Профиль эксперта не найден</p>
                     </div>
                   )}
+
+                  {/* Opened contacts */}
+                  {["contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"].includes(m.status) &&
+                    contactsMap[m.expert_id] && (() => {
+                      const c = contactsMap[m.expert_id];
+                      return (
+                        <div className="px-4 py-3 bg-blue-50 border-t border-blue-100">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-2">Контакты открыты</p>
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+                            {c.customer_phone && (
+                              <div>
+                                <p className="text-[10px] text-blue-400 mb-0.5">Телефон заказчика</p>
+                                <p className="text-sm font-semibold text-blue-800">{c.customer_phone}</p>
+                              </div>
+                            )}
+                            {c.customer_email && (
+                              <div>
+                                <p className="text-[10px] text-blue-400 mb-0.5">Email заказчика</p>
+                                <p className="text-sm font-semibold text-blue-800">{c.customer_email}</p>
+                              </div>
+                            )}
+                            {c.expert_phone && (
+                              <div>
+                                <p className="text-[10px] text-blue-400 mb-0.5">Телефон эксперта</p>
+                                <p className="text-sm font-semibold text-blue-800">{c.expert_phone}</p>
+                              </div>
+                            )}
+                            {c.expert_email && (
+                              <div>
+                                <p className="text-[10px] text-blue-400 mb-0.5">Email эксперта</p>
+                                <p className="text-sm font-semibold text-blue-800">{c.expert_email}</p>
+                              </div>
+                            )}
+                          </div>
+                          {c.revealed_at && (
+                            <p className="text-[10px] text-blue-300 mt-2">Открыты: {fmtDate(c.revealed_at)}</p>
+                          )}
+                        </div>
+                      );
+                    })()
+                  }
 
                   {/* can_start_from_date */}
                   {m.can_start_from_date && (

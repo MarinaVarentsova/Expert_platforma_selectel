@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/authContext";
 import { notify } from "@/lib/notifyApi";
+import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -54,9 +55,9 @@ const REGIONS = [
 ];
 
 const URGENCY_OPTIONS = [
-  { value: "normal",      label: "Стандартная",    sub: "14–30 дней" },
-  { value: "urgent",      label: "Срочная",         sub: "7–14 дней" },
-  { value: "very_urgent", label: "Очень срочная",   sub: "до 7 дней" },
+  { value: "normal",      label: "Стандартная",   sub: "14–30 дней" },
+  { value: "urgent",      label: "Срочная",        sub: "7–14 дней" },
+  { value: "very_urgent", label: "Очень срочная",  sub: "до 7 дней" },
 ];
 
 const ALLOWED_MIME = [
@@ -80,6 +81,7 @@ type FormData = {
   requires_travel: boolean;
   description: string;
   materials_available: string;
+  customer_comment: string;
   customer_name: string;
   customer_phone: string;
   customer_email: string;
@@ -91,29 +93,31 @@ type SubmitState =
   | { kind: "success"; requestId: string; title: string; matchedCount: number }
   | { kind: "error"; message: string };
 
-const INIT: FormData = {
-  title: "",
-  expertise_type: "",
-  region: "",
-  urgency: "normal",
-  requires_travel: false,
-  description: "",
-  materials_available: "",
-  customer_name: "",
-  customer_phone: "",
-  customer_email: "",
-};
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function NewRequest() {
   const [, navigate] = useLocation();
   const { state: authState } = useAuth();
-  const currentUserId = authState.kind === "authenticated" ? authState.user.id : null;
-  const [form, setForm] = useState<FormData>(INIT);
-  const [files, setFiles] = useState<File[]>([]);
-  const [state, setState] = useState<SubmitState>({ kind: "idle" });
-  const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
+  const currentUser = authState.kind === "authenticated" ? authState.user : null;
+  const currentUserId = currentUser?.id ?? null;
+
+  const [form, setForm] = useState<FormData>({
+    title: "",
+    expertise_type: "",
+    region: "",
+    urgency: "normal",
+    requires_travel: false,
+    description: "",
+    materials_available: "",
+    customer_comment: "",
+    customer_name: currentUser?.full_name ?? "",
+    customer_phone: "",
+    customer_email: currentUser?.email ?? "",
+  });
+
+  const [files, setFiles]     = useState<File[]>([]);
+  const [state, setState]     = useState<SubmitState>({ kind: "idle" });
+  const [errors, setErrors]   = useState<Partial<Record<keyof FormData, string>>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
@@ -156,13 +160,20 @@ export default function NewRequest() {
     setState({ kind: "submitting", step: "Создание заказа…" });
 
     try {
-      // 1. Insert request
+      // Build combined description: situation + comment (if any)
+      const situation = form.description.trim();
+      const comment   = form.customer_comment.trim();
+      const fullDescription = situation && comment
+        ? `${situation}\n\n─── Комментарий заказчика ───\n${comment}`
+        : situation || (comment ? `─── Комментарий заказчика ───\n${comment}` : null);
+
+      // 1. Insert request with status = new
       const { data: reqData, error: reqError } = await supabase
         .from("palata_requests")
         .insert({
-          status: "pending",
+          status: "new",
           title: form.title.trim(),
-          description: form.description.trim() || null,
+          description: fullDescription,
           expertise_type: form.expertise_type,
           region: form.region,
           urgency: form.urgency,
@@ -194,7 +205,6 @@ export default function NewRequest() {
             return null;
           }
 
-          // Insert file record
           const { error: fileError } = await supabase
             .from("palata_request_files")
             .insert({
@@ -203,6 +213,7 @@ export default function NewRequest() {
               file_name: file.name,
               mime_type: file.type,
               size_bytes: file.size,
+              uploader_id: currentUserId,
             });
           if (fileError) console.warn("File record error:", fileError.message);
           return path;
@@ -210,13 +221,13 @@ export default function NewRequest() {
         await Promise.all(uploads);
       }
 
-      // 3. Status event
+      // 3. Status event: new request created
       await supabase.from("palata_status_events").insert({
         entity_type: "request",
         entity_id: requestId,
         old_status: null,
-        new_status: "pending",
-        actor_id: null,
+        new_status: "new",
+        actor_id: currentUserId,
         note: "Заявка создана заказчиком через форму",
       });
 
@@ -236,8 +247,7 @@ export default function NewRequest() {
         console.warn("Matching skipped:", matchErr);
       }
 
-      // 5. Email notifications (fire-and-forget — never block submission)
-      // Notify customer that the request was received
+      // 5. Email notifications (fire-and-forget)
       if (form.customer_email.trim()) {
         notify({
           type: "request_created",
@@ -246,14 +256,13 @@ export default function NewRequest() {
           requestTitle:   form.title.trim(),
           expertiseType:  form.expertise_type,
           region:         form.region,
-          currentStatus:  "pending",
+          currentStatus:  "new",
           recipientEmail: form.customer_email.trim(),
           recipientType:  "customer",
           recipientName:  form.customer_name.trim() || undefined,
         });
       }
 
-      // Notify each matched expert
       if (matchedCount > 0) {
         supabase
           .from("palata_request_matches")
@@ -276,7 +285,7 @@ export default function NewRequest() {
                 requestTitle:   form.title.trim(),
                 expertiseType:  form.expertise_type,
                 region:         form.region,
-                currentStatus:  "pending",
+                currentStatus:  "new",
                 recipientEmail: u.email,
                 recipientType:  "expert" as const,
                 recipientName:  u.full_name ?? undefined,
@@ -296,34 +305,41 @@ export default function NewRequest() {
   // ── Success screen ──────────────────────────────────────────────────────────
   if (state.kind === "success") {
     return (
-      <div className="max-w-lg mx-auto px-6 py-20 text-center">
-        <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
-          <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-2">Заявка создана</h1>
-        <p className="text-sm text-slate-500 mb-1">{state.title}</p>
-        <p className="text-xs font-mono text-slate-400 mb-8">{state.requestId.slice(0, 8).toUpperCase()}</p>
-        {state.matchedCount > 0 ? (
-          <p className="text-sm text-slate-600 mb-8 leading-relaxed">
-            Подобрано <strong>{state.matchedCount}</strong> эксперт
-            {state.matchedCount === 1 ? "" : state.matchedCount < 5 ? "а" : "ов"}.<br />
-            Эксперты получат предложение и смогут принять заказ.
-          </p>
-        ) : (
-          <p className="text-sm text-slate-600 mb-8 leading-relaxed">
-            Подходящие эксперты не найдены автоматически.<br />
-            Администратор рассмотрит заказ и свяжется с вами.
-          </p>
-        )}
-        <div className="flex items-center justify-center gap-3">
-          <Link href={`/requests/${state.requestId}`}>
-            <button className="btn-primary">Открыть заказ</button>
-          </Link>
-          <Link href="/customer">
-            <button className="btn-ghost">В личный кабинет</button>
-          </Link>
+      <div className="min-h-[calc(100vh-56px)] flex items-center justify-center px-6 bg-[#f0f5f1]">
+        <div className="max-w-md w-full text-center">
+          <div className="w-16 h-16 rounded-full bg-[#16a34a]/10 flex items-center justify-center mx-auto mb-6">
+            <CheckCircle2 className="w-8 h-8 text-[#16a34a]" />
+          </div>
+          <h1 className="text-2xl font-bold text-[#141c17] mb-2">Заказ создан</h1>
+          <p className="text-sm text-[#5a7560] mb-1 font-medium">{state.title}</p>
+          <p className="text-xs font-mono text-[#8aaa90] mb-6">{state.requestId.slice(0, 8).toUpperCase()}</p>
+
+          {state.matchedCount > 0 ? (
+            <div className="bg-[#16a34a]/8 border border-[#16a34a]/20 rounded-xl px-5 py-4 mb-8 text-left">
+              <p className="text-sm font-semibold text-[#1a3d2b] mb-1">
+                Подобрано {state.matchedCount} эксперт{state.matchedCount === 1 ? "" : state.matchedCount < 5 ? "а" : "ов"}
+              </p>
+              <p className="text-xs text-[#5a7560] leading-relaxed">
+                Эксперты получат предложение и смогут принять заказ. Как только кто-то примет — вы увидите уведомление во вкладке «Требуют действия».
+              </p>
+            </div>
+          ) : (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 mb-8 text-left">
+              <p className="text-sm font-semibold text-amber-800 mb-1">Автоподбор не нашёл экспертов</p>
+              <p className="text-xs text-amber-700 leading-relaxed">
+                Администратор займётся подбором вручную и свяжется с вами.
+              </p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-center gap-3">
+            <Link href={`/requests/${state.requestId}`}>
+              <button className="btn-primary">Открыть заказ</button>
+            </Link>
+            <Link href="/customer">
+              <button className="btn-ghost">В личный кабинет</button>
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -333,273 +349,309 @@ export default function NewRequest() {
   const busy = state.kind === "submitting";
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-8">
-      <button
-        onClick={() => navigate("/customer")}
-        className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 mb-6 transition-colors"
-      >
-        ← Личный кабинет
-      </button>
+    <div className="min-h-[calc(100vh-56px)] bg-[#f0f5f1]">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
 
-      <div className="mb-8">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Заказчик</p>
-        <h1 className="text-2xl font-bold text-slate-900">Новый заказ</h1>
-        <p className="text-sm text-slate-500 mt-1">Заполните форму — мы подберём подходящего эксперта</p>
-      </div>
+        {/* Back */}
+        <button
+          onClick={() => navigate("/customer")}
+          className="inline-flex items-center gap-1.5 text-sm text-[#5a7560] hover:text-[#141c17] mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Личный кабинет
+        </button>
 
-      {state.kind === "error" && (
-        <div className="mb-6 p-4 rounded-xl border border-red-200 bg-red-50">
-          <p className="text-sm font-semibold text-red-700 mb-0.5">Ошибка при создании заказа</p>
-          <p className="text-xs text-red-600">{state.message}</p>
-          <button className="text-xs text-red-500 underline mt-1" onClick={() => setState({ kind: "idle" })}>
-            Попробовать снова
-          </button>
+        {/* Header */}
+        <div className="mb-7">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-1">Новый заказ</p>
+          <h1 className="text-2xl font-bold text-[#141c17]">Создать заказ на экспертизу</h1>
+          <p className="text-sm text-[#5a7560] mt-1">Заполните форму — система автоматически подберёт эксперта</p>
         </div>
-      )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-
-        {/* ── Section 1: О заказе ──────────────────────────────────────────── */}
-        <FormCard title="О заказе">
-          <Field label="Название заказа" required error={errors.title}>
-            <input
-              type="text"
-              className={inputCls(!!errors.title)}
-              placeholder="Например: строительно-техническая экспертиза жилого дома"
-              value={form.title}
-              onChange={e => set("title", e.target.value)}
-              disabled={busy}
-            />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Направление экспертизы" required error={errors.expertise_type}>
-              <select
-                className={inputCls(!!errors.expertise_type)}
-                value={form.expertise_type}
-                onChange={e => set("expertise_type", e.target.value)}
-                disabled={busy}
-              >
-                <option value="">— выберите —</option>
-                {EXPERTISE_TYPES.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Регион" required error={errors.region}>
-              <select
-                className={inputCls(!!errors.region)}
-                value={form.region}
-                onChange={e => set("region", e.target.value)}
-                disabled={busy}
-              >
-                <option value="">— выберите —</option>
-                {REGIONS.map(r => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
-
-          {/* Urgency */}
-          <Field label="Срочность">
-            <div className="grid grid-cols-3 gap-2">
-              {URGENCY_OPTIONS.map(opt => (
-                <label
-                  key={opt.value}
-                  className={`
-                    flex flex-col items-center text-center px-3 py-3 rounded-lg border cursor-pointer transition-colors
-                    ${form.urgency === opt.value
-                      ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                      : "border-slate-200 hover:border-slate-300 text-slate-600"}
-                  `}
-                >
-                  <input
-                    type="radio"
-                    name="urgency"
-                    value={opt.value}
-                    checked={form.urgency === opt.value}
-                    onChange={() => set("urgency", opt.value)}
-                    className="sr-only"
-                    disabled={busy}
-                  />
-                  <span className="text-sm font-medium">{opt.label}</span>
-                  <span className="text-xs text-slate-400 mt-0.5">{opt.sub}</span>
-                </label>
-              ))}
-            </div>
-          </Field>
-
-          {/* Requires travel */}
-          <label className="flex items-center gap-3 cursor-pointer select-none group">
-            <div
-              className={`
-                w-10 h-6 rounded-full transition-colors relative flex-shrink-0
-                ${form.requires_travel ? "bg-indigo-600" : "bg-slate-200"}
-              `}
-              onClick={() => !busy && set("requires_travel", !form.requires_travel)}
-            >
-              <div className={`
-                absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform
-                ${form.requires_travel ? "translate-x-5" : "translate-x-1"}
-              `} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-700">Требуется выезд эксперта на место</p>
-              <p className="text-xs text-slate-400">Укажите, если эксперту нужно посетить объект</p>
-            </div>
-          </label>
-        </FormCard>
-
-        {/* ── Section 2: Описание ──────────────────────────────────────────── */}
-        <FormCard title="Описание и материалы">
-          <Field label="Описание ситуации">
-            <textarea
-              className={inputCls(false) + " resize-none"}
-              rows={4}
-              placeholder="Опишите суть дела, что произошло и какой результат вам нужен от экспертизы"
-              value={form.description}
-              onChange={e => set("description", e.target.value)}
-              disabled={busy}
-            />
-          </Field>
-
-          <Field label="Имеющиеся материалы">
-            <textarea
-              className={inputCls(false) + " resize-none"}
-              rows={3}
-              placeholder="Перечислите документы, фотографии, акты и другие материалы, которые у вас есть"
-              value={form.materials_available}
-              onChange={e => set("materials_available", e.target.value)}
-              disabled={busy}
-            />
-          </Field>
-        </FormCard>
-
-        {/* ── Section 3: Контакты ──────────────────────────────────────────── */}
-        <FormCard title="Контактные данные">
-          <p className="text-xs text-slate-400 -mt-1 mb-1">
-            Необходимы для связи с экспертом после подбора
-          </p>
-
-          <Field label="Ваше имя" required error={errors.customer_name}>
-            <input
-              type="text"
-              className={inputCls(!!errors.customer_name)}
-              placeholder="ФИО или название организации"
-              value={form.customer_name}
-              onChange={e => set("customer_name", e.target.value)}
-              disabled={busy}
-            />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Телефон" error={errors.customer_phone}>
-              <input
-                type="tel"
-                className={inputCls(!!errors.customer_phone)}
-                placeholder="+7 (___) ___-__-__"
-                value={form.customer_phone}
-                onChange={e => set("customer_phone", e.target.value)}
-                disabled={busy}
-              />
-            </Field>
-
-            <Field label="Email" error={errors.customer_email}>
-              <input
-                type="email"
-                className={inputCls(!!errors.customer_email)}
-                placeholder="example@domain.ru"
-                value={form.customer_email}
-                onChange={e => set("customer_email", e.target.value)}
-                disabled={busy}
-              />
-            </Field>
-          </div>
-          {errors.customer_email && !errors.customer_phone && (
-            <p className="text-xs text-red-500 -mt-2">{errors.customer_email}</p>
-          )}
-        </FormCard>
-
-        {/* ── Section 4: Файлы ─────────────────────────────────────────────── */}
-        <FormCard title="Прикреплённые документы">
-          <p className="text-xs text-slate-400 -mt-1 mb-3">
-            PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — не более 50 МБ каждый
-          </p>
-
-          {/* File list */}
-          {files.length > 0 && (
-            <div className="mb-3 space-y-1.5">
-              {files.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-slate-400 text-sm">{fileIcon(f.type)}</span>
-                  <span className="text-sm text-slate-700 flex-1 truncate">{f.name}</span>
-                  <span className="text-xs text-slate-400 shrink-0">{fmtSize(f.size)}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeFile(i)}
-                    className="text-slate-300 hover:text-red-400 transition-colors ml-1"
-                    disabled={busy}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Upload button */}
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-dashed border-slate-300 text-sm text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-            disabled={busy}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-8m0 0l-3 3m3-3l3 3M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1" />
-            </svg>
-            {files.length === 0 ? "Прикрепить файлы" : "Добавить ещё"}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            multiple
-            accept={ACCEPT_ATTR}
-            className="hidden"
-            onChange={onFileChange}
-          />
-        </FormCard>
-
-        {/* ── Submit ───────────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-4">
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={busy}
-          >
-            {busy
-              ? state.step
-              : "Создать заказ"}
-          </button>
-          <Link href="/customer">
-            <button type="button" className="btn-ghost" disabled={busy}>
-              Отмена
+        {/* Error */}
+        {state.kind === "error" && (
+          <div className="mb-6 p-4 rounded-xl border border-red-200 bg-red-50">
+            <p className="text-sm font-semibold text-red-700 mb-0.5">Ошибка при создании заказа</p>
+            <p className="text-xs text-red-600">{state.message}</p>
+            <button className="text-xs text-red-500 underline mt-1" onClick={() => setState({ kind: "idle" })}>
+              Попробовать снова
             </button>
-          </Link>
-        </div>
+          </div>
+        )}
 
-      </form>
+        <form onSubmit={handleSubmit} className="space-y-5">
+
+          {/* ── 1: О заказе ─────────────────────────────────────────── */}
+          <FormCard title="О заказе" num="01">
+            <Field label="Название заказа" required error={errors.title}>
+              <input
+                type="text"
+                className={inputCls(!!errors.title)}
+                placeholder="Например: строительно-техническая экспертиза жилого дома"
+                value={form.title}
+                onChange={e => set("title", e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Направление экспертизы" required error={errors.expertise_type}>
+                <select
+                  className={inputCls(!!errors.expertise_type)}
+                  value={form.expertise_type}
+                  onChange={e => set("expertise_type", e.target.value)}
+                  disabled={busy}
+                >
+                  <option value="">— выберите —</option>
+                  {EXPERTISE_TYPES.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Регион" required error={errors.region}>
+                <select
+                  className={inputCls(!!errors.region)}
+                  value={form.region}
+                  onChange={e => set("region", e.target.value)}
+                  disabled={busy}
+                >
+                  <option value="">— выберите —</option>
+                  {REGIONS.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            {/* Срочность */}
+            <Field label="Срочность">
+              <div className="grid grid-cols-3 gap-2">
+                {URGENCY_OPTIONS.map(opt => (
+                  <label
+                    key={opt.value}
+                    className={[
+                      "flex flex-col items-center text-center px-3 py-3 rounded-lg border cursor-pointer transition-all select-none",
+                      form.urgency === opt.value
+                        ? "border-[#16a34a] bg-[#16a34a]/8 text-[#1a3d2b]"
+                        : "border-[#d4e5d9] hover:border-[#16a34a]/50 text-[#5a7560]",
+                    ].join(" ")}
+                  >
+                    <input
+                      type="radio"
+                      name="urgency"
+                      value={opt.value}
+                      checked={form.urgency === opt.value}
+                      onChange={() => set("urgency", opt.value)}
+                      className="sr-only"
+                      disabled={busy}
+                    />
+                    <span className="text-sm font-medium">{opt.label}</span>
+                    <span className="text-xs text-[#8aaa90] mt-0.5">{opt.sub}</span>
+                  </label>
+                ))}
+              </div>
+            </Field>
+
+            {/* Выезд / дистанционно */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-[#141c17]">Формат работы</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: false, label: "Дистанционно", desc: "Без выезда к объекту" },
+                  { value: true,  label: "Выезд",         desc: "Эксперт посетит объект" },
+                ].map(opt => (
+                  <label
+                    key={String(opt.value)}
+                    className={[
+                      "flex flex-col px-4 py-3 rounded-lg border cursor-pointer transition-all select-none",
+                      form.requires_travel === opt.value
+                        ? "border-[#16a34a] bg-[#16a34a]/8 text-[#1a3d2b]"
+                        : "border-[#d4e5d9] hover:border-[#16a34a]/50 text-[#5a7560]",
+                    ].join(" ")}
+                  >
+                    <input
+                      type="radio"
+                      name="requires_travel"
+                      checked={form.requires_travel === opt.value}
+                      onChange={() => set("requires_travel", opt.value)}
+                      className="sr-only"
+                      disabled={busy}
+                    />
+                    <span className="text-sm font-medium">{opt.label}</span>
+                    <span className="text-xs text-[#8aaa90]">{opt.desc}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </FormCard>
+
+          {/* ── 2: Описание ─────────────────────────────────────────── */}
+          <FormCard title="Описание и материалы" num="02">
+            <Field label="Описание ситуации">
+              <textarea
+                className={`${inputCls(false)} resize-none`}
+                rows={4}
+                placeholder="Опишите суть дела, что произошло и какой результат вам нужен от экспертизы"
+                value={form.description}
+                onChange={e => set("description", e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Имеющиеся материалы">
+              <textarea
+                className={`${inputCls(false)} resize-none`}
+                rows={3}
+                placeholder="Перечислите документы, фотографии, акты и другие материалы, которые у вас есть"
+                value={form.materials_available}
+                onChange={e => set("materials_available", e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Комментарий заказчика">
+              <textarea
+                className={`${inputCls(false)} resize-none`}
+                rows={3}
+                placeholder="Дополнительные пожелания к эксперту, сроки, особые условия — любые комментарии, которые помогут специалисту"
+                value={form.customer_comment}
+                onChange={e => set("customer_comment", e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+          </FormCard>
+
+          {/* ── 3: Контакты ─────────────────────────────────────────── */}
+          <FormCard title="Контактные данные" num="03">
+            <p className="text-xs text-[#8aaa90] -mt-1">
+              Необходимы для связи с экспертом после подбора
+            </p>
+
+            <Field label="Ваше имя" required error={errors.customer_name}>
+              <input
+                type="text"
+                className={inputCls(!!errors.customer_name)}
+                placeholder="ФИО или название организации"
+                value={form.customer_name}
+                onChange={e => set("customer_name", e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Телефон">
+                <input
+                  type="tel"
+                  className={inputCls(false)}
+                  placeholder="+7 (___) ___-__-__"
+                  value={form.customer_phone}
+                  onChange={e => set("customer_phone", e.target.value)}
+                  disabled={busy}
+                />
+              </Field>
+
+              <Field label="Email" error={errors.customer_email}>
+                <input
+                  type="email"
+                  className={inputCls(!!errors.customer_email)}
+                  placeholder="example@domain.ru"
+                  value={form.customer_email}
+                  onChange={e => set("customer_email", e.target.value)}
+                  disabled={busy}
+                />
+              </Field>
+            </div>
+            {errors.customer_email && (
+              <p className="text-xs text-red-500 -mt-2">{errors.customer_email}</p>
+            )}
+          </FormCard>
+
+          {/* ── 4: Файлы ────────────────────────────────────────────── */}
+          <FormCard title="Прикреплённые документы" num="04">
+            <p className="text-xs text-[#8aaa90] -mt-1">
+              PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — не более 50 МБ каждый
+            </p>
+
+            {files.length > 0 && (
+              <div className="space-y-1.5">
+                {files.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 bg-[#f0f5f1] rounded-lg border border-[#d4e5d9]">
+                    <span className="text-[#5a7560] shrink-0">{fileIconEl(f.type)}</span>
+                    <span className="text-sm text-[#141c17] flex-1 truncate">{f.name}</span>
+                    <span className="text-xs text-[#8aaa90] shrink-0">{fmtSize(f.size)}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      className="text-[#8aaa90] hover:text-red-500 transition-colors ml-0.5 shrink-0"
+                      disabled={busy}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-dashed border-[#b8ccbe] text-sm text-[#5a7560] hover:border-[#16a34a] hover:text-[#16a34a] hover:bg-[#16a34a]/5 transition-colors"
+              disabled={busy}
+            >
+              <Upload className="w-4 h-4" />
+              {files.length === 0 ? "Прикрепить файлы" : "Добавить ещё"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              accept={ACCEPT_ATTR}
+              className="hidden"
+              onChange={onFileChange}
+            />
+          </FormCard>
+
+          {/* ── Submit ──────────────────────────────────────────────── */}
+          <div className="flex items-center gap-4 pt-1 pb-8">
+            <button
+              type="submit"
+              className="btn-primary inline-flex items-center gap-2"
+              disabled={busy}
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {state.step}
+                </>
+              ) : (
+                "Создать заказ"
+              )}
+            </button>
+            <Link href="/customer">
+              <button type="button" className="btn-ghost" disabled={busy}>
+                Отмена
+              </button>
+            </Link>
+          </div>
+
+        </form>
+      </div>
     </div>
   );
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function FormCard({ title, children }: { title: string; children: React.ReactNode }) {
+function FormCard({ title, num, children }: { title: string; num: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-      <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400">{title}</h2>
+    <div className="bg-white rounded-xl border border-[#d4e5d9] p-6 space-y-4 shadow-sm">
+      <div className="flex items-center gap-2.5">
+        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#1a3d2b] text-[#f0faf4] text-[9px] font-bold flex items-center justify-center">
+          {num}
+        </span>
+        <h2 className="text-xs font-bold uppercase tracking-widest text-[#8aaa90]">{title}</h2>
+      </div>
       {children}
     </div>
   );
@@ -612,7 +664,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+      <label className="block text-sm font-medium text-[#141c17] mb-1.5">
         {label}
         {required && <span className="text-red-400 ml-0.5">*</span>}
       </label>
@@ -624,20 +676,20 @@ function Field({
 
 function inputCls(hasError: boolean) {
   return [
-    "w-full text-sm rounded-lg border px-3 py-2.5 bg-white",
-    "focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent",
-    "disabled:bg-slate-50 disabled:text-slate-400",
-    "transition-colors",
-    hasError ? "border-red-300 bg-red-50" : "border-slate-300",
+    "w-full text-sm rounded-lg border px-3 py-2.5 bg-white text-[#141c17]",
+    "focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 focus:border-[#16a34a]",
+    "disabled:bg-[#f0f5f1] disabled:text-[#8aaa90]",
+    "transition-colors placeholder:text-[#b8ccbe]",
+    hasError ? "border-red-300 bg-red-50" : "border-[#d4e5d9]",
   ].join(" ");
 }
 
-function fileIcon(mime: string) {
-  if (mime === "application/pdf") return "PDF";
-  if (mime.includes("word")) return "DOC";
-  if (mime.includes("excel") || mime.includes("spreadsheet")) return "XLS";
-  if (mime.startsWith("image/")) return "IMG";
-  return "FILE";
+function fileIconEl(mime: string) {
+  if (mime === "application/pdf") return <FileText className="w-4 h-4" />;
+  if (mime.includes("word")) return <FileText className="w-4 h-4" />;
+  if (mime.includes("excel") || mime.includes("spreadsheet")) return <FileSpreadsheet className="w-4 h-4" />;
+  if (mime.startsWith("image/")) return <Image className="w-4 h-4" />;
+  return <File className="w-4 h-4" />;
 }
 
 function fmtSize(bytes: number) {

@@ -238,13 +238,23 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
       .update({ status: "matching" })
       .eq("id", requestId);
 
+    // Status transition event
     await supabase.from("palata_status_events").insert({
       entity_type: "request", entity_id: requestId,
-      old_status: "pending", new_status: "matching",
+      old_status: "new", new_status: "matching",
       actor_id: null,
       note: "Автоподбор: подходящие эксперты не найдены — требуется ручной подбор",
     });
 
+    // no_experts_found event (separate event type per spec)
+    await supabase.from("palata_status_events").insert({
+      entity_type: "request", entity_id: requestId,
+      old_status: "matching", new_status: "matching",
+      actor_id: null,
+      note: `no_experts_found: раунд ${nextRound}, кандидатов после фильтрации: 0`,
+    });
+
+    // Action item → customer: inform them matching failed
     if (input.customerId) {
       try {
         await createActionItem({
@@ -260,6 +270,29 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
         });
       } catch { /* non-fatal */ }
     }
+
+    // Action item → admin: manual matching required
+    try {
+      const { data: admins } = await supabase
+        .from("palata_users")
+        .select("id")
+        .eq("role", "admin")
+        .eq("is_active", true);
+
+      for (const admin of admins ?? []) {
+        await createActionItem({
+          request_id: requestId,
+          expert_id: null,
+          customer_id: input.customerId ?? null,
+          assigned_to_user_id: admin.id,
+          assigned_role: "admin",
+          action_type: "manual_matching_required",
+          title: "Требуется ручной подбор эксперта",
+          description: `Автоподбор не нашёл кандидатов (раунд ${nextRound}). Назначьте эксперта вручную.`,
+          payload: { round: nextRound, request_id: requestId },
+        });
+      }
+    } catch { /* non-fatal */ }
 
     return { matched: 0, round: nextRound, experts: [] };
   }
@@ -282,7 +315,7 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
 
   await supabase.from("palata_status_events").insert({
     entity_type: "request", entity_id: requestId,
-    old_status: "pending", new_status: "expert_selection",
+    old_status: "new", new_status: "expert_selection",
     actor_id: null,
     note: `Автоподбор раунд ${nextRound}: ${selected.length} эксперт(ов) предложено`,
   });

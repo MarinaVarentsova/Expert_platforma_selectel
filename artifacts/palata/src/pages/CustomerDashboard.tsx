@@ -662,8 +662,8 @@ function CustomerCard({ request: r, needsRating }: { request: Request; needsRati
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-24 gap-4">
-      <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center">
-        <FileText className="w-8 h-8 text-indigo-300" />
+      <div className="w-16 h-16 rounded-2xl bg-[#f0f5f1] flex items-center justify-center">
+        <FileText className="w-8 h-8 text-[#b8ccbe]" />
       </div>
       <div className="text-center">
         <p className="text-base font-semibold text-slate-700 mb-1">Заказов пока нет</p>
@@ -684,7 +684,7 @@ function EmptyState() {
 function LoadingScreen() {
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="h-5 w-5 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin" />
+      <div className="h-5 w-5 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
     </div>
   );
 }
@@ -692,7 +692,7 @@ function LoadingScreen() {
 function LoadingRows() {
   return (
     <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
-      <div className="h-4 w-4 rounded-full border-2 border-indigo-300 border-t-indigo-600 animate-spin" />
+      <div className="h-4 w-4 rounded-full border-2 border-[#b8ccbe] border-t-[#1a3d2b] animate-spin" />
       Загрузка…
     </div>
   );

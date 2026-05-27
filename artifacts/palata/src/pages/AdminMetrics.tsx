@@ -6,15 +6,17 @@ import { useRequireRole } from "@/lib/useRequireRole";
 // ─── Status maps (single source of truth) ─────────────────────────────────────
 // Each status appears in exactly ONE set. No overlap. All metrics share this mapping.
 
-const S_NEW      = new Set(["new"]);
-const S_MATCH    = new Set(["matching"]);
+// All known statuses are mapped here — no request may fall through the cracks.
+// Legacy enum values (draft, pending, in_progress, failed) are merged into the
+// nearest semantic bucket so the sum of all buckets always equals total.
+const S_NEW      = new Set(["new", "draft"]);
+const S_MATCH    = new Set(["matching", "pending"]);
 const S_SEL      = new Set(["expert_selection"]);
-const S_WORK     = new Set(["in_work"]);
+const S_WORK     = new Set(["in_work", "in_progress"]);
 const S_DONE     = new Set(["completed"]);
-// Inactive = неактуальные (не участвуют в "активных" заказчиках)
-const S_INACTIVE = new Set(["not_actual", "cancelled", "archived"]);
-// For problem track
-const S_INACTIVE_TRACK = new Set(["not_actual", "cancelled", "archived"]);
+// Inactive = неактуальные (not_actual/cancelled/archived/failed/declined)
+const S_INACTIVE = new Set(["not_actual", "cancelled", "archived", "failed", "declined"]);
+const S_INACTIVE_TRACK = S_INACTIVE;
 
 const LABEL_MAP: Record<string, string> = {
   avtotechnicheskaya:          "Автотехническая",

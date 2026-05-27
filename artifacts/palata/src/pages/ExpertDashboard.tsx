@@ -791,7 +791,7 @@ function EmptyState() {
       <div className="text-center">
         <p className="text-base font-semibold text-slate-700 mb-1">Обращений пока нет</p>
         <p className="text-sm text-slate-400 max-w-xs">
-          Система уведомит вас, когда появится заявка, подходящая под вашу специализацию и регион
+          Система уведомит вас, когда появится заказ, подходящий под вашу специализацию и регион
         </p>
       </div>
     </div>

@@ -153,7 +153,7 @@ export default function NewRequest() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate()) return;
-    setState({ kind: "submitting", step: "Создание заявки…" });
+    setState({ kind: "submitting", step: "Создание заказа…" });
 
     try {
       // 1. Insert request
@@ -308,12 +308,12 @@ export default function NewRequest() {
           <p className="text-sm text-slate-600 mb-8 leading-relaxed">
             Подобрано <strong>{state.matchedCount}</strong> эксперт
             {state.matchedCount === 1 ? "" : state.matchedCount < 5 ? "а" : "ов"}.<br />
-            Эксперты получат предложение и смогут принять заявку.
+            Эксперты получат предложение и смогут принять заказ.
           </p>
         ) : (
           <p className="text-sm text-slate-600 mb-8 leading-relaxed">
             Подходящие эксперты не найдены автоматически.<br />
-            Администратор рассмотрит заявку и свяжется с вами.
+            Администратор рассмотрит заказ и свяжется с вами.
           </p>
         )}
         <div className="flex items-center justify-center gap-3">
@@ -342,13 +342,13 @@ export default function NewRequest() {
 
       <div className="mb-8">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Заказчик</p>
-        <h1 className="text-2xl font-bold text-slate-900">Новая заявка</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Новый заказ</h1>
         <p className="text-sm text-slate-500 mt-1">Заполните форму — мы подберём подходящего эксперта</p>
       </div>
 
       {state.kind === "error" && (
         <div className="mb-6 p-4 rounded-xl border border-red-200 bg-red-50">
-          <p className="text-sm font-semibold text-red-700 mb-0.5">Ошибка при создании заявки</p>
+          <p className="text-sm font-semibold text-red-700 mb-0.5">Ошибка при создании заказа</p>
           <p className="text-xs text-red-600">{state.message}</p>
           <button className="text-xs text-red-500 underline mt-1" onClick={() => setState({ kind: "idle" })}>
             Попробовать снова
@@ -358,8 +358,8 @@ export default function NewRequest() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
 
-        {/* ── Section 1: О заявке ──────────────────────────────────────────── */}
-        <FormCard title="О заявке">
+        {/* ── Section 1: О заказе ──────────────────────────────────────────── */}
+        <FormCard title="О заказе">
           <Field label="Название заказа" required error={errors.title}>
             <input
               type="text"
@@ -579,7 +579,7 @@ export default function NewRequest() {
           >
             {busy
               ? state.step
-              : "Подать заявку"}
+              : "Создать заказ"}
           </button>
           <Link href="/customer">
             <button type="button" className="btn-ghost" disabled={busy}>

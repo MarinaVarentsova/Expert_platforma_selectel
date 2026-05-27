@@ -668,7 +668,7 @@ function EmptyState() {
       <div className="text-center">
         <p className="text-base font-semibold text-slate-700 mb-1">Заказов пока нет</p>
         <p className="text-sm text-slate-400 mb-6 max-w-xs">
-          Подайте заявку на судебную экспертизу — система автоматически подберёт квалифицированного эксперта
+          Создайте заказ на судебную экспертизу — система автоматически подберёт квалифицированного эксперта
         </p>
         <Link href="/customer/new-request">
           <button className="btn-primary inline-flex items-center gap-2">

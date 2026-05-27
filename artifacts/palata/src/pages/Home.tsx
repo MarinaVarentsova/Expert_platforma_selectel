@@ -12,7 +12,7 @@ const STEPS = [
   {
     Icon: FileText,
     step: "01",
-    title: "Подайте заявку",
+    title: "Создайте заказ",
     desc: "Опишите задачу, укажите специализацию и регион. Система зафиксирует требования.",
   },
   {
@@ -67,7 +67,7 @@ export default function Home() {
             <div className="flex flex-wrap items-center gap-3">
               <Link href="/customer/new-request">
                 <button className="inline-flex items-center gap-2 bg-[#2e2a27] hover:bg-[#1c1714] text-[#f2ece2] font-semibold px-6 py-3 rounded-full transition-all shadow-sm">
-                  Подать заявку
+                  Создать заказ
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </Link>
@@ -198,10 +198,10 @@ export default function Home() {
                 </div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-2 group-hover:text-[#e8891a] transition-colors">Заказчик</p>
                 <p className="text-sm text-[#78716c] leading-relaxed mb-5">
-                  Подайте заявку на судебную экспертизу. Система автоматически подберёт квалифицированного специалиста.
+                  Создайте заказ на судебную экспертизу. Система автоматически подберёт квалифицированного специалиста.
                 </p>
                 <div className="flex items-center gap-1 text-sm font-semibold text-[#2e2a27] group-hover:gap-2 transition-all">
-                  Подать заявку <ArrowRight className="w-3.5 h-3.5" />
+                  Создать заказ <ArrowRight className="w-3.5 h-3.5" />
                 </div>
               </div>
             </Link>
@@ -228,7 +228,7 @@ export default function Home() {
                 </div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#a8a29e] mb-2 group-hover:text-[#e8891a] transition-colors">Администратор</p>
                 <p className="text-sm text-[#78716c] leading-relaxed mb-5">
-                  Управляйте заявками и экспертным пулом. Полная аналитика платформы в реальном времени.
+                  Управляйте заказами и экспертным пулом. Полная аналитика платформы в реальном времени.
                 </p>
                 <div className="flex items-center gap-1 text-sm font-semibold text-[#2e2a27] group-hover:gap-2 transition-all">
                   Панель управления <ArrowRight className="w-3.5 h-3.5" />

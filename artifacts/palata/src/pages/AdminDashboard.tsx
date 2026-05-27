@@ -172,8 +172,8 @@ export default function AdminDashboard() {
         {/* ── Section header ─────────────────────────────────────── */}
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Канбан-доска заявок</h1>
-            <p className="text-xs text-slate-400 mt-0.5">Отслеживайте статус каждой заявки в реальном времени</p>
+            <h1 className="text-xl font-bold text-slate-900">Канбан-доска заказов</h1>
+            <p className="text-xs text-slate-400 mt-0.5">Отслеживайте статус каждого заказа в реальном времени</p>
           </div>
         </div>
 

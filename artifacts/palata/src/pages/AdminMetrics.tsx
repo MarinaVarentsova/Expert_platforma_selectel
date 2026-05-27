@@ -487,13 +487,13 @@ function MetricsBody({ m }: { m: Metrics }) {
                 <DistTable
                   title="По регионам"
                   rows={m.expertByRegion}
-                  total={m.expertByRegion.reduce((s, r) => s + r.count, 0)}
+                  total={m.totalExperts}
                   subtitle="palata_expert_profiles.regions[]"
                 />
                 <DistTable
                   title="По направлениям"
                   rows={m.expertBySpec}
-                  total={m.expertBySpec.reduce((s, r) => s + r.count, 0)}
+                  total={m.totalExperts}
                   subtitle="palata_expert_profiles.specializations[]"
                 />
               </div>
@@ -698,7 +698,6 @@ function PctBar({ pct, color }: { pct: number; color: string }) {
 function DistTable({ title, rows, total, subtitle }: {
   title: string; rows: Array<{ label: string; count: number }>; total: number; subtitle: string;
 }) {
-  const rowSum = rows.reduce((s, r) => s + r.count, 0);
   return (
     <div className="bg-[#faf8f5] rounded-xl border border-[#e5dfd7] overflow-hidden">
       <div className="px-4 py-3 border-b border-[#e5dfd7]">
@@ -707,11 +706,8 @@ function DistTable({ title, rows, total, subtitle }: {
           <p className="text-[10px] text-[#c4bdb4] font-mono">{subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-[#e8891a] tabular-nums">{rowSum.toLocaleString("ru-RU")}</span>
+          <span className="text-lg font-bold text-[#e8891a] tabular-nums">{total.toLocaleString("ru-RU")}</span>
           <span className="text-[10px] text-[#a8a29e]">итого</span>
-          {rowSum !== total && (
-            <span className="text-[10px] text-red-400 ml-1">≠ {total} total</span>
-          )}
         </div>
       </div>
       {rows.length === 0 ? (

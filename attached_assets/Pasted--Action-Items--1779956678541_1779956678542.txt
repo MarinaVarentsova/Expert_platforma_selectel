@@ -1,0 +1,169 @@
+Следующий этап: реализовать создание Action Items при автоматическом подборе экспертов.
+
+Сейчас:
+
+* профиль эксперта и доступность уже реализуются;
+* данные эксперта начинают влиять на matching.
+
+Теперь нужно сделать первый рабочий кусок Action Center:
+не весь workflow сразу, а только создание задач при подборе экспертов.
+
+# Цель этапа
+
+После создания заказа и запуска matching:
+
+1. система подбирает экспертов;
+2. создаёт записи в `palata_request_matches`;
+3. создаёт action item заказчику:
+   `experts_matched`;
+4. заказчик видит badge:
+   `Требуют действия (1)`.
+
+Пока не делать:
+
+* выбор эксперта;
+* отказ;
+* могу с даты;
+* взять в работу.
+
+Только:
+
+## создание action items после matching.
+
+# 1. Таблица palata_action_items
+
+Если таблицы ещё нет:
+подготовить migration.
+
+Поля:
+
+* id uuid primary key
+* request_id uuid not null
+* assigned_to_user_id uuid not null
+* assigned_role text not null
+* action_type text not null
+* title text
+* description text
+* status text default 'open'
+* is_read boolean default false
+* is_resolved boolean default false
+* payload jsonb nullable
+* created_at timestamptz default now()
+* read_at timestamptz nullable
+* resolved_at timestamptz nullable
+
+Индексы:
+
+* assigned_to_user_id
+* request_id
+* action_type
+* status
+* is_read
+* is_resolved
+
+# 2. После matching
+
+Когда matching engine подобрал экспертов:
+
+1. создать записи в `palata_request_matches`;
+2. перевести заказ в:
+   `expert_selection`;
+3. создать запись в `palata_status_events`;
+4. создать action item заказчику.
+
+# 3. Action item заказчика
+
+Action type:
+`experts_matched`
+
+assigned_to_user_id:
+= customer user id.
+
+title:
+`Подобраны эксперты`
+
+description:
+`По заказу #{номер} подобрано {N} экспертов`
+
+payload должен содержать:
+
+* request_id
+* matched_experts_count
+* массив expert ids
+
+# 4. Вкладка «Требуют действия»
+
+В `/customer` добавить вкладку:
+
+`Требуют действия`
+
+Пока только для customer.
+
+Вкладка должна:
+
+* читать `palata_action_items`;
+* показывать только:
+
+  * assigned_to_user_id = current user;
+  * is_resolved = false;
+  * status = open.
+
+# 5. Badge counter
+
+На вкладке показывать badge:
+
+Пример:
+`Требуют действия (2)`
+
+Формула:
+count action items:
+
+* status = open
+* is_resolved = false
+* assigned_to_user_id = current user
+
+# 6. UI карточки action item
+
+Пока простой вариант.
+
+Карточка должна показывать:
+
+* title
+* description
+* created_at
+* кнопку:
+  `Открыть заказ`
+
+При открытии:
+
+* переход в `/requests/:id`.
+
+# 7. Важно
+
+Пока НЕ делать:
+
+* выбор эксперта;
+* workflow ответов;
+* отказаться;
+* взять в работу.
+
+Только:
+
+* matching;
+* создание action item;
+* badge;
+* отображение action item в ЛК заказчика.
+
+# 8. Проверка
+
+После реализации показать:
+
+1. какой запрос создаёт action item;
+2. как считается badge;
+3. что создаётся после matching;
+4. сколько action items видит Марина;
+5. какие записи появились в:
+
+   * palata_action_items
+   * palata_request_matches
+   * palata_status_events.

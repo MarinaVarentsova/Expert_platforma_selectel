@@ -334,7 +334,12 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
         action_type: "experts_matched",
         title: `Подобраны эксперты для вашего заказа`,
         description: `Система подобрала ${n} эксперт${suffix}. Ознакомьтесь с профилями и выберите подходящего специалиста.`,
-        payload: { matched_count: n, round: nextRound },
+        payload: {
+          request_id: requestId,
+          matched_experts_count: n,
+          expert_ids: selected.map(s => s.expertId),
+          round: nextRound,
+        },
       });
     } catch { /* non-fatal */ }
   }

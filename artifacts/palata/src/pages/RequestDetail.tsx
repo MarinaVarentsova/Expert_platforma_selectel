@@ -4,6 +4,13 @@ import { supabase } from "@/lib/supabaseClient";
 import { useCurrentUser } from "@/lib/authContext";
 import { runMatching } from "@/lib/matching";
 import { notify, type NotifyItem } from "@/lib/notifyApi";
+import {
+  resolveActionItem,
+  createActionItem,
+  logStatusEvent,
+  logEmailTestEvent,
+  type ActionItem,
+} from "@/lib/actionItems";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +64,8 @@ type ContactRecord = {
   request_id: string;
   expert_id: string;
   revealed_at: string | null;
+  contact_opened_at: string | null;
+  expert_status: string | null;
   customer_phone: string | null;
   customer_email: string | null;
   expert_phone: string | null;
@@ -153,7 +162,6 @@ type MatchUIState =
 
 type CustUIState =
   | { kind: "idle" }
-  | { kind: "open_contacts"; selectedMatchId: string }
   | { kind: "submitting" }
   | { kind: "error"; message: string };
 
@@ -180,6 +188,7 @@ const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
 const MATCH_STATUS: Record<string, { label: string; cls: string }> = {
   proposed:               { label: "Предложено",          cls: "bg-yellow-100 text-yellow-700" },
   can_start_from:         { label: "Может взять",          cls: "bg-teal-100 text-teal-700" },
+  selected_by_customer:   { label: "Выбран заказчиком",   cls: "bg-[#16a34a]/10 text-[#1a3d2b]" },
   contacts_opened:        { label: "Контакты открыты",     cls: "bg-cyan-100 text-cyan-700" },
   accepted:               { label: "Принято",              cls: "bg-green-100 text-green-700" },
   accepted_work:          { label: "Взял в работу",        cls: "bg-indigo-100 text-indigo-700" },
@@ -213,9 +222,10 @@ const ALL_ORDER_STATUSES = [
   { value: "failed",           label: "Ошибка подбора" },
 ];
 
-const ACTIVE_MATCH_STATUSES = new Set(["proposed", "can_start_from", "contacts_opened", "accepted", "accepted_work"]);
-const EXPERT_CAN_ACT = new Set(["proposed", "can_start_from", "contacts_opened", "accepted", "accepted_work"]);
-const CONTACTS_REVEALED = new Set(["proposed", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"]);
+const ACTIVE_MATCH_STATUSES = new Set(["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted", "accepted_work"]);
+const EXPERT_CAN_ACT = new Set(["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted", "accepted_work"]);
+const CONTACTS_REVEALED = new Set(["selected_by_customer", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"]);
+const CUSTOMER_CAN_SELECT = new Set(["proposed", "can_start_from"]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -439,6 +449,21 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     };
   }
 
+  // ── Open action items for this request (current user) ─────────────────────
+  const [openRequestItems, setOpenRequestItems] = useState<ActionItem[]>([]);
+  useEffect(() => {
+    if (!userId) return;
+    supabase
+      .from("palata_action_items")
+      .select("*")
+      .eq("assigned_to_user_id", userId)
+      .eq("request_id", r.id)
+      .eq("is_resolved", false)
+      .then(({ data }) => setOpenRequestItems((data ?? []) as ActionItem[]));
+  }, [userId, r.id]);
+
+  const expertsMatchedItem = openRequestItems.find(i => i.action_type === "experts_matched");
+
   // ── Customer action state ──────────────────────────────────────────────────
   const [custUI, setCustUI] = useState<CustUIState>({ kind: "idle" });
   const [matchingRunning, setMatchingRunning] = useState(false);
@@ -454,26 +479,89 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     finally { setMatchingRunning(false); onReload(); }
   }
 
-  async function handleOpenContacts(matchId?: string) {
-    const targetMatchId = matchId ?? (custUI as { selectedMatchId?: string }).selectedMatchId;
-    const match = matches.find(m => m.id === targetMatchId);
-    if (!match) return;
+  async function handleSelectExpert(match: Match) {
+    if (!userId) return;
     setCustUI({ kind: "submitting" });
     try {
-      const { data: existing } = await supabase
-        .from("palata_request_contacts").select("id")
-        .eq("request_id", r.id).eq("expert_id", match.expert_id).maybeSingle();
-      if (!existing) {
-        const { error: ce } = await supabase.from("palata_request_contacts")
-          .insert({ request_id: r.id, expert_id: match.expert_id });
+      const now = new Date().toISOString();
+      const expertUser = usersMap[match.expert_id];
+
+      // 1. Update match → selected_by_customer
+      const { error: me } = await supabase
+        .from("palata_request_matches")
+        .update({ status: "selected_by_customer", responded_at: now })
+        .eq("id", match.id);
+      if (me) throw me;
+
+      // 2. Create / update palata_request_contacts with populated fields
+      const { data: existingContact } = await supabase
+        .from("palata_request_contacts")
+        .select("id")
+        .eq("request_id", r.id)
+        .eq("expert_id", match.expert_id)
+        .maybeSingle();
+
+      const contactPayload = {
+        contact_opened_at: now,
+        expert_status: "selected_by_customer",
+        revealed_at: now,
+        customer_phone: r.customer_phone ?? null,
+        customer_email: r.customer_email ?? null,
+        expert_email: expertUser?.email ?? null,
+        expert_phone: null as string | null,
+      };
+
+      if (existingContact) {
+        await supabase
+          .from("palata_request_contacts")
+          .update(contactPayload)
+          .eq("id", existingContact.id);
+      } else {
+        const { error: ce } = await supabase
+          .from("palata_request_contacts")
+          .insert({ request_id: r.id, expert_id: match.expert_id, ...contactPayload });
         if (ce) throw ce;
       }
-      if (r.status !== "expert_selection" && r.status !== "in_work") {
-        const { error: re } = await supabase.from("palata_requests")
-          .update({ status: "expert_selection" }).eq("id", r.id);
-        if (re) throw re;
-        await logEvent("request", r.id, r.status, "expert_selection", "Выбран эксперт");
+
+      // 3. Close experts_matched action item for customer
+      if (expertsMatchedItem) {
+        await resolveActionItem(expertsMatchedItem.id);
+        setOpenRequestItems(prev => prev.filter(i => i.id !== expertsMatchedItem.id));
       }
+
+      // 4. Create action item for expert: customer_selected_you
+      await createActionItem({
+        request_id: r.id,
+        expert_id: match.expert_id,
+        customer_id: r.customer_id,
+        assigned_to_user_id: match.expert_id,
+        assigned_role: "expert",
+        action_type: "customer_selected_you",
+        title: "Вас выбрали по заказу",
+        description: `Заказчик выбрал вас для связи по заказу #${shortId(r.id)}`,
+        payload: {
+          request_id: r.id,
+          expert_id: match.expert_id,
+          customer_id: r.customer_id,
+          contact_opened_at: now,
+        },
+      });
+
+      // 5. Status event: expert_selected_by_customer
+      await logStatusEvent(r.id, r.status, "expert_selected_by_customer",
+        `Заказчик выбрал эксперта ${expertUser?.full_name ?? match.expert_id.slice(0, 8)}`);
+
+      // 6. Email test event
+      if (r.customer_id && customerEmail) {
+        await logEmailTestEvent(
+          r.customer_id,
+          customerEmail,
+          "customer_selected_expert",
+          `Вы выбрали эксперта по заказу #${shortId(r.id)}`,
+          { request_id: r.id, expert_id: match.expert_id },
+        );
+      }
+
       setCustUI({ kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -803,7 +891,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       {role === "customer" && (
         <Card>
           <div className="flex items-center gap-2 mb-4">
-            <span className="w-2 h-2 rounded-full bg-blue-400" />
+            <span className="w-2 h-2 rounded-full bg-[#16a34a]" />
             <h2 className="text-sm font-semibold text-slate-700">Действия заказчика</h2>
           </div>
 
@@ -815,42 +903,10 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           )}
 
           <div className="flex flex-wrap gap-2 items-start">
-            {isOrderActive && (r.status === "pending" || r.status === "matching") && custUI.kind === "idle" && (
+            {isOrderActive && (r.status === "new" || r.status === "pending" || r.status === "matching") && custUI.kind === "idle" && (
               <button className="btn-primary" onClick={handleRematch} disabled={matchingRunning}>
                 {matchingRunning ? "Идёт подбор…" : "Запустить подбор экспертов"}
               </button>
-            )}
-
-            {isOrderActive && selectableMatches.length > 0 && custUI.kind === "idle" && (
-              <button
-                className="btn-primary"
-                onClick={() => setCustUI({ kind: "open_contacts", selectedMatchId: selectableMatches[0].id })}
-              >
-                Открыть контакты с экспертом
-              </button>
-            )}
-
-            {custUI.kind === "open_contacts" && (
-              <div className="w-full flex flex-wrap items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <select
-                  className="text-sm border border-blue-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  value={custUI.selectedMatchId}
-                  onChange={e => setCustUI({ kind: "open_contacts", selectedMatchId: e.target.value })}
-                >
-                  {selectableMatches.map(m => {
-                    const u = usersMap[m.expert_id];
-                    return (
-                      <option key={m.id} value={m.id}>
-                        {userName(u) ?? m.expert_id.slice(0, 8)} — {MATCH_STATUS[m.status]?.label ?? m.status}
-                      </option>
-                    );
-                  })}
-                </select>
-                <button className="btn-primary" onClick={() => handleOpenContacts(custUI.selectedMatchId)}>
-                  Подтвердить выбор
-                </button>
-                <button className="btn-ghost" onClick={() => setCustUI({ kind: "idle" })}>Отмена</button>
-              </div>
             )}
 
             {custUI.kind === "submitting" && <Spinner inline />}
@@ -863,8 +919,12 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             {!isOrderActive && (
               <p className="text-xs text-slate-400 italic">Заказ завершён — действия недоступны</p>
             )}
-            {isOrderActive && selectableMatches.length === 0 && custUI.kind === "idle" && (
-              <p className="text-xs text-slate-400 italic">Нет активных экспертов для связи</p>
+
+            {/* Prompt: select expert from matched list below */}
+            {isOrderActive && expertsMatchedItem && custUI.kind === "idle" && (
+              <div className="w-full mt-1 p-3 rounded-lg bg-[#f0f5f1] border border-[#d4e5d9] text-xs text-[#1a3d2b]">
+                <span className="font-semibold">Подберите эксперта</span> — ниже показаны профили подобранных специалистов. Нажмите «Выбрать эксперта» под карточкой нужного.
+              </div>
             )}
           </div>
         </Card>
@@ -1179,7 +1239,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                 <button
                   className="btn-ghost-sm"
                   disabled={adminSubmitting}
-                  onClick={() => handleOpenContacts(selectableMatches[0].id)}
+                  onClick={() => handleSelectExpert(selectableMatches[0])}
                 >
                   Открыть контакты (1й матч)
                 </button>
@@ -1327,40 +1387,59 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                       </div>
                     )}
 
+                    {/* Customer: Выбрать эксперта — shown when experts_matched is open */}
+                    {role === "customer" && isOrderActive && CUSTOMER_CAN_SELECT.has(m.status) && expertsMatchedItem && (
+                      <div className="px-4 py-3 bg-[#f0f5f1] border-t border-[#d4e5d9]">
+                        {custUI.kind === "submitting" ? (
+                          <div className="flex items-center gap-2 text-sm text-[#5a7560]">
+                            <Spinner inline />
+                            Обрабатывается…
+                          </div>
+                        ) : (
+                          <button
+                            className="btn-primary"
+                            onClick={() => handleSelectExpert(m)}
+                          >
+                            Выбрать эксперта
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {/* Contacts — role-aware */}
                     {hasContacts && contact && (
-                      <div className="px-4 py-3 bg-blue-50 border-t border-blue-100">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-2">Контакты открыты</p>
+                      <div className="px-4 py-3 bg-[#f0f5f1] border-t border-[#d4e5d9]">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#5a7560] mb-2">Контакты открыты</p>
                         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
                           {/* Customer sees expert contacts */}
                           {contact.expert_phone && (
                             <div>
-                              <p className="text-[10px] text-blue-400 mb-0.5">Телефон эксперта</p>
-                              <p className="text-sm font-semibold text-blue-800">{contact.expert_phone}</p>
+                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Телефон эксперта</p>
+                              <p className="text-sm font-semibold text-[#141c17]">{contact.expert_phone}</p>
                             </div>
                           )}
                           {contact.expert_email && (
                             <div>
-                              <p className="text-[10px] text-blue-400 mb-0.5">Email эксперта</p>
-                              <p className="text-sm font-semibold text-blue-800">{contact.expert_email}</p>
+                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Email эксперта</p>
+                              <p className="text-sm font-semibold text-[#141c17]">{contact.expert_email}</p>
                             </div>
                           )}
                           {/* Admin also sees customer contacts */}
                           {isAdminView && contact.customer_phone && (
                             <div>
-                              <p className="text-[10px] text-blue-400 mb-0.5">Телефон заказчика</p>
-                              <p className="text-sm font-semibold text-blue-800">{contact.customer_phone}</p>
+                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Телефон заказчика</p>
+                              <p className="text-sm font-semibold text-[#141c17]">{contact.customer_phone}</p>
                             </div>
                           )}
                           {isAdminView && contact.customer_email && (
                             <div>
-                              <p className="text-[10px] text-blue-400 mb-0.5">Email заказчика</p>
-                              <p className="text-sm font-semibold text-blue-800">{contact.customer_email}</p>
+                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Email заказчика</p>
+                              <p className="text-sm font-semibold text-[#141c17]">{contact.customer_email}</p>
                             </div>
                           )}
                         </div>
-                        {contact.revealed_at && (
-                          <p className="text-[10px] text-blue-300 mt-2">Открыты: {fmtDate(contact.revealed_at)}</p>
+                        {contact.contact_opened_at && (
+                          <p className="text-[10px] text-[#8aaa90] mt-2">Выбран: {fmtDate(contact.contact_opened_at)}</p>
                         )}
                       </div>
                     )}

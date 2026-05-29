@@ -751,6 +751,9 @@ function CustomerActionCard({ item, userId, onDone }: {
   if (item.action_type === "expert_can_start_from") {
     return <ExpertCanStartCard item={item} userId={userId} onDone={onDone} />;
   }
+  if (item.action_type === "choose_another_expert") {
+    return <ExpertsMatchedCard item={item} userId={userId} onDone={onDone} />;
+  }
   if (item.action_type === "expert_completed_order") {
     return <ExpertCompletedCard item={item} onDone={onDone} />;
   }
@@ -918,49 +921,112 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
 
 // ─── expert_can_start_from ────────────────────────────────────────────────────
 
+const REQUEST_STATUS_LABEL: Record<string, string> = {
+  new: "Новый", pending: "Ожидает", matching: "Подбор",
+  expert_selection: "Выбор эксперта", in_work: "В работе",
+  in_progress: "В работе", completed: "Выполнен", cancelled: "Отменён",
+};
+
 function ExpertCanStartCard({ item, userId, onDone }: {
   item: ActionItem;
   userId: string;
   onDone: () => void;
 }) {
   const payload = item.payload ?? {};
-  const expertName = payload.expert_name as string | null ?? null;
-  const expertId = item.expert_id ?? payload.expert_id as string | null ?? null;
-  const expertEmail = payload.expert_email as string | null ?? null;
-  const startDate = payload.start_date as string | null ?? null;
-  const comment = payload.comment as string | null ?? null;
-  const [busy, setBusy] = useState<"approve" | "decline" | null>(null);
+  const expertId = item.expert_id ?? (payload.expert_id as string | null) ?? null;
+  // support both old key (start_date) and new key (can_start_from)
+  const canStartFrom = ((payload.can_start_from ?? payload.start_date) as string | null) ?? null;
+  const comment = (payload.comment as string | null) ?? null;
+
+  const [reqTitle, setReqTitle]     = useState<string | null>(null);
+  const [reqStatus, setReqStatus]   = useState<string | null>(null);
+  const [expertName, setExpertName] = useState<string | null>((payload.expert_name as string | null) ?? null);
+  const [expertEmail, setExpertEmail] = useState<string | null>((payload.expert_email as string | null) ?? null);
+  const [loading, setLoading]       = useState(true);
+  const [busy, setBusy]             = useState<"approve" | "decline" | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      const [{ data: reqData }, { data: expertData }] = await Promise.all([
+        supabase.from("palata_requests")
+          .select("title, status")
+          .eq("id", item.request_id)
+          .maybeSingle(),
+        expertId
+          ? supabase.from("palata_users")
+              .select("full_name, email")
+              .eq("id", expertId)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+      const r = reqData as { title: string; status: string } | null;
+      setReqTitle(r?.title ?? null);
+      setReqStatus(r?.status ?? null);
+      const e = expertData as { full_name: string | null; email: string } | null;
+      if (e?.full_name) setExpertName(e.full_name);
+      if (e?.email) setExpertEmail(prev => prev ?? e!.email);
+      setLoading(false);
+    }
+    load();
+  }, [item.request_id, expertId]);
+
+  const shortId = `#${item.request_id.slice(0, 8).toUpperCase()}`;
+  const startFmt = canStartFrom
+    ? new Date(canStartFrom).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
 
   async function handleApprove() {
     if (!expertId) return;
     setBusy("approve");
-    await supabase.from("palata_requests").update({ status: "in_work" }).eq("id", item.request_id);
-    await supabase.from("palata_request_matches").update({
-      status: "accepted_work", responded_at: new Date().toISOString(),
-    }).eq("request_id", item.request_id).eq("expert_id", expertId);
-    await supabase.from("palata_request_matches").update({ status: "closed_by_other_expert" })
-      .eq("request_id", item.request_id).neq("expert_id", expertId).neq("status", "declined");
+    const now = new Date().toISOString();
 
-    await createActionItem({
-      request_id: item.request_id,
-      expert_id: expertId,
-      customer_id: userId,
-      assigned_to_user_id: expertId,
-      assigned_role: "expert",
-      action_type: "customer_approved_start_date",
-      title: "Заказчик согласовал дату начала",
-      description: `Дата ${startDate ? new Date(startDate).toLocaleDateString("ru-RU") : ""} подтверждена. Заказ передан в работу.`,
-      payload: { start_date: startDate, customer_id: userId },
-    });
+    // 1. Request → in_work
+    await supabase.from("palata_requests")
+      .update({ status: "in_work", updated_at: now })
+      .eq("id", item.request_id);
 
+    // 2. Match for this expert → accepted_work; others → closed_by_other_expert
+    await supabase.from("palata_request_matches")
+      .update({ status: "accepted_work", responded_at: now })
+      .eq("request_id", item.request_id)
+      .eq("expert_id", expertId);
+    await supabase.from("palata_request_matches")
+      .update({ status: "closed_by_other_expert" })
+      .eq("request_id", item.request_id)
+      .neq("expert_id", expertId)
+      .not("status", "in", '("declined","closed_by_other_expert","withdrawn","customer_declined_start_date")');
+
+    // 3. Contact record → accepted_work
+    await supabase.from("palata_request_contacts")
+      .update({ expert_status: "accepted_work", expert_status_updated_at: now })
+      .eq("request_id", item.request_id)
+      .eq("expert_id", expertId);
+
+    // 4. Resolve customer's item; cancel other open items for this request
     await resolveActionItem(item.id);
     await cancelRequestActionItems(item.request_id, item.id);
-    await logStatusEvent(item.request_id, "expert_selection", "in_work",
-      `Заказчик согласовал дату начала: ${startDate ?? "—"}`);
-    if (expertEmail) {
-      await logEmailTestEvent(expertId, expertEmail, "customer_approved_start",
-        "Заказчик согласовал дату начала работы", { request_id: item.request_id, start_date: startDate });
+
+    // 5. Action item for expert
+    await createActionItem({
+      request_id:          item.request_id,
+      expert_id:           expertId,
+      customer_id:         userId,
+      assigned_to_user_id: expertId,
+      assigned_role:       "expert",
+      action_type:         "customer_approved_start_date",
+      title:               "Заказчик согласовал дату",
+      description:         `Заказчик согласовал предложенную дату начала работ по заказу ${shortId}`,
+      payload:             { can_start_from: canStartFrom, start_date: canStartFrom, customer_id: userId },
+    });
+
+    // 6. Events
+    await logStatusEvent(item.request_id, "expert_selection", "in_work", "customer_approved_start_date");
+    if (expertId && expertEmail) {
+      await logEmailTestEvent(expertId, expertEmail, "customer_approved_start_date",
+        "Заказчик согласовал дату начала работы",
+        { request_id: item.request_id, can_start_from: canStartFrom });
     }
+
     setBusy(null);
     onDone();
   }
@@ -968,44 +1034,98 @@ function ExpertCanStartCard({ item, userId, onDone }: {
   async function handleDecline() {
     if (!expertId) return;
     setBusy("decline");
-    await supabase.from("palata_request_matches").update({ status: "declined" })
-      .eq("request_id", item.request_id).eq("expert_id", expertId);
+
+    // 1. Match → customer_declined_start_date
+    await supabase.from("palata_request_matches")
+      .update({ status: "customer_declined_start_date" })
+      .eq("request_id", item.request_id)
+      .eq("expert_id", expertId);
+
+    // 2. Resolve customer's action item
     await resolveActionItem(item.id);
-    await logStatusEvent(item.request_id, "expert_selection", "matching",
-      "Заказчик отклонил предложенную дату");
+
+    // 3. New action item for customer: choose_another_expert
+    await createActionItem({
+      request_id:          item.request_id,
+      expert_id:           expertId,
+      customer_id:         userId,
+      assigned_to_user_id: userId,
+      assigned_role:       "customer",
+      action_type:         "choose_another_expert",
+      title:               "Выберите другого эксперта",
+      description:         `Вы можете выбрать другого эксперта из ранее подобранных по заказу ${shortId}`,
+      payload:             { request_id: item.request_id, excluded_expert_id: expertId },
+    });
+
+    // 4. Events
+    await logStatusEvent(item.request_id, "expert_selection", "expert_selection", "customer_declined_start_date");
+    if (expertId && expertEmail) {
+      await logEmailTestEvent(expertId, expertEmail, "customer_declined_start_date",
+        "Заказчик отклонил предложенную дату",
+        { request_id: item.request_id });
+    }
+
     setBusy(null);
     onDone();
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-      <ActionItemHeader item={item} />
-      <div className="mt-3 bg-indigo-50 rounded-xl px-4 py-3 space-y-1.5">
-        {expertName && <p className="text-xs text-slate-700"><span className="text-slate-400">Эксперт:</span> <span className="font-semibold">{expertName}</span></p>}
-        {startDate && (
-          <p className="text-xs text-slate-700 flex items-center gap-1.5">
-            <Calendar className="w-3 h-3 text-indigo-400" />
-            <span className="text-slate-400">Готов начать:</span>
-            <span className="font-semibold">{new Date(startDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}</span>
-          </p>
+    <div className="bg-white border border-amber-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="p-5">
+        <ActionItemHeader item={item} />
+
+        {/* Request details */}
+        {loading ? (
+          <p className="text-xs text-[#8aaa90] mt-3">Загрузка…</p>
+        ) : (
+          <div className="mt-3 bg-[#f0f5f1] rounded-xl px-4 py-3 space-y-1">
+            <p className="text-[10px] font-mono text-[#8aaa90]">{shortId}</p>
+            {reqTitle && <p className="text-sm font-semibold text-[#141c17]">{reqTitle}</p>}
+            {reqStatus && (
+              <span className="inline-block text-[10px] text-[#5a7560] bg-[#d4e5d9] px-1.5 py-0.5 rounded">
+                {REQUEST_STATUS_LABEL[reqStatus] ?? reqStatus}
+              </span>
+            )}
+          </div>
         )}
-        {comment && <p className="text-xs text-slate-500 italic">«{comment}»</p>}
-      </div>
-      <div className="flex gap-2 mt-4">
-        <button
-          disabled={busy !== null}
-          onClick={handleApprove}
-          className="btn-primary text-xs py-1.5 px-4"
-        >
-          {busy === "approve" ? "Сохранение…" : "Согласовать дату"}
-        </button>
-        <button
-          disabled={busy !== null}
-          onClick={handleDecline}
-          className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-800 transition-colors disabled:opacity-50"
-        >
-          {busy === "decline" ? "…" : "Выбрать другого эксперта"}
-        </button>
+
+        {/* Expert proposal */}
+        <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 space-y-1.5">
+          {expertName && (
+            <p className="text-xs text-slate-700">
+              <span className="text-slate-400">Эксперт: </span>
+              <span className="font-semibold">{expertName}</span>
+            </p>
+          )}
+          {startFmt && (
+            <p className="text-xs text-slate-700 flex items-center gap-1.5">
+              <Calendar className="w-3 h-3 text-amber-500 shrink-0" />
+              <span className="text-slate-400">Готов начать:</span>
+              <span className="font-semibold">{startFmt}</span>
+            </p>
+          )}
+          {comment && (
+            <p className="text-xs text-slate-500 italic">«{comment}»</p>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 mt-4">
+          <button
+            disabled={busy !== null}
+            onClick={handleApprove}
+            className="btn-primary text-xs py-1.5 px-4"
+          >
+            {busy === "approve" ? "Сохранение…" : "Согласовать дату"}
+          </button>
+          <button
+            disabled={busy !== null}
+            onClick={handleDecline}
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-800 transition-colors disabled:opacity-50"
+          >
+            {busy === "decline" ? "…" : "Выбрать другого эксперта"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1205,14 +1325,15 @@ function ExpertProfileCard({ expert: e, busy, onSelect }: {
 // ─── Shared: action item header ───────────────────────────────────────────────
 
 const ACTION_LABEL: Record<string, { label: string; color: string }> = {
-  experts_matched:            { label: "Подобраны эксперты", color: "text-indigo-700 bg-indigo-50" },
-  expert_declined:            { label: "Эксперт отказался", color: "text-red-700 bg-red-50" },
-  expert_can_start_from:      { label: "Предложена дата", color: "text-amber-700 bg-amber-50" },
-  expert_completed_order:     { label: "Заказ завершён", color: "text-emerald-700 bg-emerald-50" },
-  expert_started_work:        { label: "Эксперт взял в работу", color: "text-emerald-700 bg-emerald-50" },
-  customer_selected_you:      { label: "Вас выбрали", color: "text-indigo-700 bg-indigo-50" },
-  customer_approved_start_date: { label: "Дата согласована", color: "text-emerald-700 bg-emerald-50" },
-  manual_matching_required:   { label: "Нет доступных экспертов", color: "text-slate-600 bg-slate-100" },
+  experts_matched:              { label: "Подобраны эксперты",       color: "text-indigo-700 bg-indigo-50" },
+  expert_declined:              { label: "Эксперт отказался",        color: "text-red-700 bg-red-50" },
+  expert_can_start_from:        { label: "Предложена дата",          color: "text-amber-700 bg-amber-50" },
+  expert_completed_order:       { label: "Заказ завершён",           color: "text-emerald-700 bg-emerald-50" },
+  expert_started_work:          { label: "Эксперт взял в работу",   color: "text-emerald-700 bg-emerald-50" },
+  customer_selected_you:        { label: "Вас выбрали",              color: "text-indigo-700 bg-indigo-50" },
+  customer_approved_start_date: { label: "Дата согласована",         color: "text-emerald-700 bg-emerald-50" },
+  choose_another_expert:        { label: "Выберите другого эксперта",color: "text-amber-700 bg-amber-50" },
+  manual_matching_required:     { label: "Нет доступных экспертов",  color: "text-slate-600 bg-slate-100" },
 };
 
 function ActionItemHeader({ item }: { item: ActionItem }) {

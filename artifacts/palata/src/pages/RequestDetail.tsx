@@ -192,10 +192,11 @@ const MATCH_STATUS: Record<string, { label: string; cls: string }> = {
   contacts_opened:        { label: "Контакты открыты",     cls: "bg-cyan-100 text-cyan-700" },
   accepted:               { label: "Принято",              cls: "bg-green-100 text-green-700" },
   accepted_work:          { label: "Взял в работу",        cls: "bg-indigo-100 text-indigo-700" },
-  declined:               { label: "Отказ",                cls: "bg-red-100 text-red-600" },
-  completed:              { label: "Завершено",            cls: "bg-emerald-100 text-emerald-700" },
-  withdrawn:              { label: "Отозвано",             cls: "bg-slate-100 text-slate-500" },
-  closed_by_other_expert: { label: "Закрыт другим",        cls: "bg-slate-100 text-slate-400" },
+  declined:                      { label: "Отказ",                    cls: "bg-red-100 text-red-600" },
+  customer_declined_start_date:  { label: "Дата отклонена",            cls: "bg-orange-100 text-orange-600" },
+  completed:                     { label: "Завершено",                  cls: "bg-emerald-100 text-emerald-700" },
+  withdrawn:                     { label: "Отозвано",                   cls: "bg-slate-100 text-slate-500" },
+  closed_by_other_expert:        { label: "Закрыт другим",              cls: "bg-slate-100 text-slate-400" },
 };
 
 const URGENCY_LABEL: Record<string, string> = {

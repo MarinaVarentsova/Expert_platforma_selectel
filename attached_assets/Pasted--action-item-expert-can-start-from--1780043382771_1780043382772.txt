@@ -1,0 +1,164 @@
+Следующий этап: реализовать ответ заказчика на action item `expert_can_start_from`.
+
+Сейчас уже должно работать:
+
+* заказчик выбирает эксперта;
+* эксперт получает action item `customer_selected_you`;
+* эксперт может ответить:
+
+  * взять в работу;
+  * могу начать с даты;
+  * отказаться;
+* если эксперт выбрал «Могу начать с даты», заказчику создаётся action item `expert_can_start_from`.
+
+Теперь нужно реализовать действия заказчика по этому action item.
+
+# Цель этапа
+
+Заказчик открывает вкладку «Требуют действия», видит предложение эксперта начать с даты и выбирает:
+
+1. Согласовать дату
+2. Выбрать другого эксперта
+
+# 1. В ЛК заказчика
+
+Во вкладке `/customer` → «Требуют действия» показывать action items:
+
+* assigned_to_user_id = current user
+* action_type = `expert_can_start_from`
+* status = `open`
+* is_resolved = false
+
+Карточка должна показывать:
+
+* номер заказа;
+* название заказа;
+* эксперт;
+* предложенная дата начала;
+* комментарий эксперта;
+* текущий статус заказа.
+
+Кнопки:
+
+* `Согласовать дату`
+* `Выбрать другого эксперта`
+
+# 2. Действие «Согласовать дату»
+
+При нажатии:
+
+1. `palata_requests`
+
+* status = `in_work`
+* updated_at = now()
+
+2. `palata_request_matches`
+
+* для выбранного эксперта:
+
+  * status = `accepted_work`
+* для остальных экспертов по этому request_id:
+
+  * status = `closed_by_other_expert`
+
+3. `palata_request_contacts`
+
+* для выбранного эксперта:
+
+  * expert_status = `accepted_work`
+  * expert_status_updated_at = now()
+
+4. `palata_action_items`
+
+* текущий action item заказчика:
+
+  * status = `resolved`
+  * is_resolved = true
+  * resolved_at = now()
+* все открытые action items других экспертов по этому request_id:
+
+  * status = `cancelled`
+  * is_resolved = true
+  * resolved_at = now()
+
+5. Создать action item эксперту:
+
+action_type:
+`customer_approved_start_date`
+
+title:
+`Заказчик согласовал дату`
+
+description:
+`Заказчик согласовал предложенную дату начала работ по заказу #{номер}`
+
+assigned_to_user_id:
+user_id выбранного эксперта
+
+6. Создать событие в `palata_status_events`:
+   `customer_approved_start_date`
+
+7. Создать test email event в `palata_email_events`:
+   `customer_approved_start_date`
+
+# 3. Действие «Выбрать другого эксперта»
+
+При нажатии:
+
+1. Текущий match эксперта:
+
+* status = `customer_declined_start_date`
+
+2. Текущий action item заказчика:
+
+* status = `resolved`
+* is_resolved = true
+* resolved_at = now()
+
+3. Создать новый action item заказчику:
+
+action_type:
+`choose_another_expert`
+
+title:
+`Выберите другого эксперта`
+
+description:
+`Вы можете выбрать другого эксперта из ранее подобранных по заказу #{номер}`
+
+payload:
+
+* request_id
+* excluded_expert_id
+
+4. Заказ остаётся в статусе:
+   `expert_selection`
+
+5. Создать событие:
+   `customer_declined_start_date`
+
+6. Создать test email event:
+   `customer_declined_start_date`
+
+# 4. Важно
+
+Пока НЕ делать:
+
+* завершение заказа;
+* оценки;
+* повторный подбор.
+
+Это следующие этапы.
+
+Сейчас нужно реализовать только ответ заказчика на дату старта эксперта.
+
+# 5. Проверка
+
+После реализации покажи:
+
+1. какие таблицы обновляются при «Согласовать дату»;
+2. какие таблицы обновляются при «Выбрать другого эксперта»;
+3. какой action item создаётся эксперту;
+4. как закрывается action item заказчика;
+5. как заказ переходит в `in_work`;
+6. как остальные эксперты закрываются как `closed_by_other_expert`.

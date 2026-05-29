@@ -10,6 +10,7 @@ export type ActionType =
   | "expert_started_work"
   | "customer_selected_you"
   | "customer_approved_start_date"
+  | "choose_another_expert"
   | "manual_matching_required";
 
 export type ActionItem = {

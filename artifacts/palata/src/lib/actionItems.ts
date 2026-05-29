@@ -75,6 +75,7 @@ export async function loadOpenActionItems(userId: string): Promise<ActionItem[]>
       .from("palata_action_items")
       .select("*")
       .eq("assigned_to_user_id", userId)
+      .eq("status", "open")
       .eq("is_resolved", false)
       .order("created_at", { ascending: false });
     if (error) return [];

@@ -12,6 +12,9 @@ import AdminDashboard from "@/pages/AdminDashboard";
 import AdminMetrics from "@/pages/AdminMetrics";
 import AdminExperts from "@/pages/AdminExperts";
 import AdminSettings from "@/pages/AdminSettings";
+import AdminActionItems from "@/pages/AdminActionItems";
+import AdminEvents from "@/pages/AdminEvents";
+import AdminEmailEvents from "@/pages/AdminEmailEvents";
 import NewRequest from "@/pages/NewRequest";
 import RequestDetail from "@/pages/RequestDetail";
 import NotFound from "@/pages/not-found";
@@ -32,6 +35,9 @@ function Router() {
         <Route path="/admin/metrics" component={AdminMetrics} />
         <Route path="/admin/experts" component={AdminExperts} />
         <Route path="/admin/settings" component={AdminSettings} />
+        <Route path="/admin/action-items" component={AdminActionItems} />
+        <Route path="/admin/events" component={AdminEvents} />
+        <Route path="/admin/email-events" component={AdminEmailEvents} />
         <Route path="/requests/:id" component={RequestDetail} />
         <Route component={NotFound} />
       </Switch>

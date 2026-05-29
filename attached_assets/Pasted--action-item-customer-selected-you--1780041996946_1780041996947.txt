@@ -1,0 +1,231 @@
+Следующий этап: реализовать ответ эксперта на action item `customer_selected_you`.
+
+Сейчас уже должно работать:
+
+* заказчик видит action item `experts_matched`;
+* заказчик выбирает эксперта;
+* выбранному эксперту создаётся action item `customer_selected_you`;
+* у эксперта появляется badge «Требуют действия».
+
+Теперь нужно добавить действия эксперта.
+
+# Цель этапа
+
+Эксперт открывает вкладку «Требуют действия», видит заказ, по которому его выбрали, и может выбрать один из вариантов:
+
+1. Взять в работу
+2. Могу начать с даты
+3. Отказаться
+
+# 1. В ЛК эксперта
+
+Во вкладке `/expert` → «Требуют действия» показывать action items:
+
+* assigned_to_user_id = current user
+* action_type = `customer_selected_you`
+* status = `open`
+* is_resolved = false
+
+Карточка должна показывать:
+
+* номер заказа;
+* название заказа;
+* регион;
+* направление;
+* описание;
+* заказчика;
+* контакты заказчика, если контакт открыт;
+* дату создания action item.
+
+Кнопки:
+
+* `Взять в работу`
+* `Могу начать с даты`
+* `Отказаться`
+
+# 2. Действие «Взять в работу»
+
+При нажатии:
+
+1. `palata_requests`
+
+* status = `in_work`
+* updated_at = now()
+
+2. `palata_request_matches`
+
+* для текущего эксперта:
+
+  * status = `accepted_work`
+* для остальных экспертов по этому request_id:
+
+  * status = `closed_by_other_expert`
+
+3. `palata_request_contacts`
+
+* для текущего эксперта:
+
+  * expert_status = `accepted_work`
+  * expert_status_updated_at = now()
+
+4. `palata_action_items`
+
+* текущий action item эксперта:
+
+  * status = `resolved`
+  * is_resolved = true
+  * resolved_at = now()
+* все открытые action items других экспертов по этому request_id:
+
+  * status = `cancelled`
+  * is_resolved = true
+  * resolved_at = now()
+
+5. Создать action item заказчику:
+
+action_type:
+`expert_started_work`
+
+title:
+`Эксперт взял заказ в работу`
+
+description:
+`Эксперт подтвердил готовность выполнить заказ #{номер}`
+
+assigned_to_user_id:
+customer user id
+
+6. Создать событие в `palata_status_events`:
+   `expert_accepted_work`
+
+7. Создать test email event в `palata_email_events`:
+   `expert_accepted_work`
+
+# 3. Действие «Могу начать с даты»
+
+При нажатии:
+
+* показать date picker;
+* поле комментария необязательно.
+
+После сохранения:
+
+1. `palata_request_matches`
+
+* status = `can_start_from`
+* can_start_from = выбранная дата
+
+2. `palata_request_contacts`
+
+* expert_status = `can_start_from`
+* expert_status_updated_at = now()
+
+3. `palata_action_items`
+
+* action item эксперта закрыть как resolved
+
+4. Создать action item заказчику:
+
+action_type:
+`expert_can_start_from`
+
+title:
+`Эксперт предложил дату начала`
+
+description:
+`Эксперт может начать работу с {дата}`
+
+payload:
+
+* request_id
+* expert_id
+* can_start_from
+* comment
+
+5. Создать событие в `palata_status_events`:
+   `expert_can_start_from`
+
+6. Создать test email event:
+   `expert_can_start_from`
+
+# 4. Действие «Отказаться»
+
+При нажатии:
+
+* показать select причины отказа;
+* показать поле комментария.
+
+Причины:
+
+* не мой профиль
+* не подходит срок
+* нет возможности выезда
+* недостаточно документов
+* заказчик не выходит на связь
+* другое
+
+После сохранения:
+
+1. `palata_request_matches`
+
+* status = `declined`
+* decline_reason = выбранная причина
+* decline_comment = комментарий
+
+2. `palata_request_contacts`
+
+* expert_status = `declined`
+* expert_status_updated_at = now()
+* failure_reason = выбранная причина
+* expert_comment = комментарий
+
+3. `palata_action_items`
+
+* action item эксперта закрыть как resolved
+
+4. Создать action item заказчику:
+
+action_type:
+`expert_declined`
+
+title:
+`Эксперт отказался от заказа`
+
+description:
+`Эксперт отказался от заказа #{номер}. Вы можете выбрать другого эксперта.`
+
+payload:
+
+* request_id
+* expert_id
+* decline_reason
+* decline_comment
+
+5. Создать событие:
+   `expert_declined`
+
+6. Создать test email event:
+   `expert_declined`
+
+# 5. Важно
+
+Пока НЕ делать:
+
+* согласование даты заказчиком;
+* повторный подбор;
+* завершение заказа.
+
+Это следующие этапы.
+
+Сейчас нужно реализовать только ответ эксперта на выбор заказчика.
+
+# 6. Проверка
+
+После реализации покажи:
+
+1. какие таблицы обновляются при «Взять в работу»;
+2. какие таблицы обновляются при «Могу начать с даты»;
+3. какие таблицы обновляются при «Отказаться»;
+4. какой action item создаётся заказчику;
+5. как закрывается action item эксперта;
+6. как отменяются action items других экспертов при взятии заказа в работу.

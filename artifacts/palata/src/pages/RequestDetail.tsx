@@ -669,19 +669,43 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleCompleteWork(match: Match) {
     setMS(match.id, { kind: "submitting" });
     try {
+      const completedAt = new Date().toISOString();
       const { error: me } = await supabase.from("palata_request_matches")
-        .update({ status: "completed", responded_at: new Date().toISOString() }).eq("id", match.id);
+        .update({ status: "completed", responded_at: completedAt }).eq("id", match.id);
       if (me) throw me;
       const { error: re } = await supabase.from("palata_requests")
         .update({ status: "completed" }).eq("id", r.id);
       if (re) throw re;
+
+      // Contact record → completed
+      await supabase.from("palata_request_contacts")
+        .update({ expert_status: "completed", expert_status_updated_at: completedAt })
+        .eq("request_id", r.id)
+        .eq("expert_id", match.expert_id);
+
       await logEvent("request", r.id, r.status, "completed", "Работа завершена экспертом");
+
+      // Action item for customer: expert_completed_order
+      if (r.customer_id) {
+        await createActionItem({
+          request_id:          r.id,
+          expert_id:           match.expert_id,
+          customer_id:         r.customer_id,
+          assigned_to_user_id: r.customer_id,
+          assigned_role:       "customer",
+          action_type:         "expert_completed_order",
+          title:               "Эксперт завершил заказ",
+          description:         "Эксперт завершил работу по заказу. Оцените эксперта.",
+          payload:             { request_id: r.id, expert_id: match.expert_id, completed_at: completedAt },
+        });
+      }
+
       const completedExpert = usersMap[match.expert_id];
       const payloads: NotifyItem[] = [];
       if (customerEmail) payloads.push(mkNotify({ type: "request_completed", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: completedExpert?.full_name ?? undefined, currentStatus: "completed" }));
       if (completedExpert?.email) payloads.push(mkNotify({ type: "request_completed", recipientEmail: completedExpert.email, recipientType: "expert", expertId: match.expert_id, expertName: completedExpert.full_name ?? undefined, currentStatus: "completed" }));
       if (payloads.length) notify(payloads);
-      // Email events (test mode)
+
       if (r.customer_id && customerEmail) {
         await logEmailEvent(r.customer_id, customerEmail, "order_completed_rate_expert",
           `Заказ выполнен — оцените эксперта`,
@@ -1095,7 +1119,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                                 Взять в работу
                               </button>
                             )}
-                            {["accepted_work", "accepted"].includes(m.status) && (
+                            {role === "expert" && m.status === "accepted_work" && r.status === "in_work" && (
                               <button className="btn-success-sm" onClick={() => handleCompleteWork(m)}>
                                 Завершить заказ
                               </button>
@@ -1530,7 +1554,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                                 Взял в работу
                               </button>
                             )}
-                            {["accepted_work", "accepted"].includes(m.status) && (
+                            {role === "admin" && ["accepted_work", "accepted"].includes(m.status) && (
                               <button className="btn-success-sm" onClick={() => handleCompleteWork(m)}>
                                 Завершить заказ
                               </button>

@@ -35,6 +35,7 @@ type CustomerProfile = {
 };
 
 type PendingExpertRating = {
+  action_item_id: string;
   request_id: string;
   title: string;
   assigned_expert_id: string;
@@ -134,24 +135,27 @@ export default function CustomerDashboard() {
   const [aiLoading, setAiLoading] = useState(false);
 
   const loadPendingRatings = async (userId: string) => {
-    // Fetch completed requests with assigned expert
-    const { data: completedReqs, error: reqErr } = await supabase
-      .from("palata_requests")
-      .select("id, title, assigned_expert_id, updated_at")
-      .eq("customer_id", userId)
-      .eq("status", "completed")
-      .not("assigned_expert_id", "is", null);
+    // Load open expert_completed_order action items assigned to this customer
+    const { data: aiData, error: aiErr } = await supabase
+      .from("palata_action_items")
+      .select("id, request_id, expert_id, payload, created_at")
+      .eq("assigned_to_user_id", userId)
+      .eq("action_type", "expert_completed_order")
+      .eq("is_resolved", false)
+      .order("created_at", { ascending: false });
 
-    if (reqErr) { setPendingRatingsState({ kind: "error", message: reqErr.message }); return; }
-    if (!completedReqs || completedReqs.length === 0) {
+    if (aiErr) { setPendingRatingsState({ kind: "error", message: aiErr.message }); return; }
+    if (!aiData || aiData.length === 0) {
       setPendingRatingsState({ kind: "ok", items: [] });
       setRatedRequestIds(new Set());
       return;
     }
 
-    const reqIds = completedReqs.map((r: { id: string }) => r.id);
+    type AiRow = { id: string; request_id: string; expert_id: string | null; payload: Record<string, unknown>; created_at: string };
+    const rows = aiData as AiRow[];
+    const reqIds = [...new Set(rows.map(a => a.request_id))];
 
-    // Fetch existing ratings by this customer
+    // Filter out already rated
     const { data: ratings } = await supabase
       .from("palata_expert_ratings")
       .select("request_id")
@@ -161,33 +165,40 @@ export default function CustomerDashboard() {
     const ratedIds = new Set((ratings ?? []).map((r: { request_id: string }) => r.request_id));
     setRatedRequestIds(ratedIds);
 
-    // Filter unrated
-    const unratedReqs = completedReqs.filter((r: { id: string }) => !ratedIds.has(r.id));
-    if (unratedReqs.length === 0) {
+    const unrated = rows.filter(a => !ratedIds.has(a.request_id));
+    if (unrated.length === 0) {
       setPendingRatingsState({ kind: "ok", items: [] });
       return;
     }
 
-    // Fetch expert names
-    const expertIds = [...new Set(unratedReqs.map((r: { assigned_expert_id: string }) => r.assigned_expert_id))] as string[];
-    const { data: experts } = await supabase
-      .from("palata_users")
-      .select("id, full_name, email")
-      .in("id", expertIds);
+    // Fetch expert info and request titles in parallel
+    const expertIds = [...new Set(unrated.map(a => a.expert_id).filter(Boolean))] as string[];
+    const unratedReqIds = [...new Set(unrated.map(a => a.request_id))];
+
+    const [{ data: experts }, { data: reqs }] = await Promise.all([
+      supabase.from("palata_users").select("id, full_name, email").in("id", expertIds),
+      supabase.from("palata_requests").select("id, title").in("id", unratedReqIds),
+    ]);
 
     const expertMap = Object.fromEntries(
       (experts ?? []).map((u: { id: string; full_name: string | null; email: string }) => [u.id, u])
     );
+    const reqMap = Object.fromEntries(
+      (reqs ?? []).map((r: { id: string; title: string }) => [r.id, r])
+    );
 
-    const items: PendingExpertRating[] = unratedReqs.map((r: { id: string; title: string; assigned_expert_id: string; updated_at: string }) => {
-      const expert = expertMap[r.assigned_expert_id];
+    const items: PendingExpertRating[] = unrated.map(a => {
+      const eid = a.expert_id ?? (a.payload.expert_id as string | null) ?? "";
+      const expert = expertMap[eid];
+      const req = reqMap[a.request_id];
       return {
-        request_id: r.id,
-        title: r.title,
-        assigned_expert_id: r.assigned_expert_id,
-        expert_name: expert?.full_name ?? null,
-        expert_email: expert?.email ?? null,
-        updated_at: r.updated_at,
+        action_item_id:    a.id,
+        request_id:        a.request_id,
+        title:             req?.title ?? a.request_id,
+        assigned_expert_id: eid,
+        expert_name:       expert?.full_name ?? null,
+        expert_email:      expert?.email ?? null,
+        updated_at:        a.created_at,
       };
     });
 
@@ -259,30 +270,32 @@ export default function CustomerDashboard() {
     const form = getRatingForm(item.request_id);
     if (form.kind !== "idle") return;
     setRatingForm(item.request_id, { kind: "submitting" });
+
+    // 1. Insert rating
     const { error } = await supabase.from("palata_expert_ratings").insert({
       request_id: item.request_id,
-      expert_id: item.assigned_expert_id,
+      expert_id:  item.assigned_expert_id,
       customer_id: user.id,
-      score: form.score,
-      comment: form.comment || null,
+      score:      form.score,
+      comment:    form.comment || null,
     });
     if (error) { setRatingForm(item.request_id, { kind: "idle", score: 5, comment: "" }); return; }
-    await supabase.from("palata_status_events").insert({
-      entity_type: "request", entity_id: item.request_id,
-      old_status: "completed", new_status: "completed",
-      actor_id: null, note: `Заказчик оценил эксперта: ${form.score}/5`,
-    });
+
+    // 2. Resolve the expert_completed_order action item
+    await resolveActionItem(item.action_item_id);
+
+    // 3. Status event
+    await logStatusEvent(item.request_id, "completed", "completed",
+      `Заказчик оценил эксперта: ${form.score}/5`);
+
+    // 4. Email test event to expert
     if (item.expert_email) {
-      await supabase.from("palata_email_events").insert({
-        recipient_id: item.assigned_expert_id,
-        email_address: item.expert_email,
-        template_name: "expert_rated_by_customer",
-        subject: `Вас оценил заказчик — ${form.score} из 5`,
-        context: { request_id: item.request_id, score: form.score },
-        sent_at: new Date().toISOString(),
-        error: "TEST_MODE",
-      });
+      await logEmailTestEvent(item.assigned_expert_id, item.expert_email,
+        "customer_rated_expert",
+        `Вас оценил заказчик — ${form.score} из 5`,
+        { request_id: item.request_id, score: form.score });
     }
+
     setRatingForm(item.request_id, { kind: "done" });
     setRatedRequestIds(prev => new Set([...prev, item.request_id]));
     if (pendingRatingsState.kind === "ok") {
@@ -291,6 +304,7 @@ export default function CustomerDashboard() {
         items: pendingRatingsState.items.filter(i => i.request_id !== item.request_id),
       });
     }
+    reloadActionItems();
   }
 
   return (

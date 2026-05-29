@@ -1,0 +1,115 @@
+Нужно исправить ещё 4 пункта по итогам аудита workflow.
+
+Пока не трогать остальные сценарии.
+
+# 1. Завершение заказа доступно только эксперту
+
+Сейчас в `RequestDetail.tsx` кнопка «Завершить заказ» потенциально доступна заказчику.
+
+Нужно исправить:
+
+* заказчик НЕ должен видеть кнопку «Завершить заказ»;
+* админ может видеть статус, но не должен случайно завершать заказ как заказчик;
+* завершение заказа выполняет только эксперт, который взял заказ в работу.
+
+Условие показа кнопки:
+
+* role = expert;
+* заказ status = `in_work`;
+* текущий expert match status = `accepted_work`.
+
+# 2. При завершении заказа создавать action item заказчику
+
+Сейчас после завершения заказа экспертом action item `expert_completed_order` не создаётся.
+
+Нужно:
+
+После того как эксперт завершил заказ:
+
+1. `palata_requests.status = completed`;
+2. текущий match = `completed`;
+3. создаётся запись в `palata_customer_ratings`, если эксперт сразу оценивает заказчика;
+4. создаётся action item заказчику:
+
+action_type:
+`expert_completed_order`
+
+title:
+`Эксперт завершил заказ`
+
+description:
+`Эксперт завершил работу по заказу. Оцените эксперта.`
+
+assigned_to_user_id:
+customer user id
+
+payload:
+
+* request_id
+* expert_id
+* completed_at
+
+5. создаётся событие в `palata_status_events`;
+6. создаётся test email event.
+
+# 3. Вкладка «Оценить эксперта» должна работать через action items
+
+Сейчас вкладка «Оценить эксперта» работает напрямую:
+completed requests без рейтинга.
+
+Нужно изменить архитектуру:
+
+Вкладка «Оценить эксперта» должна показывать открытые action items:
+
+* assigned_to_user_id = current customer;
+* action_type = `expert_completed_order`;
+* status = `open`;
+* is_resolved = false;
+* оценки в `palata_expert_ratings` ещё нет.
+
+После того как заказчик поставил оценку эксперту:
+
+1. создаётся запись в `palata_expert_ratings`;
+2. action item `expert_completed_order` закрывается:
+
+   * status = `resolved`;
+   * is_resolved = true;
+   * resolved_at = now();
+3. создаётся событие в `palata_status_events`;
+4. создаётся test email event `customer_rated_expert`.
+
+Вкладку «Оценить эксперта» оставить, но источником данных должны быть action items.
+
+# 4. Автоматический пересчёт рейтинга эксперта
+
+Сейчас после оценки эксперта рейтинг в `palata_expert_profiles.avg_customer_rating` не пересчитывается.
+
+Нужно добавить:
+
+После вставки новой оценки в `palata_expert_ratings`:
+
+* пересчитать средний рейтинг эксперта;
+* обновить `palata_expert_profiles.avg_customer_rating`;
+* обновить количество оценок, если есть поле `rating_count`;
+* если поля `rating_count` нет — предложить migration.
+
+Можно сделать:
+
+* через Supabase trigger/function;
+  или
+* через frontend/service после успешной вставки оценки.
+
+Предпочтительно:
+через database trigger/function, чтобы рейтинг всегда был консистентным.
+
+# 5. Проверка после исправления
+
+Вернуть отчёт:
+
+1. Где убрана кнопка завершения для заказчика.
+2. Где создаётся `expert_completed_order`.
+3. Как вкладка «Оценить эксперта» теперь читает action items.
+4. Где закрывается action item после оценки.
+5. Как пересчитывается `avg_customer_rating`.
+6. Какие файлы изменены.
+7. Нужна ли migration.

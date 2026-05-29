@@ -828,12 +828,13 @@ function ErrorCard({ message }: { message: string }) {
 // ─── Expert Action Inbox ───────────────────────────────────────────────────────
 
 const ACTION_LABEL_EX: Record<string, { label: string; color: string }> = {
-  customer_selected_you:        { label: "Вас выбрали", color: "text-indigo-700 bg-indigo-50" },
-  customer_approved_start_date: { label: "Дата согласована", color: "text-emerald-700 bg-emerald-50" },
-  experts_matched:              { label: "Подобраны эксперты", color: "text-indigo-700 bg-indigo-50" },
-  expert_declined:              { label: "Эксперт отказался", color: "text-red-700 bg-red-50" },
-  expert_can_start_from:        { label: "Предложена дата", color: "text-amber-700 bg-amber-50" },
-  expert_completed_order:       { label: "Заказ завершён", color: "text-emerald-700 bg-emerald-50" },
+  customer_selected_you:        { label: "Вас выбрали",          color: "text-indigo-700 bg-indigo-50" },
+  customer_approved_start_date: { label: "Дата согласована",     color: "text-emerald-700 bg-emerald-50" },
+  you_are_approved_for_work:    { label: "Вы назначены на заказ",color: "text-[#1a3d2b] bg-[#d4e5d9]" },
+  experts_matched:              { label: "Подобраны эксперты",   color: "text-indigo-700 bg-indigo-50" },
+  expert_declined:              { label: "Эксперт отказался",    color: "text-red-700 bg-red-50" },
+  expert_can_start_from:        { label: "Предложена дата",      color: "text-amber-700 bg-amber-50" },
+  expert_completed_order:       { label: "Заказ завершён",       color: "text-emerald-700 bg-emerald-50" },
 };
 
 function ExpertActionItemHeader({ item }: { item: ActionItem }) {
@@ -894,6 +895,9 @@ function ExpertActionCard({ item, userId, userEmail, onDone }: {
 }) {
   if (item.action_type === "customer_selected_you") {
     return <CustomerSelectedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} />;
+  }
+  if (item.action_type === "you_are_approved_for_work") {
+    return <YouAreApprovedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} />;
   }
   if (item.action_type === "customer_approved_start_date") {
     return <CustomerApprovedCard item={item} onDone={onDone} />;
@@ -1310,6 +1314,352 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
                 Отмена
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Decline form */}
+        {action === "decline" && (
+          <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
+            <p className="text-xs font-semibold text-[#1a3d2b]">Причина отказа:</p>
+            <select
+              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300"
+              value={declineReason}
+              onChange={e => setDeclineReason(e.target.value)}
+            >
+              {Object.entries(DECLINE_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+            <textarea
+              rows={2}
+              placeholder="Комментарий (необязательно)"
+              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
+              value={declineComment}
+              onChange={e => setDeclineComment(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button
+                disabled={busy}
+                onClick={handleDecline}
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {busy ? "…" : "Подтвердить отказ"}
+              </button>
+              <button
+                onClick={() => setAction("idle")}
+                className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── you_are_approved_for_work ────────────────────────────────────────────────
+
+function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
+  item: ActionItem;
+  userId: string;
+  userEmail: string;
+  onDone: () => void;
+}) {
+  const payload    = item.payload ?? {};
+  const canStartFrom = ((payload.can_start_from ?? payload.start_date) as string | null) ?? null;
+  const custIdFromPayload = (payload.customer_id as string | null) ?? item.customer_id ?? null;
+
+  const [req, setReq]           = useState<RequestDetails | null>(null);
+  const [reqLoading, setReqLoading] = useState(true);
+  const [custContact, setCustContact] = useState<CustomerContact | null>(null);
+  const [action, setAction]     = useState<"idle" | "decline">("idle");
+  const [busy, setBusy]         = useState(false);
+  const [declineReason, setDeclineReason] = useState("not_my_profile");
+  const [declineComment, setDeclineComment] = useState("");
+
+  useEffect(() => {
+    async function load() {
+      const { data: reqData } = await supabase
+        .from("palata_requests")
+        .select("title, expertise_type, region, description, customer_id, requires_travel, status")
+        .eq("id", item.request_id)
+        .maybeSingle();
+      const r = reqData as RequestDetails | null;
+      setReq(r);
+
+      const custId = custIdFromPayload ?? r?.customer_id ?? null;
+      if (custId) {
+        const [{ data: uData }, { data: cData }] = await Promise.all([
+          supabase.from("palata_users").select("full_name, phone").eq("id", custId).maybeSingle(),
+          supabase.from("palata_request_contacts")
+            .select("customer_phone, customer_email")
+            .eq("request_id", item.request_id)
+            .eq("expert_id", userId)
+            .maybeSingle(),
+        ]);
+        const u = uData as { full_name: string | null; phone: string | null } | null;
+        const c = cData as { customer_phone: string | null; customer_email: string | null } | null;
+        setCustContact({
+          name:  u?.full_name ?? null,
+          phone: c?.customer_phone ?? u?.phone ?? null,
+          email: c?.customer_email ?? null,
+        });
+      }
+      setReqLoading(false);
+    }
+    load();
+  }, [item.request_id, userId, custIdFromPayload]);
+
+  async function getCustomerEmail(customerId: string): Promise<string | null> {
+    const { data } = await supabase.from("palata_users").select("email").eq("id", customerId).maybeSingle();
+    return (data as { email: string } | null)?.email ?? null;
+  }
+
+  async function getMatchId(): Promise<string | null> {
+    const { data } = await supabase.from("palata_request_matches")
+      .select("id").eq("request_id", item.request_id).eq("expert_id", userId).maybeSingle();
+    return (data as { id: string } | null)?.id ?? null;
+  }
+
+  const shortId = `#${item.request_id.slice(0, 8).toUpperCase()}`;
+  const startFmt = canStartFrom
+    ? new Date(canStartFrom).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
+
+  // ── «ОК, беру в работу» ─────────────────────────────────────────────────────
+
+  async function handleTakeWork() {
+    setBusy(true);
+    const now = new Date().toISOString();
+    const matchId = await getMatchId();
+
+    // 1. Expert match → accepted_work
+    if (matchId) {
+      await supabase.from("palata_request_matches")
+        .update({ status: "accepted_work", responded_at: now })
+        .eq("id", matchId);
+    }
+
+    // 2. Other matches → closed_by_other_expert
+    await supabase.from("palata_request_matches")
+      .update({ status: "closed_by_other_expert" })
+      .eq("request_id", item.request_id)
+      .neq("expert_id", userId)
+      .not("status", "in", '("declined","closed_by_other_expert","withdrawn","customer_declined_start_date")');
+
+    // 3. Request → in_work
+    await supabase.from("palata_requests")
+      .update({ status: "in_work", updated_at: now })
+      .eq("id", item.request_id);
+
+    // 4. Contact record → accepted_work
+    await supabase.from("palata_request_contacts")
+      .update({ expert_status: "accepted_work", expert_status_updated_at: now })
+      .eq("request_id", item.request_id)
+      .eq("expert_id", userId);
+
+    // 5. Resolve expert's action item; cancel others for this request
+    await resolveActionItem(item.id);
+    await cancelRequestActionItems(item.request_id, item.id);
+
+    // 6. Action item for customer: expert_started_work
+    const custId = custIdFromPayload ?? req?.customer_id ?? null;
+    if (custId) {
+      await createActionItem({
+        request_id:          item.request_id,
+        expert_id:           userId,
+        customer_id:         custId,
+        assigned_to_user_id: custId,
+        assigned_role:       "customer",
+        action_type:         "expert_started_work",
+        title:               "Эксперт взял заказ в работу",
+        description:         `Эксперт подтвердил готовность и приступил к заказу ${shortId}`,
+        payload:             { expert_id: userId, can_start_from: canStartFrom },
+      });
+
+      const custEmail = await getCustomerEmail(custId);
+      if (custEmail) {
+        await logEmailTestEvent(custId, custEmail, "expert_started_work",
+          "Эксперт взял ваш заказ в работу",
+          { request_id: item.request_id, expert_id: userId });
+      }
+    }
+
+    // 7. Events
+    await logStatusEvent(item.request_id, "expert_selection", "in_work", "expert_took_work");
+    if (userEmail) {
+      await logEmailTestEvent(userId, userEmail, "expert_accepted_work",
+        "Вы взяли заказ в работу",
+        { request_id: item.request_id });
+    }
+
+    setBusy(false);
+    onDone();
+  }
+
+  // ── «Отказаться» ─────────────────────────────────────────────────────────────
+
+  async function handleDecline() {
+    setBusy(true);
+    const now = new Date().toISOString();
+    const matchId = await getMatchId();
+
+    // 1. Match → declined
+    if (matchId) {
+      await supabase.from("palata_request_matches")
+        .update({
+          status: "declined",
+          decline_reason: declineReason,
+          decline_comment: declineComment || null,
+          responded_at: now,
+        })
+        .eq("id", matchId);
+    }
+
+    // 2. Contact record → declined
+    await supabase.from("palata_request_contacts")
+      .update({
+        expert_status:            "declined",
+        expert_status_updated_at: now,
+        failure_reason:           declineReason,
+        expert_comment:           declineComment || null,
+      })
+      .eq("request_id", item.request_id)
+      .eq("expert_id", userId);
+
+    // 3. Resolve expert's action item
+    await resolveActionItem(item.id);
+
+    // 4. Action item for customer: expert_declined
+    const custId = custIdFromPayload ?? req?.customer_id ?? null;
+    if (custId) {
+      await createActionItem({
+        request_id:          item.request_id,
+        expert_id:           userId,
+        customer_id:         custId,
+        assigned_to_user_id: custId,
+        assigned_role:       "customer",
+        action_type:         "expert_declined",
+        title:               "Эксперт отказался от заказа",
+        description:         `Эксперт не может взять заказ ${shortId} в работу. Выберите другого эксперта.`,
+        payload:             { expert_id: userId, decline_reason: declineReason },
+      });
+
+      const custEmail = await getCustomerEmail(custId);
+      if (custEmail) {
+        await logEmailTestEvent(custId, custEmail, "expert_declined",
+          "Эксперт отказался от заказа",
+          { request_id: item.request_id, decline_reason: declineReason });
+      }
+    }
+
+    // 5. Events
+    await logStatusEvent(item.request_id, "expert_selection", "matching", "expert_declined");
+
+    // 6. Re-matching if all experts declined
+    try {
+      const { data: allMatches } = await supabase
+        .from("palata_request_matches")
+        .select("id, status")
+        .eq("request_id", item.request_id)
+        .not("status", "in", '("closed_by_other_expert","withdrawn")');
+
+      const allDeclined =
+        allMatches != null &&
+        allMatches.length > 0 &&
+        allMatches.every((m: { status: string }) =>
+          m.status === "declined" || m.status === "withdrawn",
+        );
+
+      if (allDeclined && req?.expertise_type && req?.region) {
+        const custId2 = custIdFromPayload ?? req?.customer_id ?? undefined;
+        await runMatching({
+          requestId:      item.request_id,
+          expertiseType:  req.expertise_type,
+          region:         req.region,
+          requiresTravel: req.requires_travel ?? false,
+          customerId:     custId2 ?? undefined,
+        });
+      }
+    } catch { /* non-fatal */ }
+
+    setBusy(false);
+    onDone();
+  }
+
+  return (
+    <div className="bg-white border border-[#16a34a]/40 rounded-xl shadow-sm overflow-hidden">
+      <div className="p-5">
+        <ExpertActionItemHeader item={item} />
+
+        {/* Request details */}
+        {reqLoading ? (
+          <p className="text-xs text-[#8aaa90] mt-3">Загрузка деталей заказа…</p>
+        ) : req ? (
+          <div className="mt-3 bg-[#f0f5f1] rounded-xl px-4 py-3 space-y-1.5">
+            <p className="text-[10px] font-mono text-[#8aaa90]">{shortId}</p>
+            <p className="text-sm font-semibold text-[#141c17]">{req.title}</p>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {req.expertise_type && (
+                <span className="text-[11px] text-[#16a34a] bg-[#16a34a]/10 px-1.5 py-0.5 rounded">
+                  {SPEC_L[req.expertise_type] ?? req.expertise_type}
+                </span>
+              )}
+              {req.region && (
+                <span className="text-[11px] text-[#5a7560] bg-[#d4e5d9] px-1.5 py-0.5 rounded">
+                  {REG_L[req.region] ?? req.region}
+                </span>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Approved start date */}
+        {startFmt && (
+          <div className="mt-3 bg-[#16a34a]/5 border border-[#16a34a]/20 rounded-xl px-4 py-3">
+            <p className="text-xs text-slate-700 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-[#16a34a] shrink-0" />
+              <span className="text-[#5a7560]">Согласованная дата начала:</span>
+              <span className="font-semibold text-[#141c17]">{startFmt}</span>
+            </p>
+          </div>
+        )}
+
+        {/* Customer contacts */}
+        {custContact && (custContact.name || custContact.phone || custContact.email) && (
+          <div className="mt-3 px-4 py-3 bg-white border border-[#d4e5d9] rounded-xl">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-2">Заказчик</p>
+            {custContact.name && (
+              <p className="text-sm font-semibold text-[#141c17]">{custContact.name}</p>
+            )}
+            {custContact.phone && (
+              <p className="text-xs text-[#5a7560] mt-1">Телефон: <span className="font-medium text-[#141c17]">{custContact.phone}</span></p>
+            )}
+            {custContact.email && (
+              <p className="text-xs text-[#5a7560]">Email: <span className="font-medium text-[#141c17]">{custContact.email}</span></p>
+            )}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        {action === "idle" && (
+          <div className="flex flex-wrap gap-2 mt-4">
+            <button
+              disabled={busy}
+              onClick={handleTakeWork}
+              className="btn-primary text-xs py-1.5 px-4"
+            >
+              {busy ? "Сохранение…" : "ОК, беру в работу"}
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => setAction("decline")}
+              className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-red-300 hover:text-red-600 transition-colors"
+            >
+              Отказаться
+            </button>
           </div>
         )}
 

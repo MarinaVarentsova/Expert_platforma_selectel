@@ -846,14 +846,55 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
 
   async function handleSelect(expert: MatchedExpert) {
     setSelecting(expert.expert_id);
+    const now = new Date().toISOString();
+
+    // 1. Match → selected_by_customer
     await supabase.from("palata_request_matches").update({
-      status: "accepted", responded_at: new Date().toISOString(),
+      status: "selected_by_customer", responded_at: now,
     }).eq("id", expert.match_id);
 
+    // 2. Request: keep expert_selection, set assigned_expert_id
     await supabase.from("palata_requests").update({
       assigned_expert_id: expert.expert_id, status: "expert_selection",
     }).eq("id", item.request_id);
 
+    // 3. Open contacts immediately — fetch customer contact info
+    const { data: custUserData } = await supabase
+      .from("palata_users")
+      .select("email, phone")
+      .eq("id", userId)
+      .maybeSingle();
+    const custU = custUserData as { email: string | null; phone: string | null } | null;
+
+    const contactPayload = {
+      contact_opened_at: now,
+      expert_status: "selected_by_customer",
+      customer_email: custU?.email ?? null,
+      customer_phone: custU?.phone ?? null,
+      expert_email: expert.expert_email ?? null,
+    };
+
+    const { data: existingContact } = await supabase
+      .from("palata_request_contacts")
+      .select("id")
+      .eq("request_id", item.request_id)
+      .eq("expert_id", expert.expert_id)
+      .maybeSingle();
+
+    if (existingContact) {
+      await supabase.from("palata_request_contacts")
+        .update(contactPayload)
+        .eq("id", (existingContact as { id: string }).id);
+    } else {
+      await supabase.from("palata_request_contacts").insert({
+        request_id: item.request_id,
+        expert_id: expert.expert_id,
+        customer_id: userId,
+        ...contactPayload,
+      });
+    }
+
+    // 4. Action item for expert
     await createActionItem({
       request_id: item.request_id,
       expert_id: expert.expert_id,
@@ -866,13 +907,16 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
       payload: { customer_id: userId, request_id: item.request_id },
     });
 
+    // 5. Resolve customer's action item
     await resolveActionItem(item.id);
+
+    // 6. Events
     await logStatusEvent(item.request_id, "matching", "expert_selection",
       `Заказчик выбрал эксперта: ${expert.expert_name ?? expert.expert_id}`);
 
     if (expert.expert_email) {
       await logEmailTestEvent(expert.expert_id, expert.expert_email,
-        "expert_selected_by_customer", "Заказчик выбрал вас для работы",
+        "customer_selected_you", "Заказчик выбрал вас для работы",
         { request_id: item.request_id });
     }
     setSelecting(null);
@@ -978,52 +1022,29 @@ function ExpertCanStartCard({ item, userId, onDone }: {
   async function handleApprove() {
     if (!expertId) return;
     setBusy("approve");
-    const now = new Date().toISOString();
 
-    // 1. Request → in_work
-    await supabase.from("palata_requests")
-      .update({ status: "in_work", updated_at: now })
-      .eq("id", item.request_id);
-
-    // 2. Match for this expert → accepted_work; others → closed_by_other_expert
-    await supabase.from("palata_request_matches")
-      .update({ status: "accepted_work", responded_at: now })
-      .eq("request_id", item.request_id)
-      .eq("expert_id", expertId);
-    await supabase.from("palata_request_matches")
-      .update({ status: "closed_by_other_expert" })
-      .eq("request_id", item.request_id)
-      .neq("expert_id", expertId)
-      .not("status", "in", '("declined","closed_by_other_expert","withdrawn","customer_declined_start_date")');
-
-    // 3. Contact record → accepted_work
-    await supabase.from("palata_request_contacts")
-      .update({ expert_status: "accepted_work", expert_status_updated_at: now })
-      .eq("request_id", item.request_id)
-      .eq("expert_id", expertId);
-
-    // 4. Resolve customer's item; cancel other open items for this request
+    // 1. Close customer's action item — request stays in expert_selection
     await resolveActionItem(item.id);
-    await cancelRequestActionItems(item.request_id, item.id);
 
-    // 5. Action item for expert
+    // 2. Action item for expert: you_are_approved_for_work
+    //    Expert must still confirm before order goes to in_work
     await createActionItem({
       request_id:          item.request_id,
       expert_id:           expertId,
       customer_id:         userId,
       assigned_to_user_id: expertId,
       assigned_role:       "expert",
-      action_type:         "customer_approved_start_date",
-      title:               "Заказчик согласовал дату",
-      description:         `Заказчик согласовал предложенную дату начала работ по заказу ${shortId}`,
+      action_type:         "you_are_approved_for_work",
+      title:               "Вы назначены на заказ",
+      description:         "Заказчик подтвердил выбор вас как исполнителя. Подтвердите готовность взять заказ в работу.",
       payload:             { can_start_from: canStartFrom, start_date: canStartFrom, customer_id: userId },
     });
 
-    // 6. Events
-    await logStatusEvent(item.request_id, "expert_selection", "in_work", "customer_approved_start_date");
+    // 3. Events
+    await logStatusEvent(item.request_id, "expert_selection", "expert_selection", "customer_approved_start_date");
     if (expertId && expertEmail) {
-      await logEmailTestEvent(expertId, expertEmail, "customer_approved_start_date",
-        "Заказчик согласовал дату начала работы",
+      await logEmailTestEvent(expertId, expertEmail, "you_are_approved_for_work",
+        "Заказчик подтвердил вашу кандидатуру",
         { request_id: item.request_id, can_start_from: canStartFrom });
     }
 

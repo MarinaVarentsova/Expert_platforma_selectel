@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/authContext";
 import { notify } from "@/lib/notifyApi";
-import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check } from "lucide-react";
 
 const REGIONS = [
   "Москва",
@@ -106,6 +106,22 @@ export default function NewRequest() {
   const [state, setState]     = useState<SubmitState>({ kind: "idle" });
   const [errors, setErrors]   = useState<Partial<Record<keyof FormData, string>>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const [dirDropOpen, setDirDropOpen] = useState(false);
+  const [dirSearch, setDirSearch]     = useState("");
+  const dirDropRef                    = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!dirDropOpen) return;
+    function handler(e: MouseEvent) {
+      if (dirDropRef.current && !dirDropRef.current.contains(e.target as Node)) {
+        setDirDropOpen(false);
+        setDirSearch("");
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [dirDropOpen]);
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm(f => ({ ...f, [key]: value }));
@@ -383,17 +399,69 @@ export default function NewRequest() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Направление экспертизы" required error={errors.expertise_direction_id}>
-                <select
-                  className={inputCls(!!errors.expertise_direction_id)}
-                  value={form.expertise_direction_id}
-                  onChange={e => set("expertise_direction_id", e.target.value)}
-                  disabled={busy}
-                >
-                  <option value="">— выберите —</option>
-                  {directions.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
+                <div className="relative" ref={dirDropRef}>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setDirDropOpen(v => !v)}
+                    className={`${inputCls(!!errors.expertise_direction_id)} flex items-center justify-between text-left`}
+                  >
+                    <span className={form.expertise_direction_id ? "text-[#111111]" : "text-slate-400"}>
+                      {form.expertise_direction_id
+                        ? (directions.find(d => d.id === form.expertise_direction_id)?.name ?? "— выберите —")
+                        : "— выберите —"}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${dirDropOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {dirDropOpen && (
+                    <div className="absolute z-20 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                      <div className="p-2 border-b border-slate-100">
+                        <input
+                          type="text"
+                          value={dirSearch}
+                          onChange={e => setDirSearch(e.target.value)}
+                          placeholder="Поиск направления…"
+                          autoFocus
+                          className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A]"
+                        />
+                      </div>
+                      <div className="max-h-56 overflow-y-auto">
+                        {directions
+                          .filter(d => d.name.toLowerCase().includes(dirSearch.toLowerCase()))
+                          .map(d => {
+                            const sel = form.expertise_direction_id === d.id;
+                            return (
+                              <button
+                                key={d.id}
+                                type="button"
+                                onClick={() => {
+                                  set("expertise_direction_id", d.id);
+                                  setDirDropOpen(false);
+                                  setDirSearch("");
+                                }}
+                                className={`w-full text-left px-3 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
+                                  sel
+                                    ? "bg-[#F0F4FF] text-[#002B5C]"
+                                    : "hover:bg-[#F4F4F4] text-[#111111]"
+                                }`}
+                              >
+                                <div className={`w-4 h-4 rounded-full border flex-shrink-0 flex items-center justify-center transition-colors ${
+                                  sel ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300"
+                                }`}>
+                                  {sel && <Check className="w-2.5 h-2.5 text-white" />}
+                                </div>
+                                {d.name}
+                              </button>
+                            );
+                          })}
+                        {directions.filter(d => d.name.toLowerCase().includes(dirSearch.toLowerCase())).length === 0 && (
+                          <p className="text-sm text-slate-400 text-center py-6">Ничего не найдено</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </Field>
 
               <Field label="Регион" required error={errors.region}>

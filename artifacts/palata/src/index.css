@@ -262,7 +262,7 @@
   .btn-primary-sm { @apply px-4 py-2 text-xs bg-[#1a3d2b] text-[#f0faf4] hover:bg-[#141c17]; }
   .btn-success-sm { @apply px-4 py-2 text-xs bg-emerald-700 text-white hover:bg-emerald-800; }
   .btn-danger-sm  { @apply px-4 py-2 text-xs bg-red-700 text-white hover:bg-red-800; }
-  .btn-teal-sm    { @apply px-4 py-2 text-xs bg-teal-700 text-white hover:bg-teal-800; }
+  .btn-teal-sm    { @apply px-4 py-2 text-xs bg-[#16a34a] text-white hover:bg-[#15803d]; }
   .btn-ghost-sm   { @apply px-4 py-2 text-xs bg-transparent border border-[#b8ccbe] text-[#1a3d2b] hover:bg-[#e5f0e9]; }
 
   /* ── Warm card ────────────────────────────────────────────────────── */
@@ -297,12 +297,12 @@
     height: 3px;
     border-radius: 999px 999px 0 0;
   }
-  .kpi-indigo::before  { background: linear-gradient(90deg, #16a34a, #4ade80); }
+  .kpi-indigo::before  { background: linear-gradient(90deg, #1a3d2b, #16a34a); }
   .kpi-slate::before   { background: linear-gradient(90deg, #5a7560, #8aaa90); }
   .kpi-yellow::before  { background: linear-gradient(90deg, #d97706, #fbbf24); }
   .kpi-emerald::before { background: linear-gradient(90deg, #059669, #34d399); }
   .kpi-red::before     { background: linear-gradient(90deg, #dc2626, #f87171); }
-  .kpi-cyan::before    { background: linear-gradient(90deg, #0891b2, #22d3ee); }
+  .kpi-cyan::before    { background: linear-gradient(90deg, #16a34a, #4ade80); }
 
   /* ── Status badge ────────────────────────────────────────────────── */
   .status-dot {

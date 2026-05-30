@@ -89,8 +89,8 @@ type MatchedExpert = {
 const COLUMNS = [
   { id: "new",     label: "Новый",         dotColor: "bg-slate-400",  bgColor: "bg-white border-slate-200",         accent: "", statuses: ["draft", "new"] },
   { id: "pending", label: "Идёт подбор",   dotColor: "bg-amber-400",  bgColor: "bg-amber-50/60 border-amber-200",   accent: "", statuses: ["pending", "matching"] },
-  { id: "match",   label: "Выбор эксперта",dotColor: "bg-cyan-400",   bgColor: "bg-cyan-50/60 border-cyan-200",     accent: "", statuses: ["expert_selection"] },
-  { id: "working", label: "В работе",      dotColor: "bg-indigo-500", bgColor: "bg-indigo-50/60 border-indigo-200", accent: "", statuses: ["in_progress", "in_work"] },
+  { id: "match",   label: "Выбор эксперта",dotColor: "bg-[#16a34a]",  bgColor: "bg-[#f0f5f1] border-[#c8d8cc]",    accent: "", statuses: ["expert_selection"] },
+  { id: "working", label: "В работе",      dotColor: "bg-[#1a3d2b]",  bgColor: "bg-[#eaf3ec]/60 border-[#c8d8cc]", accent: "", statuses: ["in_progress", "in_work"] },
   { id: "done",    label: "Выполнен",      dotColor: "bg-emerald-400",bgColor: "bg-emerald-50/60 border-emerald-200",accent:"", statuses: ["completed"] },
   { id: "closed",  label: "Неактуален",    dotColor: "bg-slate-300",  bgColor: "bg-slate-50 border-slate-200",      accent: "", statuses: ["cancelled", "failed", "declined"] },
 ];
@@ -419,7 +419,7 @@ export default function CustomerDashboard() {
                   <div>
                     <p className="text-[10px] font-mono text-slate-400 mb-0.5">#{item.request_id.slice(0, 8).toUpperCase()}</p>
                     <Link href={`/requests/${item.request_id}`}>
-                      <p className="text-sm font-semibold text-slate-800 hover:text-indigo-700 transition-colors cursor-pointer">
+                      <p className="text-sm font-semibold text-slate-800 hover:text-[#1a3d2b] transition-colors cursor-pointer">
                         {item.title}
                       </p>
                     </Link>
@@ -503,8 +503,8 @@ function TabButton({ active, onClick, children }: {
       onClick={onClick}
       className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold transition-colors border-b-2 -mb-px
         ${active
-          ? "border-indigo-600 text-indigo-700"
-          : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+          ? "border-[#16a34a] text-[#1a3d2b]"
+          : "border-transparent text-slate-500 hover:text-[#1a3d2b] hover:border-[#c8d8cc]"
         }`}
     >
       {children}
@@ -620,7 +620,7 @@ function InfoRow({ icon, label, value, mono }: {
 function CustomerCard({ request: r, needsRating }: { request: Request; needsRating?: boolean }) {
   const urgencyColor = r.urgency === "very_urgent" ? "border-l-red-400"
     : r.urgency === "urgent" ? "border-l-amber-400"
-    : "border-l-indigo-200";
+    : "border-l-[#c8d8cc]";
 
   const urgencyLabel: Record<string, string> = {
     urgent: "Срочно",
@@ -629,15 +629,15 @@ function CustomerCard({ request: r, needsRating }: { request: Request; needsRati
 
   return (
     <Link href={`/requests/${r.id}`}>
-      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgencyColor} p-3.5 hover:shadow-md hover:border-indigo-100 transition-all cursor-pointer group shadow-sm`}>
-        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2 group-hover:text-indigo-700 transition-colors">
+      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgencyColor} p-3.5 hover:shadow-md hover:border-[#c8d8cc] transition-all cursor-pointer group shadow-sm`}>
+        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2 group-hover:text-[#1a3d2b] transition-colors">
           {r.title}
         </p>
 
         <div className="space-y-1 mb-2.5">
           {r.expertise_type && (
             <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
-              <span className="inline-block h-1 w-1 rounded-full bg-indigo-300 flex-shrink-0" />
+              <span className="inline-block h-1 w-1 rounded-full bg-[#8aaa90] flex-shrink-0" />
               {EXPERTISE_LABEL[r.expertise_type] ?? r.expertise_type}
             </p>
           )}
@@ -731,8 +731,8 @@ function CustomerActionInbox({ items, userId, onDone }: {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center">
-          <Zap className="w-8 h-8 text-indigo-300" />
+        <div className="w-16 h-16 rounded-2xl bg-[#f0f5f1] flex items-center justify-center">
+          <Zap className="w-8 h-8 text-[#8aaa90]" />
         </div>
         <div className="text-center">
           <p className="text-base font-semibold text-slate-700 mb-1">Нет активных задач</p>
@@ -947,19 +947,19 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
 
         <button
           onClick={() => setExpanded(v => !v)}
-          className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 hover:text-indigo-900 transition-colors"
+          className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#1a3d2b] hover:text-[#0a1a0f] transition-colors"
         >
           {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           {isDecline ? "Выбрать другого эксперта" : "Посмотреть экспертов"}
           {!loading && experts.length > 0 && (
-            <span className="ml-1 text-indigo-400 font-normal">({experts.length})</span>
+            <span className="ml-1 text-[#8aaa90] font-normal">({experts.length})</span>
           )}
         </button>
       </div>
 
       {expanded && (
         <div className="border-t border-slate-100 bg-slate-50/50 p-4 space-y-3">
-          {loading && <div className="flex items-center gap-2 text-xs text-slate-400 py-4"><div className="h-3.5 w-3.5 rounded-full border-2 border-indigo-300 border-t-indigo-600 animate-spin" />Загрузка экспертов…</div>}
+          {loading && <div className="flex items-center gap-2 text-xs text-slate-400 py-4"><div className="h-3.5 w-3.5 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />Загрузка экспертов…</div>}
           {!loading && experts.length === 0 && (
             <p className="text-xs text-slate-400 py-4 text-center">Нет доступных экспертов</p>
           )}
@@ -1295,7 +1295,7 @@ function ExpertProfileCard({ expert: e, busy, onSelect }: {
                 {e.completed_orders_count} выполнено
               </span>
               {e.business_trip_ready && (
-                <span className="text-[11px] text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded">Командировки ✓</span>
+                <span className="text-[11px] text-[#1a3d2b] bg-[#f0f5f1] px-1.5 py-0.5 rounded">Командировки ✓</span>
               )}
             </div>
           </div>
@@ -1311,7 +1311,7 @@ function ExpertProfileCard({ expert: e, busy, onSelect }: {
         {(e.specializations.length > 0 || e.regions.length > 0) && (
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {e.specializations.slice(0, 3).map(s => (
-              <span key={s} className="text-[10px] font-medium text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+              <span key={s} className="text-[10px] font-medium text-[#1a3d2b] bg-[#f0f5f1] px-1.5 py-0.5 rounded">
                 {EXPERTISE_LABEL[s] ?? s}
               </span>
             ))}
@@ -1360,12 +1360,12 @@ function ExpertProfileCard({ expert: e, busy, onSelect }: {
 // ─── Shared: action item header ───────────────────────────────────────────────
 
 const ACTION_LABEL: Record<string, { label: string; color: string }> = {
-  experts_matched:              { label: "Подобраны эксперты",       color: "text-indigo-700 bg-indigo-50" },
+  experts_matched:              { label: "Подобраны эксперты",       color: "text-[#1a3d2b] bg-[#f0f5f1]" },
   expert_declined:              { label: "Эксперт отказался",        color: "text-red-700 bg-red-50" },
   expert_can_start_from:        { label: "Предложена дата",          color: "text-amber-700 bg-amber-50" },
   expert_completed_order:       { label: "Заказ завершён",           color: "text-emerald-700 bg-emerald-50" },
   expert_started_work:          { label: "Эксперт взял в работу",   color: "text-emerald-700 bg-emerald-50" },
-  customer_selected_you:        { label: "Вас выбрали",              color: "text-indigo-700 bg-indigo-50" },
+  customer_selected_you:        { label: "Вас выбрали",              color: "text-[#1a3d2b] bg-[#f0f5f1]" },
   customer_approved_start_date: { label: "Дата согласована",         color: "text-emerald-700 bg-emerald-50" },
   choose_another_expert:        { label: "Выберите другого эксперта",color: "text-amber-700 bg-amber-50" },
   manual_matching_required:     { label: "Нет доступных экспертов",  color: "text-slate-600 bg-slate-100" },

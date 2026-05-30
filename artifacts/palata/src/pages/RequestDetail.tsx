@@ -176,10 +176,10 @@ const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
   new:              { label: "Новый",           cls: "bg-slate-100 text-slate-600" },
   draft:            { label: "Черновик",        cls: "bg-slate-100 text-slate-500" },
   pending:          { label: "Ожидает",         cls: "bg-yellow-100 text-yellow-700" },
-  matching:         { label: "Идёт подбор",     cls: "bg-blue-100 text-blue-700" },
-  expert_selection: { label: "Выбор эксперта",  cls: "bg-cyan-100 text-cyan-700" },
-  in_work:          { label: "В работе",         cls: "bg-indigo-100 text-indigo-700" },
-  in_progress:      { label: "В работе",         cls: "bg-indigo-100 text-indigo-700" },
+  matching:         { label: "Идёт подбор",     cls: "bg-[#f0f5f1] text-[#1a3d2b]" },
+  expert_selection: { label: "Выбор эксперта",  cls: "bg-[#d4e5d9] text-[#1a3d2b]" },
+  in_work:          { label: "В работе",         cls: "bg-[#e5f0e9] text-[#1a3d2b]" },
+  in_progress:      { label: "В работе",         cls: "bg-[#e5f0e9] text-[#1a3d2b]" },
   completed:        { label: "Выполнен",         cls: "bg-green-100 text-green-700" },
   cancelled:        { label: "Неактуален",       cls: "bg-slate-100 text-slate-500" },
   failed:           { label: "Ошибка подбора",   cls: "bg-red-100 text-red-600" },
@@ -187,13 +187,13 @@ const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
 
 const MATCH_STATUS: Record<string, { label: string; cls: string }> = {
   proposed:               { label: "Предложено",          cls: "bg-yellow-100 text-yellow-700" },
-  can_start_from:         { label: "Может взять",          cls: "bg-teal-100 text-teal-700" },
+  can_start_from:         { label: "Может взять",          cls: "bg-[#f0f5f1] text-[#1a3d2b]" },
   selected_by_customer:   { label: "Выбран заказчиком",   cls: "bg-[#16a34a]/10 text-[#1a3d2b]" },
-  contacts_opened:        { label: "Контакты открыты",     cls: "bg-cyan-100 text-cyan-700" },
-  accepted:               { label: "Принято",              cls: "bg-green-100 text-green-700" },
-  accepted_work:          { label: "Взял в работу",        cls: "bg-indigo-100 text-indigo-700" },
+  contacts_opened:        { label: "Контакты открыты",     cls: "bg-[#d4e5d9] text-[#1a3d2b]" },
+  accepted:               { label: "Принято",              cls: "bg-emerald-100 text-emerald-700" },
+  accepted_work:          { label: "Взял в работу",        cls: "bg-[#e5f0e9] text-[#1a3d2b]" },
   declined:                      { label: "Отказ",                    cls: "bg-red-100 text-red-600" },
-  customer_declined_start_date:  { label: "Дата отклонена",            cls: "bg-orange-100 text-orange-600" },
+  customer_declined_start_date:  { label: "Дата отклонена",            cls: "bg-amber-100 text-amber-700" },
   completed:                     { label: "Завершено",                  cls: "bg-emerald-100 text-emerald-700" },
   withdrawn:                     { label: "Отозвано",                   cls: "bg-slate-100 text-slate-500" },
   closed_by_other_expert:        { label: "Закрыт другим",              cls: "bg-slate-100 text-slate-400" },
@@ -996,26 +996,26 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
                     {/* Customer contacts — visible only when contacts are opened */}
                     {contactsOpen && myContact && (
-                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 mb-4">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-2">
+                      <div className="p-3 bg-[#f0f5f1] rounded-lg border border-[#d4e5d9] mb-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-2">
                           Контакты заказчика
                         </p>
                         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
                           {myContact.customer_phone && (
                             <div>
-                              <p className="text-[10px] text-blue-400 mb-0.5">Телефон</p>
-                              <p className="text-sm font-semibold text-blue-800">{myContact.customer_phone}</p>
+                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Телефон</p>
+                              <p className="text-sm font-semibold text-[#1a3d2b]">{myContact.customer_phone}</p>
                             </div>
                           )}
                           {myContact.customer_email && (
                             <div>
-                              <p className="text-[10px] text-blue-400 mb-0.5">Email</p>
-                              <p className="text-sm font-semibold text-blue-800">{myContact.customer_email}</p>
+                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Email</p>
+                              <p className="text-sm font-semibold text-[#1a3d2b]">{myContact.customer_email}</p>
                             </div>
                           )}
                         </div>
                         {myContact.revealed_at && (
-                          <p className="text-[10px] text-blue-300 mt-1.5">Открыты: {fmtDate(myContact.revealed_at)}</p>
+                          <p className="text-[10px] text-[#8aaa90] mt-1.5">Открыты: {fmtDate(myContact.revealed_at)}</p>
                         )}
                       </div>
                     )}
@@ -1051,7 +1051,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                             <span className="text-xs text-slate-600">Дата начала:</span>
                             <input
                               type="date"
-                              className="text-sm border border-slate-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                              className="text-sm border border-[#c8d8cc] rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/40"
                               value={ui.date}
                               onChange={e => setMS(m.id, { kind: "date_picker", date: e.target.value })}
                             />
@@ -1100,7 +1100,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                           <div className="flex flex-wrap gap-2">
                             {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
                               <button
-                                className="btn-teal-sm"
+                                className="btn-success-sm"
                                 onClick={() => setMS(m.id, { kind: "date_picker", date: "" })}
                               >
                                 Могу взять с даты
@@ -1182,7 +1182,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       {role === "admin" && (
         <Card>
           <div className="flex items-center gap-2 mb-4">
-            <span className="w-2 h-2 rounded-full bg-purple-400" />
+            <span className="w-2 h-2 rounded-full bg-[#16a34a]" />
             <h2 className="text-sm font-semibold text-slate-700">Административные действия</h2>
           </div>
 
@@ -1198,7 +1198,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             <div className="flex flex-wrap items-center gap-2">
               <label className="text-xs text-slate-500 shrink-0 w-28">Изменить статус:</label>
               <select
-                className="text-sm border border-slate-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                className="text-sm border border-[#c8d8cc] rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#16a34a]/40 focus:border-[#16a34a]"
                 value={adminStatus}
                 onChange={e => setAdminStatus(e.target.value)}
               >
@@ -1220,7 +1220,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
               <div className="flex flex-wrap items-center gap-2">
                 <label className="text-xs text-slate-500 shrink-0 w-28">Назначить эксперта:</label>
                 <select
-                  className="text-sm border border-slate-300 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  className="text-sm border border-[#c8d8cc] rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#16a34a]/40 focus:border-[#16a34a]"
                   value={adminAssignMatchId}
                   onChange={e => setAdminAssignMatchId(e.target.value)}
                 >
@@ -1276,7 +1276,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
               <input
                 type="text"
                 placeholder="Добавить комментарий администратора…"
-                className="flex-1 text-sm border border-slate-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                className="flex-1 text-sm border border-[#c8d8cc] rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/40 focus:border-[#16a34a]"
                 value={adminComment}
                 onChange={e => setAdminComment(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleAdminComment()}
@@ -1310,7 +1310,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                   <a
                     href={filePublicUrl(f.bucket_path)}
                     target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline shrink-0 transition-colors"
+                    className="text-xs text-[#16a34a] hover:text-[#1a3d2b] hover:underline shrink-0 transition-colors"
                   >
                     Скачать
                   </a>
@@ -1386,7 +1386,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                           <Field label="Выполнено заказов">{profile.completed_orders_count}</Field>
                           <Field label="Командировки">
                             {profile.business_trip_ready
-                              ? <span className="text-teal-600 font-medium">Готов ✈</span>
+                              ? <span className="text-[#16a34a] font-medium">Готов ✈</span>
                               : <span className="text-slate-400">Без командировок</span>}
                           </Field>
                         </div>
@@ -1471,7 +1471,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
                     {/* can_start_from_date */}
                     {m.can_start_from_date && (
-                      <div className="px-4 py-2 bg-teal-50 border-t border-teal-100 text-xs text-teal-700">
+                      <div className="px-4 py-2 bg-[#f0f5f1] border-t border-[#c8d8cc] text-xs text-[#1a3d2b]">
                         Может взять с: <span className="font-semibold">{fmtDate(m.can_start_from_date)}</span>
                       </div>
                     )}
@@ -1494,8 +1494,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
                     {/* Admin: expert actions (simulate/override) */}
                     {canAct && isAdminView && (
-                      <div className="px-4 py-3 bg-purple-50 border-t border-purple-100">
-                        <p className="text-xs font-semibold text-purple-600 mb-2 uppercase tracking-wide">
+                      <div className="px-4 py-3 bg-[#f0f5f1] border-t border-[#d4e5d9]">
+                        <p className="text-xs font-semibold text-[#1a3d2b] mb-2 uppercase tracking-wide">
                           Действия от имени эксперта
                         </p>
                         {ui.kind === "error" && (
@@ -1540,7 +1540,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                         {(ui.kind === "idle" || ui.kind === "error") && (
                           <div className="flex flex-wrap gap-2">
                             {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
-                              <button className="btn-teal-sm" onClick={() => setMS(m.id, { kind: "date_picker", date: "" })}>
+                              <button className="btn-success-sm" onClick={() => setMS(m.id, { kind: "date_picker", date: "" })}>
                                 Может взять с даты
                               </button>
                             )}

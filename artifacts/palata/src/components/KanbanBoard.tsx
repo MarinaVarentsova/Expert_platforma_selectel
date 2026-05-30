@@ -44,11 +44,11 @@ export function KanbanBoard<T>({ columns, renderCard, emptyText = "Нет зая
           </div>
 
           {/* Column body */}
-          <div className="flex-1 border border-t-0 border-slate-200 rounded-b-xl bg-slate-50/80 p-2 flex flex-col gap-2">
+          <div className="flex-1 border border-t-0 border-[#d4e5d9] rounded-b-xl bg-[#f7fbf8]/80 p-2 flex flex-col gap-2">
             {col.items.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 gap-2 opacity-40">
-                <Inbox className="w-6 h-6 text-slate-400" />
-                <p className="text-xs text-slate-400 text-center">{emptyText}</p>
+                <Inbox className="w-6 h-6 text-[#8aaa90]" />
+                <p className="text-xs text-[#8aaa90] text-center">{emptyText}</p>
               </div>
             ) : (
               col.items.map((item, i) => (

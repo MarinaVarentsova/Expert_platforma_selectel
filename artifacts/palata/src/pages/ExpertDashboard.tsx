@@ -120,9 +120,9 @@ const DECLINE_LABEL: Record<string, string> = {
 // ─── Kanban config ─────────────────────────────────────────────────────────────
 
 const COLUMNS = [
-  { id: "proposed",  label: "Новые предложения", accent: "", dotColor: "bg-blue-400",    bgColor: "bg-blue-50/60 border-blue-200",     statuses: ["proposed", "contacts_opened"] },
-  { id: "cantake",   label: "Могу взять",        accent: "", dotColor: "bg-teal-400",    bgColor: "bg-teal-50/60 border-teal-200",     statuses: ["can_start_from"] },
-  { id: "accepted",  label: "В работе",          accent: "", dotColor: "bg-indigo-500",  bgColor: "bg-indigo-50/60 border-indigo-200", statuses: ["accepted", "accepted_work"] },
+  { id: "proposed",  label: "Новые предложения", accent: "", dotColor: "bg-amber-400",    bgColor: "bg-amber-50/60 border-amber-200",    statuses: ["proposed", "contacts_opened"] },
+  { id: "cantake",   label: "Могу взять",        accent: "", dotColor: "bg-[#16a34a]",   bgColor: "bg-[#f0f5f1] border-[#c8d8cc]",     statuses: ["can_start_from"] },
+  { id: "accepted",  label: "В работе",          accent: "", dotColor: "bg-[#1a3d2b]",   bgColor: "bg-[#eaf3ec]/60 border-[#c8d8cc]",  statuses: ["accepted", "accepted_work"] },
   { id: "completed", label: "Завершено",         accent: "", dotColor: "bg-emerald-400", bgColor: "bg-emerald-50/60 border-emerald-200", statuses: ["completed"] },
   { id: "declined",  label: "Отказ / не взял",   accent: "", dotColor: "bg-slate-300",   bgColor: "bg-slate-50 border-slate-200",      statuses: ["declined", "withdrawn", "closed_by_other_expert"] },
 ];
@@ -439,7 +439,7 @@ export default function ExpertDashboard() {
                   <div>
                     <p className="text-[10px] font-mono text-slate-400 mb-0.5">#{item.request_id.slice(0, 8).toUpperCase()}</p>
                     <Link href={`/requests/${item.request_id}`}>
-                      <p className="text-sm font-semibold text-slate-800 hover:text-indigo-700 transition-colors cursor-pointer">
+                      <p className="text-sm font-semibold text-slate-800 hover:text-[#1a3d2b] transition-colors cursor-pointer">
                         {item.title}
                       </p>
                     </Link>
@@ -526,8 +526,8 @@ function TabButton({ active, onClick, children }: {
       onClick={onClick}
       className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold transition-colors border-b-2 -mb-px
         ${active
-          ? "border-indigo-600 text-indigo-700"
-          : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+          ? "border-[#16a34a] text-[#1a3d2b]"
+          : "border-transparent text-slate-500 hover:text-[#1a3d2b] hover:border-[#c8d8cc]"
         }`}
     >
       {children}
@@ -549,8 +549,8 @@ function ProfileView({ profile: p, user }: { profile: ExpertProfile; user: { ful
         {/* Identity card */}
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
-              <User className="w-6 h-6 text-indigo-400" />
+            <div className="w-12 h-12 rounded-xl bg-[#f0f5f1] flex items-center justify-center flex-shrink-0">
+              <User className="w-6 h-6 text-[#8aaa90]" />
             </div>
             <div className="min-w-0">
               <p className="text-sm font-bold text-slate-900 truncate">{user.full_name ?? "—"}</p>
@@ -582,7 +582,7 @@ function ProfileView({ profile: p, user }: { profile: ExpertProfile; user: { ful
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Настройки</p>
           <div className="space-y-2.5">
             <FlagRow active={p.accepts_requests} label="Принимает заказы" activeColor="text-emerald-700 bg-emerald-50" inactiveColor="text-slate-500 bg-slate-50" />
-            <FlagRow active={p.business_trip_ready} label="Готов к командировкам" activeColor="text-teal-700 bg-teal-50" inactiveColor="text-slate-500 bg-slate-50" />
+            <FlagRow active={p.business_trip_ready} label="Готов к командировкам" activeColor="text-[#1a3d2b] bg-[#f0f5f1]" inactiveColor="text-slate-500 bg-slate-50" />
           </div>
         </div>
 
@@ -608,7 +608,7 @@ function ProfileView({ profile: p, user }: { profile: ExpertProfile; user: { ful
           {p.specializations.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {p.specializations.map((s) => (
-                <span key={s} className="text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-2.5 py-1">
+                <span key={s} className="text-xs font-medium text-[#1a3d2b] bg-[#f0f5f1] border border-[#c8d8cc] rounded-lg px-2.5 py-1">
                   {SPEC_LABEL[s] ?? s}
                 </span>
               ))}
@@ -719,19 +719,19 @@ function ExpertCard({ match: m, needsRating }: { match: Match; needsRating?: boo
   const req = m.palata_requests;
   const urgencyColor = req?.urgency === "very_urgent" ? "border-l-red-400"
     : req?.urgency === "urgent" ? "border-l-amber-400"
-    : "border-l-indigo-200";
+    : "border-l-[#c8d8cc]";
 
   return (
     <Link href={`/requests/${m.request_id}`}>
-      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgencyColor} p-3.5 hover:shadow-md hover:border-indigo-100 transition-all cursor-pointer group shadow-sm`}>
-        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2 group-hover:text-indigo-700 transition-colors">
+      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgencyColor} p-3.5 hover:shadow-md hover:border-[#c8d8cc] transition-all cursor-pointer group shadow-sm`}>
+        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2 group-hover:text-[#1a3d2b] transition-colors">
           {req?.title ?? "—"}
         </p>
 
         <div className="space-y-1 mb-2.5">
           {req?.expertise_type && (
             <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
-              <span className="inline-block h-1 w-1 rounded-full bg-cyan-300 flex-shrink-0" />
+              <span className="inline-block h-1 w-1 rounded-full bg-[#16a34a]/50 flex-shrink-0" />
               {SPEC_LABEL[req.expertise_type] ?? req.expertise_type}
             </p>
           )}
@@ -770,8 +770,8 @@ function ExpertCard({ match: m, needsRating }: { match: Match; needsRating?: boo
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-24 gap-4">
-      <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center">
-        <Inbox className="w-8 h-8 text-slate-300" />
+      <div className="w-16 h-16 rounded-2xl bg-[#f0f5f1] flex items-center justify-center">
+        <Inbox className="w-8 h-8 text-[#8aaa90]" />
       </div>
       <div className="text-center">
         <p className="text-base font-semibold text-slate-700 mb-1">Обращений пока нет</p>
@@ -786,8 +786,8 @@ function EmptyState() {
 function NoProfileState() {
   return (
     <div className="flex flex-col items-center justify-center py-24 gap-4">
-      <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center">
-        <User className="w-8 h-8 text-slate-300" />
+      <div className="w-16 h-16 rounded-2xl bg-[#f0f5f1] flex items-center justify-center">
+        <User className="w-8 h-8 text-[#8aaa90]" />
       </div>
       <div className="text-center">
         <p className="text-base font-semibold text-slate-700 mb-1">Профиль не заполнен</p>
@@ -802,7 +802,7 @@ function NoProfileState() {
 function LoadingScreen() {
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="h-5 w-5 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin" />
+      <div className="h-5 w-5 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
     </div>
   );
 }
@@ -810,7 +810,7 @@ function LoadingScreen() {
 function LoadingRows() {
   return (
     <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
-      <div className="h-4 w-4 rounded-full border-2 border-indigo-300 border-t-indigo-600 animate-spin" />
+      <div className="h-4 w-4 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
       Загрузка…
     </div>
   );
@@ -828,10 +828,10 @@ function ErrorCard({ message }: { message: string }) {
 // ─── Expert Action Inbox ───────────────────────────────────────────────────────
 
 const ACTION_LABEL_EX: Record<string, { label: string; color: string }> = {
-  customer_selected_you:        { label: "Вас выбрали",          color: "text-indigo-700 bg-indigo-50" },
+  customer_selected_you:        { label: "Вас выбрали",          color: "text-[#1a3d2b] bg-[#f0f5f1]" },
   customer_approved_start_date: { label: "Дата согласована",     color: "text-emerald-700 bg-emerald-50" },
   you_are_approved_for_work:    { label: "Вы назначены на заказ",color: "text-[#1a3d2b] bg-[#d4e5d9]" },
-  experts_matched:              { label: "Подобраны эксперты",   color: "text-indigo-700 bg-indigo-50" },
+  experts_matched:              { label: "Подобраны эксперты",   color: "text-[#1a3d2b] bg-[#f0f5f1]" },
   expert_declined:              { label: "Эксперт отказался",    color: "text-red-700 bg-red-50" },
   expert_can_start_from:        { label: "Предложена дата",      color: "text-amber-700 bg-amber-50" },
   expert_completed_order:       { label: "Заказ завершён",       color: "text-emerald-700 bg-emerald-50" },
@@ -866,8 +866,8 @@ function ExpertActionInbox({ items, userId, userEmail, onDone }: {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center">
-          <Zap className="w-8 h-8 text-indigo-300" />
+        <div className="w-16 h-16 rounded-2xl bg-[#f0f5f1] flex items-center justify-center">
+          <Zap className="w-8 h-8 text-[#8aaa90]" />
         </div>
         <div className="text-center">
           <p className="text-base font-semibold text-slate-700 mb-1">Нет активных задач</p>

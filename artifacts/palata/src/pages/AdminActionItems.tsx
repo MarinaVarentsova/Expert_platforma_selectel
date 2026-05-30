@@ -35,14 +35,14 @@ const TYPE_OPTS   = [
 
 const STATUS_CLS: Record<string, string> = {
   open:      "bg-amber-50 text-amber-700 border-amber-200",
-  read:      "bg-blue-50 text-blue-700 border-blue-200",
+  read:      "bg-[#f0f5f1] text-[#1a3d2b] border-[#c8d8cc]",
   resolved:  "bg-emerald-50 text-emerald-700 border-emerald-200",
   cancelled: "bg-slate-100 text-slate-500 border-slate-200",
 };
 
 const ROLE_CLS: Record<string, string> = {
-  customer: "bg-indigo-50 text-indigo-700",
-  expert:   "bg-teal-50 text-teal-700",
+  customer: "bg-[#f0f5f1] text-[#1a3d2b]",
+  expert:   "bg-[#d4e5d9] text-[#1a3d2b]",
   admin:    "bg-rose-50 text-rose-700",
 };
 
@@ -198,7 +198,7 @@ export default function AdminActionItems() {
                     </td>
                     <td className="px-3 py-2 max-w-[180px]">
                       <Link href={`/requests/${r.request_id}`}>
-                        <span className="text-indigo-600 hover:text-indigo-800 cursor-pointer truncate block">
+                        <span className="text-[#16a34a] hover:text-[#1a3d2b] cursor-pointer truncate block">
                           {r.request_title ?? r.request_id.slice(0, 8) + "…"}
                         </span>
                       </Link>
@@ -249,7 +249,7 @@ function Select({ value, onChange, opts, placeholder }: {
 function Spinner() {
   return (
     <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
-      <div className="h-4 w-4 rounded-full border-2 border-indigo-300 border-t-indigo-600 animate-spin" />
+      <div className="h-4 w-4 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
       Загрузка…
     </div>
   );

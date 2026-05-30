@@ -43,16 +43,16 @@ const COLUMNS = [
   {
     id: "matching",
     label: "Выбор эксперта",
-    dotColor: "bg-cyan-400",
-    bgColor: "bg-cyan-50/60 border-cyan-200",
+    dotColor: "bg-[#16a34a]",
+    bgColor: "bg-[#f0f5f1] border-[#c8d8cc]",
     accent: "",
     statuses: ["expert_selection"],
   },
   {
     id: "working",
     label: "В работе",
-    dotColor: "bg-indigo-500",
-    bgColor: "bg-indigo-50/60 border-indigo-200",
+    dotColor: "bg-[#1a3d2b]",
+    bgColor: "bg-[#eaf3ec]/60 border-[#c8d8cc]",
     accent: "",
     statuses: ["in_progress", "in_work"],
   },
@@ -101,7 +101,7 @@ export default function AdminDashboard() {
     return (
       <AdminLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="h-5 w-5 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin" />
+          <div className="h-5 w-5 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
         </div>
       </AdminLayout>
     );
@@ -179,7 +179,7 @@ export default function AdminDashboard() {
 
         {state.kind === "loading" && (
           <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
-            <div className="h-4 w-4 rounded-full border-2 border-indigo-300 border-t-indigo-600 animate-spin" />
+            <div className="h-4 w-4 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
             Загрузка данных…
           </div>
         )}
@@ -231,20 +231,20 @@ function AdminCard({ request: r }: { request: Request }) {
       : r.status === "completed"
       ? "border-l-emerald-400"
       : r.status === "in_progress" || r.status === "in_work"
-      ? "border-l-indigo-400"
+      ? "border-l-[#16a34a]"
       : "border-l-slate-200";
 
   return (
     <Link href={`/requests/${r.id}`}>
-      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgency} p-3.5 hover:shadow-md hover:border-indigo-100 hover:border-l-indigo-400 transition-all cursor-pointer group shadow-sm`}>
-        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2.5 line-clamp-2 group-hover:text-indigo-700 transition-colors">
+      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgency} p-3.5 hover:shadow-md hover:border-[#c8d8cc] hover:border-l-[#16a34a] transition-all cursor-pointer group shadow-sm`}>
+        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2.5 line-clamp-2 group-hover:text-[#1a3d2b] transition-colors">
           {r.title}
         </p>
 
         <div className="space-y-1 mb-3">
           {r.expertise_type && (
             <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
-              <span className="inline-block h-1 w-1 rounded-full bg-indigo-300 flex-shrink-0" />
+              <span className="inline-block h-1 w-1 rounded-full bg-[#8aaa90] flex-shrink-0" />
               {r.expertise_type}
             </p>
           )}

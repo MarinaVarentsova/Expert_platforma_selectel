@@ -527,26 +527,26 @@ function MetricsBody({ m }: { m: Metrics }) {
                 <p className="text-[10px] text-[#8aaa90]">всего</p>
               </div>
               <div className="text-right">
-                <p className="text-lg font-bold text-indigo-600 tabular-nums">{m.activeCustomers}</p>
+                <p className="text-lg font-bold text-[#16a34a] tabular-nums">{m.activeCustomers}</p>
                 <p className="text-[10px] text-[#8aaa90]">активных</p>
               </div>
             </div>
-            <PctBar pct={m.activeCustomersPct} color="bg-indigo-400" />
+            <PctBar pct={m.activeCustomersPct} color="bg-[#16a34a]" />
             <p className="text-[10px] text-[#8aaa90] mt-1">{m.activeCustomersPct}% активных</p>
           </RefCard>
 
-          <RefCard label="Эксперты" accent="#0891b2">
+          <RefCard label="Эксперты" accent="#16a34a">
             <div className="flex items-end justify-between">
               <div>
                 <p className="text-2xl font-bold text-[#1a3d2b] tabular-nums">{m.totalExperts}</p>
                 <p className="text-[10px] text-[#8aaa90]">всего</p>
               </div>
               <div className="text-right">
-                <p className="text-lg font-bold text-cyan-600 tabular-nums">{m.activeExperts}</p>
+                <p className="text-lg font-bold text-[#16a34a] tabular-nums">{m.activeExperts}</p>
                 <p className="text-[10px] text-[#8aaa90]">в работе</p>
               </div>
             </div>
-            <PctBar pct={m.activeExpertsPct} color="bg-cyan-400" />
+            <PctBar pct={m.activeExpertsPct} color="bg-[#8aaa90]" />
             <p className="text-[10px] text-[#8aaa90] mt-1">{m.activeExpertsPct}% активных</p>
           </RefCard>
 

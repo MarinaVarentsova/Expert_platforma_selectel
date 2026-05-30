@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import {
-  ChevronLeft, Building2, GraduationCap, Check,
+  ChevronLeft, ChevronDown, Building2, GraduationCap, Check, X,
   Eye, EyeOff,
 } from "lucide-react";
+import { useRef } from "react";
 
 const REGION_OPTIONS = [
   { value: "Moskva",          label: "Москва" },
@@ -57,6 +58,9 @@ export default function Register() {
 
   const [selectedDirIds, setSelectedDirIds] = useState<string[]>([]);
   const [directions, setDirections]         = useState<Array<{ id: string; name: string }>>([]);
+  const [dirDropOpen, setDirDropOpen]       = useState(false);
+  const [dirSearch, setDirSearch]           = useState("");
+  const dirDropRef                          = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     supabase.from("palata_expertise_directions")
@@ -65,6 +69,19 @@ export default function Register() {
       .order("sort_order")
       .then(({ data }) => setDirections(data ?? []));
   }, []);
+
+  useEffect(() => {
+    if (!dirDropOpen) return;
+    function handler(e: MouseEvent) {
+      if (dirDropRef.current && !dirDropRef.current.contains(e.target as Node)) {
+        setDirDropOpen(false);
+        setDirSearch("");
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [dirDropOpen]);
+
   const [regions, setRegions]             = useState<string[]>([]);
   const [tripReady, setTripReady]         = useState(false);
   const [palataOk, setPalataOk]           = useState(false);
@@ -73,8 +90,13 @@ export default function Register() {
   const [centrsudNum, setCentrsudNum]     = useState("");
   const [bio, setBio]                     = useState("");
 
+  const MAX_DIRS = 10;
   function toggleSpec(v: string) {
-    setSelectedDirIds(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]);
+    setSelectedDirIds(p => {
+      if (p.includes(v)) return p.filter(x => x !== v);
+      if (p.length >= MAX_DIRS) return p;
+      return [...p, v];
+    });
   }
   function toggleRegion(v: string) {
     setRegions(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]);
@@ -350,19 +372,100 @@ export default function Register() {
           {role === "expert" && (
             <>
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Специализации</p>
-                <div className="flex flex-wrap gap-2">
-                  {directions.map(d => (
-                    <button key={d.id} type="button" onClick={() => toggleSpec(d.id)}
-                      className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-                        selectedDirIds.includes(d.id)
-                          ? "bg-[#002B5C] text-white border-[#002B5C]"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-[#D0D0D0] hover:text-[#002B5C]"
-                      }`}>
-                      {d.name}
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666]">Направления экспертизы</p>
+                  <span className="text-[10px] text-slate-400">{selectedDirIds.length}/{MAX_DIRS}</span>
                 </div>
+
+                {/* Dropdown multiselect */}
+                <div className="relative" ref={dirDropRef}>
+                  <button
+                    type="button"
+                    onClick={() => setDirDropOpen(v => !v)}
+                    className="w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A] hover:border-slate-300 transition-colors"
+                  >
+                    <span className={selectedDirIds.length === 0 ? "text-slate-400" : "text-[#111111]"}>
+                      {selectedDirIds.length === 0
+                        ? "Выберите направления экспертизы…"
+                        : `Выбрано направлений: ${selectedDirIds.length}`}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${dirDropOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {dirDropOpen && (
+                    <div className="absolute z-20 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                      {/* Search */}
+                      <div className="p-2 border-b border-slate-100">
+                        <input
+                          type="text"
+                          value={dirSearch}
+                          onChange={e => setDirSearch(e.target.value)}
+                          placeholder="Поиск направления…"
+                          autoFocus
+                          className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A]"
+                        />
+                      </div>
+
+                      {/* List */}
+                      <div className="max-h-56 overflow-y-auto">
+                        {directions
+                          .filter(d => d.name.toLowerCase().includes(dirSearch.toLowerCase()))
+                          .map(d => {
+                            const sel = selectedDirIds.includes(d.id);
+                            const disabled = !sel && selectedDirIds.length >= MAX_DIRS;
+                            return (
+                              <button
+                                key={d.id}
+                                type="button"
+                                disabled={disabled}
+                                onClick={() => toggleSpec(d.id)}
+                                className={`w-full text-left px-3 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
+                                  disabled
+                                    ? "opacity-40 cursor-not-allowed"
+                                    : sel
+                                    ? "bg-[#F0F4FF] text-[#002B5C]"
+                                    : "hover:bg-[#F4F4F4] text-[#111111]"
+                                }`}
+                              >
+                                <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                                  sel ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300"
+                                }`}>
+                                  {sel && <Check className="w-2.5 h-2.5 text-white" />}
+                                </div>
+                                {d.name}
+                              </button>
+                            );
+                          })}
+                        {directions.filter(d => d.name.toLowerCase().includes(dirSearch.toLowerCase())).length === 0 && (
+                          <p className="text-sm text-slate-400 text-center py-6">Ничего не найдено</p>
+                        )}
+                      </div>
+
+                      {selectedDirIds.length >= MAX_DIRS && (
+                        <div className="px-3 py-2 border-t border-slate-100 bg-amber-50">
+                          <p className="text-[11px] text-amber-700">Выбрано максимальное количество направлений ({MAX_DIRS})</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected chips */}
+                {selectedDirIds.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {selectedDirIds.map(id => {
+                      const d = directions.find(x => x.id === id);
+                      return (
+                        <span key={id} className="inline-flex items-center gap-1 text-xs bg-[#002B5C] text-white px-2.5 py-1 rounded-full">
+                          {d?.name ?? id}
+                          <button type="button" onClick={() => toggleSpec(id)} className="hover:opacity-70 transition-opacity ml-0.5">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">

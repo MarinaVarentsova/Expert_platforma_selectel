@@ -7,6 +7,7 @@ import { KanbanBoard } from "@/components/KanbanBoard";
 import {
   Inbox, Star, User, CheckCircle2, XCircle, MapPin,
   Briefcase, FileText, GraduationCap, ClipboardList, Zap, Calendar,
+  Pencil, X, Upload, Phone,
 } from "lucide-react";
 import {
   loadOpenActionItems, createActionItem, resolveActionItem, cancelRequestActionItems,
@@ -80,6 +81,22 @@ type PendingRatingsState =
   | { kind: "ok"; items: PendingCustomerRating[] }
   | { kind: "error"; message: string };
 
+type ExpertDocument = {
+  id: string;
+  doc_type: string;
+  file_name: string;
+  bucket_path: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  verified: boolean;
+  created_at: string;
+};
+
+type DocsState =
+  | { kind: "loading" }
+  | { kind: "ok"; docs: ExpertDocument[] }
+  | { kind: "error"; message: string };
+
 // ─── Lookup tables ────────────────────────────────────────────────────────────
 
 const SPEC_LABEL: Record<string, string> = {
@@ -139,6 +156,8 @@ export default function ExpertDashboard() {
   const [ratingForms, setRatingForms] = useState<Record<string, RatingFormState>>({});
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [userPhone, setUserPhone] = useState<string | null>(null);
+  const [docsState, setDocsState] = useState<DocsState>({ kind: "loading" });
 
   const loadPendingRatings = async (userId: string) => {
     // Fetch completed matches
@@ -261,6 +280,18 @@ export default function ExpertDashboard() {
         setProfileState({ kind: "ok", profile: data as ExpertProfile | null });
       });
 
+    supabase.from("palata_users").select("phone").eq("id", userId).single()
+      .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
+
+    supabase.from("palata_expert_documents")
+      .select("id, doc_type, file_name, bucket_path, mime_type, size_bytes, verified, created_at")
+      .eq("expert_id", userId)
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) { setDocsState({ kind: "error", message: error.message }); return; }
+        setDocsState({ kind: "ok", docs: (data ?? []) as ExpertDocument[] });
+      });
+
     loadPendingRatings(userId);
 
     setAiLoading(true);
@@ -273,6 +304,38 @@ export default function ExpertDashboard() {
   function reloadActionItems() {
     if (guard.status !== "ok") return;
     loadOpenActionItems(guard.user.id).then(setActionItems);
+  }
+
+  function reloadProfile() {
+    if (guard.status !== "ok") return;
+    const uid = guard.user.id;
+    supabase.from("palata_users").select("phone").eq("id", uid).single()
+      .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
+    supabase.from("palata_expert_profiles")
+      .select(`
+        id, status, specializations, regions, experience_years,
+        education, certifications, accepts_requests, business_trip_ready,
+        palata_registry_verified, centrsudexpert_verified,
+        palata_registry_number, centrsudexpert_registry_number,
+        avg_customer_rating, completed_orders_count, bio
+      `)
+      .eq("user_id", uid).maybeSingle()
+      .then(({ data, error }) => {
+        if (!error) setProfileState({ kind: "ok", profile: data as ExpertProfile | null });
+      });
+  }
+
+  function reloadDocs() {
+    if (guard.status !== "ok") return;
+    const uid = guard.user.id;
+    supabase.from("palata_expert_documents")
+      .select("id, doc_type, file_name, bucket_path, mime_type, size_bytes, verified, created_at")
+      .eq("expert_id", uid)
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) { setDocsState({ kind: "error", message: error.message }); return; }
+        setDocsState({ kind: "ok", docs: (data ?? []) as ExpertDocument[] });
+      });
   }
 
   if (guard.status === "loading" || guard.status === "redirecting") {
@@ -506,7 +569,19 @@ export default function ExpertDashboard() {
           {profileState.kind === "error" && <ErrorCard message={profileState.message} />}
           {profileState.kind === "ok" && profileState.profile === null && <NoProfileState />}
           {profileState.kind === "ok" && profileState.profile !== null && (
-            <ProfileView profile={profileState.profile} user={user} />
+            <div className="space-y-6">
+              <ProfileView
+                profile={profileState.profile}
+                user={{ ...user, phone: userPhone }}
+                userId={user.id}
+                onSave={reloadProfile}
+              />
+              <DocumentsSection
+                userId={user.id}
+                docsState={docsState}
+                onReload={reloadDocs}
+              />
+            </div>
           )}
         </>
       )}
@@ -537,11 +612,253 @@ function TabButton({ active, onClick, children }: {
 
 // ─── Profile view ──────────────────────────────────────────────────────────────
 
-function ProfileView({ profile: p, user }: { profile: ExpertProfile; user: { full_name?: string | null; email: string } }) {
+function ProfileView({
+  profile: p,
+  user,
+  userId,
+  onSave,
+}: {
+  profile: ExpertProfile;
+  user: { full_name?: string | null; email: string; phone?: string | null };
+  userId: string;
+  onSave: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  const [fullName, setFullName]       = useState(user.full_name ?? "");
+  const [phone, setPhone]             = useState(user.phone ?? "");
+  const [bio, setBio]                 = useState(p.bio ?? "");
+  const [expYears, setExpYears]       = useState(p.experience_years?.toString() ?? "");
+  const [education, setEducation]     = useState(p.education ?? "");
+  const [specs, setSpecs]             = useState<string[]>(p.specializations);
+  const [regs, setRegs]               = useState<string[]>(p.regions);
+  const [tripReady, setTripReady]     = useState(p.business_trip_ready);
+  const [accepts, setAccepts]         = useState(p.accepts_requests);
+  const [palataOk, setPalataOk]       = useState(p.palata_registry_verified);
+  const [palataNum, setPalataNum]     = useState(p.palata_registry_number ?? "");
+  const [centrsudOk, setCentrsudOk]   = useState(p.centrsudexpert_verified);
+  const [centrsudNum, setCentrsudNum] = useState(p.centrsudexpert_registry_number ?? "");
+
+  function beginEdit() {
+    setFullName(user.full_name ?? "");
+    setPhone(user.phone ?? "");
+    setBio(p.bio ?? "");
+    setExpYears(p.experience_years?.toString() ?? "");
+    setEducation(p.education ?? "");
+    setSpecs([...p.specializations]);
+    setRegs([...p.regions]);
+    setTripReady(p.business_trip_ready);
+    setAccepts(p.accepts_requests);
+    setPalataOk(p.palata_registry_verified);
+    setPalataNum(p.palata_registry_number ?? "");
+    setCentrsudOk(p.centrsudexpert_verified);
+    setCentrsudNum(p.centrsudexpert_registry_number ?? "");
+    setSavedOk(false);
+    setSaveErr(null);
+    setEditing(true);
+  }
+
+  function toggleSpec(v: string) { setSpecs(s => s.includes(v) ? s.filter(x => x !== v) : [...s, v]); }
+  function toggleReg(v: string)  { setRegs(s => s.includes(v) ? s.filter(x => x !== v) : [...s, v]); }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveErr(null);
+    const [r1, r2] = await Promise.all([
+      supabase.from("palata_users")
+        .update({ full_name: fullName.trim() || null, phone: phone.trim() || null })
+        .eq("id", userId),
+      supabase.from("palata_expert_profiles")
+        .upsert({
+          user_id:                          userId,
+          bio:                              bio.trim() || null,
+          experience_years:                 expYears ? parseInt(expYears) : null,
+          education:                        education.trim() || null,
+          specializations:                  specs,
+          regions:                          regs,
+          business_trip_ready:              tripReady,
+          accepts_requests:                 accepts,
+          palata_registry_verified:         palataOk,
+          palata_registry_number:           palataOk ? palataNum.trim() || null : null,
+          centrsudexpert_verified:          centrsudOk,
+          centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
+        }, { onConflict: "user_id" }),
+    ]);
+    setSaving(false);
+    if (r1.error || r2.error) {
+      setSaveErr((r1.error ?? r2.error)!.message);
+      return;
+    }
+    setEditing(false);
+    setSavedOk(true);
+    onSave();
+    setTimeout(() => setSavedOk(false), 3000);
+  }
+
+  const ic = "w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 focus:border-[#16a34a] bg-white";
   const rating = p.avg_customer_rating ? Number(p.avg_customer_rating).toFixed(2) : null;
+
+  if (editing) {
+    return (
+      <div className="max-w-2xl space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-bold text-slate-700">Редактирование профиля</p>
+          <button onClick={() => setEditing(false)} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors">
+            <X className="w-3.5 h-3.5" /> Отмена
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Личные данные</p>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">ФИО</label>
+            <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} className={ic} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Телефон</label>
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+7 (999) 000-00-00" className={ic} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+            <input value={user.email} disabled className={`${ic} bg-slate-50 text-slate-400 cursor-not-allowed`} />
+            <p className="text-[10px] text-slate-400 mt-0.5">Email нельзя изменить</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Профессиональные данные</p>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Описание опыта</label>
+            <textarea value={bio} onChange={e => setBio(e.target.value)} rows={4} className={`${ic} resize-none`} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Стаж (лет)</label>
+            <input type="number" min="0" max="60" value={expYears} onChange={e => setExpYears(e.target.value)}
+              placeholder="Например: 12" className={ic} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Образование</label>
+            <textarea value={education} onChange={e => setEducation(e.target.value)} rows={3} className={`${ic} resize-none`} />
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Специализации</p>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(SPEC_LABEL).map(([v, l]) => (
+              <button key={v} type="button" onClick={() => toggleSpec(v)}
+                className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
+                  specs.includes(v)
+                    ? "bg-[#1a3d2b] text-white border-[#1a3d2b]"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-[#c8d8cc] hover:text-[#1a3d2b]"
+                }`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Регионы работы</p>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(REGION_LABEL).map(([v, l]) => (
+              <button key={v} type="button" onClick={() => toggleReg(v)}
+                className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
+                  regs.includes(v)
+                    ? "bg-[#1a3d2b] text-white border-[#1a3d2b]"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-[#c8d8cc] hover:text-[#1a3d2b]"
+                }`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-4">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Статус и реестры</p>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" checked={accepts} onChange={e => setAccepts(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+            <div>
+              <p className="text-sm font-medium text-slate-800">Принимает заказы</p>
+              <p className="text-xs text-slate-400">Новые запросы будут поступать</p>
+            </div>
+          </label>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" checked={tripReady} onChange={e => setTripReady(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+            <div>
+              <p className="text-sm font-medium text-slate-800">Готов к командировкам</p>
+              <p className="text-xs text-slate-400">Выезд в другой регион</p>
+            </div>
+          </label>
+
+          <div className="space-y-2">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={palataOk} onChange={e => setPalataOk(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+              <p className="text-sm font-medium text-slate-800">Зарегистрирован в Палате судебных экспертов</p>
+            </label>
+            {palataOk && (
+              <input type="text" value={palataNum} onChange={e => setPalataNum(e.target.value)}
+                placeholder="Номер регистрации" className={`${ic} font-mono ml-7`} />
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={centrsudOk} onChange={e => setCentrsudOk(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+              <p className="text-sm font-medium text-slate-800">Зарегистрирован в Центр судебных экспертиз</p>
+            </label>
+            {centrsudOk && (
+              <input type="text" value={centrsudNum} onChange={e => setCentrsudNum(e.target.value)}
+                placeholder="Номер регистрации" className={`${ic} font-mono ml-7`} />
+            )}
+          </div>
+        </div>
+
+        {saveErr && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-sm text-red-700">{saveErr}</p>
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button onClick={handleSave} disabled={saving}
+            className="btn-primary inline-flex items-center gap-2 disabled:opacity-50">
+            <CheckCircle2 className="w-4 h-4" />
+            {saving ? "Сохранение…" : "Сохранить"}
+          </button>
+          <button onClick={() => setEditing(false)}
+            className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+            Отмена
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+      <div className="xl:col-span-3 flex items-center justify-end gap-3 -mb-2">
+        {savedOk && (
+          <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Профиль сохранён
+          </span>
+        )}
+        <button onClick={beginEdit}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-[#f0f5f1] hover:border-[#c8d8cc] hover:text-[#1a3d2b] transition-all">
+          <Pencil className="w-3.5 h-3.5" />
+          Редактировать профиль
+        </button>
+      </div>
 
       {/* Left column */}
       <div className="xl:col-span-1 flex flex-col gap-4">
@@ -557,6 +874,13 @@ function ProfileView({ profile: p, user }: { profile: ExpertProfile; user: { ful
               <p className="text-xs text-slate-400 truncate">{user.email}</p>
             </div>
           </div>
+
+          {user.phone && (
+            <div className="flex items-center gap-2 mb-4">
+              <Phone className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <p className="text-xs text-slate-600">{user.phone}</p>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <div className="flex-1 rounded-xl bg-slate-50 p-3 text-center">
@@ -654,17 +978,14 @@ function ProfileView({ profile: p, user }: { profile: ExpertProfile; user: { ful
             <GraduationCap className="w-4 h-4 text-slate-400" />
             <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Образование и сертификаты</p>
           </div>
-
           {p.experience_years != null && (
             <p className="text-xs text-slate-500 mb-3">
               Стаж: <span className="font-semibold text-slate-700">{p.experience_years} лет</span>
             </p>
           )}
-
           {p.education && (
             <p className="text-sm text-slate-600 mb-3">{p.education}</p>
           )}
-
           {p.certifications && p.certifications.length > 0 && (
             <ul className="space-y-1.5">
               {p.certifications.map((c, i) => (
@@ -675,12 +996,142 @@ function ProfileView({ profile: p, user }: { profile: ExpertProfile; user: { ful
               ))}
             </ul>
           )}
-
           {!p.education && (!p.certifications || p.certifications.length === 0) && (
             <p className="text-xs text-slate-400">Не заполнено</p>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Documents section ─────────────────────────────────────────────────────────
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  diploma:               "Диплом",
+  certificate:           "Сертификат",
+  sro:                   "Свидетельство СРО",
+  registry_confirmation: "Справка из реестра",
+  other:                 "Другое",
+};
+
+function DocumentsSection({
+  userId,
+  docsState,
+  onReload,
+}: {
+  userId: string;
+  docsState: DocsState;
+  onReload: () => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [docType, setDocType]     = useState("diploma");
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadErr(null);
+
+    const path = `${userId}/${Date.now()}_${file.name}`;
+    const { error: storErr } = await supabase.storage
+      .from("palata-expert-documents")
+      .upload(path, file, { cacheControl: "3600", upsert: false });
+
+    if (storErr) { setUploadErr(storErr.message); setUploading(false); return; }
+
+    const { error: dbErr } = await supabase.from("palata_expert_documents").insert({
+      expert_id:   userId,
+      doc_type:    docType,
+      bucket_path: path,
+      file_name:   file.name,
+      mime_type:   file.type || null,
+      size_bytes:  file.size,
+    });
+
+    if (dbErr) { setUploadErr(dbErr.message); setUploading(false); return; }
+
+    setUploading(false);
+    e.target.value = "";
+    onReload();
+  }
+
+  async function handleDelete(doc: ExpertDocument) {
+    await supabase.storage.from("palata-expert-documents").remove([doc.bucket_path]);
+    await supabase.from("palata_expert_documents").delete().eq("id", doc.id);
+    onReload();
+  }
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-slate-400" />
+          <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Мои документы</p>
+          {docsState.kind === "ok" && docsState.docs.length > 0 && (
+            <span className="text-[10px] font-bold bg-slate-100 text-slate-500 rounded-full px-1.5 py-0.5">
+              {docsState.docs.length}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={docType} onChange={e => setDocType(e.target.value)}
+            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 bg-white">
+            {Object.entries(DOC_TYPE_LABELS).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
+          <label className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border cursor-pointer transition-all ${
+            uploading
+              ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+              : "bg-[#f0f5f1] border-[#c8d8cc] text-[#1a3d2b] hover:bg-[#e5f0e9]"
+          }`}>
+            <Upload className="w-3.5 h-3.5" />
+            {uploading ? "Загрузка…" : "Загрузить"}
+            <input type="file" className="sr-only" disabled={uploading} onChange={handleUpload}
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
+          </label>
+        </div>
+      </div>
+
+      {uploadErr && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 mb-3">
+          <p className="text-xs text-red-700">{uploadErr}</p>
+        </div>
+      )}
+
+      {docsState.kind === "loading" && <p className="text-xs text-slate-400 py-4 text-center">Загрузка...</p>}
+      {docsState.kind === "error"   && <p className="text-xs text-red-500 py-2">{docsState.message}</p>}
+      {docsState.kind === "ok" && docsState.docs.length === 0 && (
+        <div className="py-8 text-center">
+          <p className="text-xs text-slate-400">Документы ещё не загружены</p>
+          <p className="text-[10px] text-slate-300 mt-1">Добавьте дипломы, сертификаты и справки из реестров</p>
+        </div>
+      )}
+      {docsState.kind === "ok" && docsState.docs.length > 0 && (
+        <div className="space-y-2">
+          {docsState.docs.map(doc => (
+            <div key={doc.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-800 truncate">{doc.file_name}</p>
+                  <p className="text-[10px] text-slate-400">
+                    {DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}
+                    {doc.size_bytes ? ` · ${(doc.size_bytes / 1024).toFixed(0)} KB` : ""}
+                    {doc.verified ? " · ✓ Проверен" : ""}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => handleDelete(doc)}
+                className="p-1 text-slate-300 hover:text-red-400 transition-colors flex-shrink-0">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -76,6 +76,11 @@ export default function Home() {
                   Войти в кабинет
                 </button>
               </Link>
+              <Link href="/register">
+                <button className="inline-flex items-center gap-2 bg-transparent border border-[#b8ccbe] hover:bg-[#e5f0e9] hover:border-[#9ab8a4] text-[#1a3d2b] font-medium px-6 py-3 rounded-full transition-all">
+                  Зарегистрироваться
+                </button>
+              </Link>
             </div>
           </div>
 

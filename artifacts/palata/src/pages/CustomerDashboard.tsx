@@ -7,6 +7,7 @@ import {
   PlusCircle, FileText, User, MapPin, Building2,
   Phone, Mail, ClipboardList, Hash, Star,
   Zap, Calendar, CheckCircle2, XCircle, ChevronDown, ChevronUp, GraduationCap,
+  Pencil, X,
 } from "lucide-react";
 import {
   loadOpenActionItems, createActionItem, resolveActionItem, cancelRequestActionItems,
@@ -133,6 +134,7 @@ export default function CustomerDashboard() {
   const [ratingForms, setRatingForms] = useState<Record<string, RatingFormState>>({});
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [userPhone, setUserPhone] = useState<string | null>(null);
 
   const loadPendingRatings = async (userId: string) => {
     // Load open expert_completed_order action items assigned to this customer
@@ -229,6 +231,13 @@ export default function CustomerDashboard() {
         setProfileState({ kind: "ok", profile: data as CustomerProfile | null });
       });
 
+    supabase
+      .from("palata_users")
+      .select("phone")
+      .eq("id", userId)
+      .single()
+      .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
+
     loadPendingRatings(userId);
 
     setAiLoading(true);
@@ -241,6 +250,19 @@ export default function CustomerDashboard() {
   function reloadActionItems() {
     if (guard.status !== "ok") return;
     loadOpenActionItems(guard.user.id).then(setActionItems);
+  }
+
+  function reloadProfile() {
+    if (guard.status !== "ok") return;
+    const uid = guard.user.id;
+    supabase.from("palata_users").select("phone").eq("id", uid).single()
+      .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
+    supabase.from("palata_customer_profiles")
+      .select("company_name, inn, contact_name, region, notes")
+      .eq("user_id", uid).maybeSingle()
+      .then(({ data, error }) => {
+        if (!error) setProfileState({ kind: "ok", profile: data as CustomerProfile | null });
+      });
   }
 
   if (guard.status === "loading" || guard.status === "redirecting") {
@@ -256,7 +278,6 @@ export default function CustomerDashboard() {
       : [],
   }));
 
-  const total = requestState.kind === "ok" ? requestState.rows.length : null;
   const pendingCount = pendingRatingsState.kind === "ok" ? pendingRatingsState.items.length : null;
 
   function getRatingForm(requestId: string): RatingFormState {
@@ -311,58 +332,62 @@ export default function CustomerDashboard() {
     <div className="px-4 sm:px-6 lg:px-8 py-6 lg:py-8 max-w-screen-2xl mx-auto">
 
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет заказчика</p>
-          <h1 className="text-xl font-bold text-slate-900">{user.full_name ?? user.email}</h1>
-          <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {total != null && total > 0 && tab === "requests" && (
-            <div className="text-right mr-1">
-              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Всего заказов</p>
-              <p className="text-2xl font-bold text-slate-900 tabular-nums">{total}</p>
-            </div>
-          )}
-          <Link href="/customer/new-request">
-            <button className="btn-primary inline-flex items-center gap-2">
-              <PlusCircle className="w-4 h-4" />
-              Создать заказ
+      <div className="mb-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет заказчика</p>
+            <h1 className="text-xl font-bold text-slate-900">{user.full_name ?? user.email}</h1>
+            <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setTab(tab === "profile" ? "requests" : "profile")}
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-all ${
+                tab === "profile"
+                  ? "bg-[#f0f5f1] border-[#c8d8cc] text-[#1a3d2b]"
+                  : "bg-white border-slate-200 text-slate-600 hover:bg-[#f0f5f1] hover:border-[#c8d8cc] hover:text-[#1a3d2b]"
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              Мой профиль
             </button>
-          </Link>
+            <Link href="/customer/new-request">
+              <button className="btn-primary inline-flex items-center gap-2">
+                <PlusCircle className="w-4 h-4" />
+                Создать заказ
+              </button>
+            </Link>
+          </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-slate-200">
-        <TabButton active={tab === "requests"} onClick={() => setTab("requests")}>
-          <ClipboardList className="w-3.5 h-3.5" />
-          Мои заказы
-        </TabButton>
-        <TabButton active={tab === "actions"} onClick={() => setTab("actions")}>
-          <Zap className="w-3.5 h-3.5" />
-          Требуют действия
-          {actionItems.length > 0 && (
-            <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-rose-500 text-white rounded-full">
-              {actionItems.length}
-            </span>
-          )}
-        </TabButton>
-        <TabButton active={tab === "rate"} onClick={() => setTab("rate")}>
-          <Star className="w-3.5 h-3.5" />
-          Оценить эксперта
-          {pendingCount != null && pendingCount > 0 && (
-            <span className="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-amber-500 text-white rounded-full">
-              {pendingCount}
-            </span>
-          )}
-        </TabButton>
-        <TabButton active={tab === "profile"} onClick={() => setTab("profile")}>
-          <User className="w-3.5 h-3.5" />
-          Профиль
-        </TabButton>
-      </div>
+      {tab !== "profile" && (
+        <div className="flex gap-1 mb-6 border-b border-slate-200">
+          <TabButton active={tab === "requests"} onClick={() => setTab("requests")}>
+            <ClipboardList className="w-3.5 h-3.5" />
+            Мои заказы
+          </TabButton>
+          <TabButton active={tab === "actions"} onClick={() => setTab("actions")}>
+            <Zap className="w-3.5 h-3.5" />
+            Требуют действия
+            {actionItems.length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-rose-500 text-white rounded-full">
+                {actionItems.length}
+              </span>
+            )}
+          </TabButton>
+          <TabButton active={tab === "rate"} onClick={() => setTab("rate")}>
+            <Star className="w-3.5 h-3.5" />
+            Оценить эксперта
+            {pendingCount != null && pendingCount > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-amber-500 text-white rounded-full">
+                {pendingCount}
+              </span>
+            )}
+          </TabButton>
+        </div>
+      )}
 
       {/* Tab: Requests */}
       {tab === "requests" && (
@@ -483,7 +508,12 @@ export default function CustomerDashboard() {
           {profileState.kind === "loading" && <LoadingRows />}
           {profileState.kind === "error" && <ErrorCard message={profileState.message} />}
           {profileState.kind !== "loading" && profileState.kind !== "error" && (
-            <ProfileView user={user} profile={profileState.profile} />
+            <ProfileView
+              user={{ ...user, phone: userPhone }}
+              profile={profileState.profile}
+              userId={user.id}
+              onSave={reloadProfile}
+            />
           )}
         </>
       )}
@@ -517,12 +547,160 @@ function TabButton({ active, onClick, children }: {
 function ProfileView({
   user,
   profile,
+  userId,
+  onSave,
 }: {
   user: { full_name?: string | null; email: string; phone?: string | null };
   profile: CustomerProfile | null;
+  userId: string;
+  onSave: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  const [fullName, setFullName]         = useState(user.full_name ?? "");
+  const [phone, setPhone]               = useState(user.phone ?? "");
+  const [companyName, setCompanyName]   = useState(profile?.company_name ?? "");
+  const [inn, setInn]                   = useState(profile?.inn ?? "");
+  const [contactName, setContactName]   = useState(profile?.contact_name ?? "");
+  const [region, setRegion]             = useState(profile?.region ?? "");
+  const [notes, setNotes]               = useState(profile?.notes ?? "");
+
+  function beginEdit() {
+    setFullName(user.full_name ?? "");
+    setPhone(user.phone ?? "");
+    setCompanyName(profile?.company_name ?? "");
+    setInn(profile?.inn ?? "");
+    setContactName(profile?.contact_name ?? "");
+    setRegion(profile?.region ?? "");
+    setNotes(profile?.notes ?? "");
+    setSavedOk(false);
+    setSaveErr(null);
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveErr(null);
+    const [r1, r2] = await Promise.all([
+      supabase.from("palata_users")
+        .update({ full_name: fullName.trim() || null, phone: phone.trim() || null })
+        .eq("id", userId),
+      supabase.from("palata_customer_profiles")
+        .upsert({
+          user_id:      userId,
+          company_name: companyName.trim() || null,
+          inn:          inn.trim() || null,
+          contact_name: contactName.trim() || null,
+          region:       region || null,
+          notes:        notes.trim() || null,
+        }, { onConflict: "user_id" }),
+    ]);
+    setSaving(false);
+    if (r1.error || r2.error) {
+      setSaveErr((r1.error ?? r2.error)!.message);
+      return;
+    }
+    setEditing(false);
+    setSavedOk(true);
+    onSave();
+    setTimeout(() => setSavedOk(false), 3000);
+  }
+
+  const ic = "w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 focus:border-[#16a34a] bg-white";
+
+  if (editing) {
+    return (
+      <div className="max-w-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-bold text-slate-700">Редактирование профиля</p>
+          <button onClick={() => setEditing(false)} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors">
+            <X className="w-3.5 h-3.5" /> Отмена
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Личные данные</p>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">ФИО</label>
+            <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} className={ic} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Телефон</label>
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+7 (999) 000-00-00" className={ic} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+            <input value={user.email} disabled className={`${ic} bg-slate-50 text-slate-400 cursor-not-allowed`} />
+            <p className="text-[10px] text-slate-400 mt-0.5">Email нельзя изменить</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Организация</p>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Компания</label>
+            <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className={ic} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">ИНН</label>
+            <input type="text" value={inn} onChange={e => setInn(e.target.value)} className={`${ic} font-mono`} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Контактное лицо</label>
+            <input type="text" value={contactName} onChange={e => setContactName(e.target.value)} className={ic} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Регион</label>
+            <select value={region} onChange={e => setRegion(e.target.value)} className={ic}>
+              <option value="">— Выберите регион —</option>
+              {Object.entries(REGION_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Примечания</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className={`${ic} resize-none`} />
+          </div>
+        </div>
+
+        {saveErr && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-sm text-red-700">{saveErr}</p>
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button onClick={handleSave} disabled={saving}
+            className="btn-primary inline-flex items-center gap-2 disabled:opacity-50">
+            <CheckCircle2 className="w-4 h-4" />
+            {saving ? "Сохранение…" : "Сохранить"}
+          </button>
+          <button onClick={() => setEditing(false)}
+            className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+            Отмена
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 max-w-4xl">
+
+      <div className="xl:col-span-3 flex items-center justify-end gap-3 -mb-2">
+        {savedOk && (
+          <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Профиль сохранён
+          </span>
+        )}
+        <button onClick={beginEdit}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-[#f0f5f1] hover:border-[#c8d8cc] hover:text-[#1a3d2b] transition-all">
+          <Pencil className="w-3.5 h-3.5" />
+          Редактировать профиль
+        </button>
+      </div>
 
       {/* Identity */}
       <div className="xl:col-span-1 flex flex-col gap-4">
@@ -536,7 +714,6 @@ function ProfileView({
               <p className="text-xs text-slate-400">Заказчик</p>
             </div>
           </div>
-
           <div className="space-y-2.5">
             <InfoRow icon={<Mail className="w-3.5 h-3.5" />} label="Email" value={user.email} />
             <InfoRow icon={<Phone className="w-3.5 h-3.5" />} label="Телефон" value={user.phone ?? null} />
@@ -546,7 +723,6 @@ function ProfileView({
 
       {/* Company / details */}
       <div className="xl:col-span-2 flex flex-col gap-4">
-
         {profile ? (
           <>
             <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
@@ -565,7 +741,6 @@ function ProfileView({
                 />
               </div>
             </div>
-
             {profile.notes && (
               <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
@@ -584,9 +759,14 @@ function ProfileView({
             <div>
               <p className="text-sm font-semibold text-slate-700 mb-1">Профиль не заполнен</p>
               <p className="text-xs text-slate-400 max-w-xs">
-                Данные о компании и контактах пока не добавлены. Обратитесь к администратору.
+                Нажмите «Редактировать профиль», чтобы добавить данные о компании.
               </p>
             </div>
+            <button onClick={beginEdit}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-[#c8d8cc] text-[#1a3d2b] bg-[#f0f5f1] hover:bg-[#e5f0e9] transition-all">
+              <Pencil className="w-3.5 h-3.5" />
+              Заполнить профиль
+            </button>
           </div>
         )}
       </div>

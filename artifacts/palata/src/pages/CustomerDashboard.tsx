@@ -338,11 +338,9 @@ export default function CustomerDashboard() {
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет заказчика</p>
             <h1 className="text-xl font-bold text-slate-900">{user.full_name ?? user.email}</h1>
             <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap sm:flex-shrink-0">
             <button
               onClick={() => setTab(tab === "profile" ? "requests" : "profile")}
-              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-all ${
+              className={`mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-all ${
                 tab === "profile"
                   ? "bg-[#F4F4F4] border-[#D0D0D0] text-[#002B5C]"
                   : "bg-white border-slate-200 text-slate-600 hover:bg-[#F4F4F4] hover:border-[#D0D0D0] hover:text-[#002B5C]"
@@ -351,6 +349,8 @@ export default function CustomerDashboard() {
               <User className="w-3.5 h-3.5" />
               Мой профиль
             </button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap sm:flex-shrink-0">
             <Link href="/customer/new-request">
               <button className="btn-primary inline-flex items-center gap-2">
                 <PlusCircle className="w-4 h-4" />

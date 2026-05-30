@@ -226,7 +226,9 @@ const ALL_ORDER_STATUSES = [
 const ACTIVE_MATCH_STATUSES = new Set(["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted", "accepted_work"]);
 const EXPERT_CAN_ACT = new Set(["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted", "accepted_work"]);
 const CONTACTS_REVEALED = new Set(["selected_by_customer", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"]);
-const CUSTOMER_CAN_SELECT = new Set(["proposed", "can_start_from"]);
+const CUSTOMER_CAN_SELECT = new Set([
+  "proposed", "can_start_from", "accepted", "selected_by_customer", "pending", "matched",
+]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -946,7 +948,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             )}
 
             {/* Prompt: select expert from matched list below */}
-            {isOrderActive && expertsMatchedItem && custUI.kind === "idle" && (
+            {isOrderActive && r.status === "expert_selection" && matches.some(m => CUSTOMER_CAN_SELECT.has(m.status)) && custUI.kind === "idle" && (
               <div className="w-full mt-1 p-3 rounded-lg bg-[#F4F4F4] border border-[#D0D0D0] text-xs text-[#002B5C]">
                 <span className="font-semibold">Подберите эксперта</span> — ниже показаны профили подобранных специалистов. Нажмите «Выбрать эксперта» под карточкой нужного.
               </div>
@@ -1246,6 +1248,15 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
             {/* Quick actions */}
             <div className="flex flex-wrap gap-2">
+              {(r.status === "new" || r.status === "pending" || r.status === "matching") && (
+                <button
+                  className="btn-primary-sm"
+                  disabled={adminSubmitting || matchingRunning}
+                  onClick={handleRematch}
+                >
+                  {matchingRunning ? "Идёт подбор…" : "Запустить подбор экспертов"}
+                </button>
+              )}
               <button
                 className="btn-ghost-sm"
                 disabled={adminSubmitting}
@@ -1412,8 +1423,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                       </div>
                     )}
 
-                    {/* Customer: Выбрать эксперта — shown when experts_matched is open */}
-                    {role === "customer" && isOrderActive && CUSTOMER_CAN_SELECT.has(m.status) && expertsMatchedItem && (
+                    {/* Customer: Выбрать эксперта — shown when request is in expert_selection and match is selectable */}
+                    {role === "customer" && isOrderActive && r.status === "expert_selection" && CUSTOMER_CAN_SELECT.has(m.status) && (
                       <div className="px-4 py-3 bg-[#F4F4F4] border-t border-[#D0D0D0]">
                         {custUI.kind === "submitting" ? (
                           <div className="flex items-center gap-2 text-sm text-[#666666]">

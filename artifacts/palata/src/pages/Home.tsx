@@ -64,24 +64,6 @@ export default function Home() {
               Автоматизированный подбор аккредитованных судебных экспертов по специализации, региону и репутации.
             </p>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Link href="/customer/new-request">
-                <button className="inline-flex items-center gap-2 bg-[#002B5C] hover:bg-[#003a7a] text-white font-semibold px-5 sm:px-6 py-2.5 sm:py-3 rounded-full transition-all shadow-sm text-sm sm:text-base">
-                  Создать заказ
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </Link>
-              <Link href="/login">
-                <button className="inline-flex items-center gap-2 bg-white border border-[#0F4C9A] hover:bg-[#F4F4F4] text-[#0F4C9A] font-medium px-5 sm:px-6 py-2.5 sm:py-3 rounded-full transition-all text-sm sm:text-base">
-                  Войти в кабинет
-                </button>
-              </Link>
-              <Link href="/register">
-                <button className="inline-flex items-center gap-2 bg-white border border-[#D0D0D0] hover:bg-[#F4F4F4] text-[#111111] font-medium px-5 sm:px-6 py-2.5 sm:py-3 rounded-full transition-all text-sm sm:text-base">
-                  Зарегистрироваться
-                </button>
-              </Link>
-            </div>
           </div>
 
           {/* Right — dark panel (terminal-style), visible on all sizes */}

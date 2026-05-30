@@ -57,11 +57,8 @@ export default function Nav() {
 
           {/* Brand */}
           <Link href="/">
-            <div className="flex items-center gap-2.5 mr-4 sm:mr-8 cursor-pointer select-none">
-              <div className="w-8 h-8 rounded-full bg-[#002B5C] flex items-center justify-center flex-shrink-0">
-                <span className="text-[10px] font-bold text-white tracking-tight">СЭ</span>
-              </div>
-              <span className="hidden xs:inline text-sm font-bold text-[#111111] tracking-tight">Палата СЭ</span>
+            <div className="flex items-center mr-4 sm:mr-8 cursor-pointer select-none">
+              <span className="text-sm font-bold text-[#111111] tracking-tight">Палата СЭ</span>
             </div>
           </Link>
 
@@ -84,16 +81,38 @@ export default function Nav() {
             })}
 
             {!isLoading && !isAuthenticated && (
-              <Link href="/login">
-                <span className={[
-                  "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
-                  isActive("/login")
-                    ? "text-[#002B5C] font-semibold bg-[#002B5C]/10"
-                    : "text-[#666666] hover:text-[#002B5C] hover:bg-[#002B5C]/8",
-                ].join(" ")}>
-                  Вход
-                </span>
-              </Link>
+              <>
+                <Link href="/">
+                  <span className={[
+                    "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
+                    location === "/"
+                      ? "text-[#002B5C] font-semibold bg-[#002B5C]/10"
+                      : "text-[#666666] hover:text-[#002B5C] hover:bg-[#002B5C]/8",
+                  ].join(" ")}>
+                    Главная
+                  </span>
+                </Link>
+                <Link href="/login">
+                  <span className={[
+                    "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
+                    isActive("/login")
+                      ? "text-[#002B5C] font-semibold bg-[#002B5C]/10"
+                      : "text-[#666666] hover:text-[#002B5C] hover:bg-[#002B5C]/8",
+                  ].join(" ")}>
+                    Войти
+                  </span>
+                </Link>
+                <Link href="/register">
+                  <span className={[
+                    "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
+                    isActive("/register")
+                      ? "text-[#002B5C] font-semibold bg-[#002B5C]/10"
+                      : "text-[#666666] hover:text-[#002B5C] hover:bg-[#002B5C]/8",
+                  ].join(" ")}>
+                    Зарегистрироваться
+                  </span>
+                </Link>
+              </>
             )}
           </div>
 
@@ -134,14 +153,6 @@ export default function Nav() {
               </div>
             )}
 
-            {/* Desktop login button */}
-            {!isLoading && !isAuthenticated && (
-              <Link href="/login">
-                <span className="hidden sm:inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold bg-[#002B5C] hover:bg-[#003a7a] text-white transition-all cursor-pointer shadow-sm">
-                  Войти
-                </span>
-              </Link>
-            )}
 
             {/* Mobile hamburger */}
             <button
@@ -173,16 +184,38 @@ export default function Nav() {
                 </Link>
               ))}
               {!isLoading && !isAuthenticated && (
-                <Link href="/login">
-                  <span className={[
-                    "block px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
-                    isActive("/login")
-                      ? "bg-[#002B5C]/10 text-[#002B5C] font-semibold"
-                      : "text-[#111111] hover:bg-[#F4F4F4]",
-                  ].join(" ")}>
-                    Вход
-                  </span>
-                </Link>
+                <>
+                  <Link href="/">
+                    <span className={[
+                      "block px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
+                      location === "/"
+                        ? "bg-[#002B5C]/10 text-[#002B5C] font-semibold"
+                        : "text-[#111111] hover:bg-[#F4F4F4]",
+                    ].join(" ")}>
+                      Главная
+                    </span>
+                  </Link>
+                  <Link href="/login">
+                    <span className={[
+                      "block px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
+                      isActive("/login")
+                        ? "bg-[#002B5C]/10 text-[#002B5C] font-semibold"
+                        : "text-[#111111] hover:bg-[#F4F4F4]",
+                    ].join(" ")}>
+                      Войти
+                    </span>
+                  </Link>
+                  <Link href="/register">
+                    <span className={[
+                      "block px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
+                      isActive("/register")
+                        ? "bg-[#002B5C]/10 text-[#002B5C] font-semibold"
+                        : "text-[#111111] hover:bg-[#F4F4F4]",
+                    ].join(" ")}>
+                      Зарегистрироваться
+                    </span>
+                  </Link>
+                </>
               )}
             </div>
           </div>
@@ -207,15 +240,6 @@ export default function Nav() {
             </div>
           )}
 
-          {!isLoading && !isAuthenticated && (
-            <div className="px-4 py-4">
-              <Link href="/login">
-                <span className="block w-full text-center py-3 rounded-xl text-sm font-semibold bg-[#002B5C] text-white cursor-pointer hover:bg-[#003a7a] transition-colors">
-                  Войти в систему
-                </span>
-              </Link>
-            </div>
-          )}
         </div>
       )}
     </>

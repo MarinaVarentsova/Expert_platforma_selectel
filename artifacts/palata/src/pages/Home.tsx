@@ -178,7 +178,7 @@ export default function Home() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
 
-            <Link href="/customer/new-request">
+            <Link href="/customer">
               <div className="h-full bg-white rounded-2xl border border-[#D0D0D0] p-5 sm:p-6 hover:border-[#0F4C9A] hover:shadow-md transition-all cursor-pointer group">
                 <div className="w-10 h-10 rounded-xl bg-[#F4F4F4] border border-[#D0D0D0] flex items-center justify-center mb-4 sm:mb-5">
                   <span className="text-lg">⚖️</span>
@@ -188,7 +188,7 @@ export default function Home() {
                   Создайте заказ на судебную экспертизу. Система автоматически подберёт квалифицированного специалиста.
                 </p>
                 <div className="flex items-center gap-1 text-sm font-semibold text-[#002B5C] group-hover:gap-2 transition-all">
-                  Создать заказ <ArrowRight className="w-3.5 h-3.5" />
+                  Личный кабинет <ArrowRight className="w-3.5 h-3.5" />
                 </div>
               </div>
             </Link>

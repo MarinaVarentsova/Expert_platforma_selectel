@@ -49,6 +49,7 @@ type ReqRow = {
   status: string;
   region: string;
   expertise_type: string;
+  expertise_direction_id: string | null;
   created_at: string;
   customer_id: string | null;
 };
@@ -118,6 +119,7 @@ function computeMetrics(
   custRatings: { score: number }[],
   customerProfiles: { user_id: string }[],
   statusEvents: EventRow[],
+  directionMap: Record<string, string> = {},
 ): Metrics {
   const total = requests.length;
 
@@ -257,7 +259,14 @@ function computeMetrics(
 
     // Zone 4 — each row uses explicit fallback so the sum == total
     reqByRegion:    groupCount(requests.map(r => r.region), "Без региона"),
-    reqBySpec:      groupCount(requests.map(r => r.expertise_type), "Без направления"),
+    reqBySpec: groupCount(
+      requests.map(r =>
+        (r.expertise_direction_id && directionMap[r.expertise_direction_id])
+          ? directionMap[r.expertise_direction_id]
+          : (r.expertise_type || "Без направления")
+      ),
+      "Без направления"
+    ),
     // For experts: experts with empty arrays count as "Не указано" (so sum == totalExperts)
     expertByRegion: groupCount(
       experts.flatMap(e => (e.regions?.length ? e.regions : ["Не указано"])),
@@ -287,10 +296,10 @@ export default function AdminMetrics() {
     if (guard.status !== "ok") return;
 
     async function load() {
-      const [reqRes, expRes, matchRes, expRatRes, custRatRes, custProfRes, eventsRes] =
+      const [reqRes, expRes, matchRes, expRatRes, custRatRes, custProfRes, eventsRes, dirRes] =
         await Promise.all([
           supabase.from("palata_requests")
-            .select("id, status, region, expertise_type, created_at, customer_id"),
+            .select("id, status, region, expertise_type, expertise_direction_id, created_at, customer_id"),
           supabase.from("palata_expert_profiles")
             .select("user_id, palata_registry_verified, centrsudexpert_verified, regions, specializations"),
           supabase.from("palata_request_matches")
@@ -302,9 +311,15 @@ export default function AdminMetrics() {
             .select("entity_id, entity_type, new_status, created_at")
             .eq("entity_type", "request")
             .eq("new_status", "completed"),
+          supabase.from("palata_expertise_directions").select("id, name"),
         ]);
 
       if (reqRes.error) { setState({ kind: "error", message: reqRes.error.message }); return; }
+
+      const directionMap: Record<string, string> = {};
+      for (const d of (dirRes.data ?? []) as { id: string; name: string }[]) {
+        directionMap[d.id] = d.name;
+      }
 
       setState({
         kind: "ok",
@@ -316,6 +331,7 @@ export default function AdminMetrics() {
           (custRatRes.data ?? []) as { score: number }[],
           (custProfRes.data ?? []) as { user_id: string }[],
           (eventsRes.data ?? []) as EventRow[],
+          directionMap,
         ),
       });
     }

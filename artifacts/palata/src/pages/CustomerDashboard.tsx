@@ -21,6 +21,7 @@ type Request = {
   title: string;
   status: string;
   expertise_type: string;
+  expertise_direction_id: string | null;
   region: string;
   matching_round: number;
   urgency: string | null;
@@ -96,18 +97,6 @@ const COLUMNS = [
   { id: "closed",  label: "Неактуален",    dotColor: "bg-slate-300",  bgColor: "bg-slate-50 border-slate-200",      accent: "", statuses: ["cancelled", "failed", "declined"] },
 ];
 
-const EXPERTISE_LABEL: Record<string, string> = {
-  "avtotechnicheskaya":        "Автотехническая",
-  "zemleustroitelnaya":        "Землеустроительная",
-  "pocherkovedcheskaya":       "Почерковедческая",
-  "finansovo-ekonomicheskaya": "Финансово-экономическая",
-  "kompyuterno-tehnicheskaya": "Компьютерно-техническая",
-  "stroitelno-tehnicheskaya":  "Строительно-техническая",
-  "pozharno-tehnicheskaya":    "Пожарно-техническая",
-  "tovaroved":                 "Товароведческая",
-  "psihologicheskaya":         "Психологическая",
-  "lingvisticheskaya":         "Лингвистическая",
-};
 
 const REGION_LABEL: Record<string, string> = {
   "Moskva":          "Москва",
@@ -126,6 +115,16 @@ const REGION_LABEL: Record<string, string> = {
 
 export default function CustomerDashboard() {
   const guard = useRequireRole("customer");
+  const [allDirections, setAllDirections] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+
+  useEffect(() => {
+    supabase.from("palata_expertise_directions")
+      .select("id, name, slug")
+      .eq("is_active", true)
+      .then(({ data }) => setAllDirections(data ?? []));
+  }, []);
+  const directionMap = Object.fromEntries(allDirections.map(d => [d.id, d.name]));
+  const slugMap = Object.fromEntries(allDirections.map(d => [d.slug, d.name]));
   const [tab, setTab] = useState<"requests" | "actions" | "rate" | "profile">("requests");
   const [requestState, setRequestState] = useState<RequestState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
@@ -213,7 +212,7 @@ export default function CustomerDashboard() {
 
     supabase
       .from("palata_requests")
-      .select("id, title, status, expertise_type, region, matching_round, urgency, created_at")
+      .select("id, title, status, expertise_type, expertise_direction_id, region, matching_round, urgency, created_at")
       .eq("customer_id", userId)
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
@@ -398,7 +397,7 @@ export default function CustomerDashboard() {
           {requestState.kind === "ok" && requestState.rows.length > 0 && (
             <KanbanBoard
               columns={columns}
-              renderCard={(r: Request) => <CustomerCard request={r} needsRating={r.status === "completed" && !ratedRequestIds.has(r.id)} />}
+              renderCard={(r: Request) => <CustomerCard request={r} needsRating={r.status === "completed" && !ratedRequestIds.has(r.id)} directionMap={directionMap} />}
               emptyText="Нет заказов"
             />
           )}
@@ -797,7 +796,7 @@ function InfoRow({ icon, label, value, mono }: {
 
 // ─── Request card ─────────────────────────────────────────────────────────────
 
-function CustomerCard({ request: r, needsRating }: { request: Request; needsRating?: boolean }) {
+function CustomerCard({ request: r, needsRating, directionMap = {} }: { request: Request; needsRating?: boolean; directionMap?: Record<string, string> }) {
   const urgencyColor = r.urgency === "very_urgent" ? "border-l-red-400"
     : r.urgency === "urgent" ? "border-l-amber-400"
     : "border-l-[#D0D0D0]";
@@ -815,10 +814,10 @@ function CustomerCard({ request: r, needsRating }: { request: Request; needsRati
         </p>
 
         <div className="space-y-1 mb-2.5">
-          {r.expertise_type && (
+          {(r.expertise_direction_id || r.expertise_type) && (
             <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
               <span className="inline-block h-1 w-1 rounded-full bg-[#666666] flex-shrink-0" />
-              {EXPERTISE_LABEL[r.expertise_type] ?? r.expertise_type}
+              {directionMap[r.expertise_direction_id ?? ""] ?? r.expertise_type}
             </p>
           )}
           {r.region && (
@@ -976,6 +975,16 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [selecting, setSelecting] = useState<string | null>(null);
+  const [slugMap, setSlugMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    supabase.from("palata_expertise_directions").select("slug, name").eq("is_active", true)
+      .then(({ data }) => {
+        const m: Record<string, string> = {};
+        for (const d of data ?? []) if (d.slug) m[d.slug] = d.name;
+        setSlugMap(m);
+      });
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -1147,6 +1156,7 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
             <ExpertProfileCard
               key={expert.expert_id}
               expert={expert}
+              slugMap={slugMap}
               busy={selecting === expert.expert_id}
               onSelect={() => handleSelect(expert)}
             />
@@ -1451,8 +1461,9 @@ function ExpertCompletedCard({ item, onDone }: { item: ActionItem; onDone: () =>
 
 // ─── Expert profile card (for "Выбрать эксперта" list) ───────────────────────
 
-function ExpertProfileCard({ expert: e, busy, onSelect }: {
+function ExpertProfileCard({ expert: e, slugMap, busy, onSelect }: {
   expert: MatchedExpert;
+  slugMap: Record<string, string>;
   busy: boolean;
   onSelect: () => void;
 }) {
@@ -1492,7 +1503,7 @@ function ExpertProfileCard({ expert: e, busy, onSelect }: {
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {e.specializations.slice(0, 3).map(s => (
               <span key={s} className="text-[10px] font-medium text-[#002B5C] bg-[#F4F4F4] px-1.5 py-0.5 rounded">
-                {EXPERTISE_LABEL[s] ?? s}
+                {slugMap[s] ?? s}
               </span>
             ))}
             {e.regions.slice(0, 2).map(r => (

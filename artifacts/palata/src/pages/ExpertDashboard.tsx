@@ -26,6 +26,7 @@ type Match = {
   palata_requests: {
     title: string;
     expertise_type: string;
+    expertise_direction_id: string | null;
     region: string;
     urgency: string | null;
     customer_id: string | null;
@@ -99,19 +100,6 @@ type DocsState =
 
 // ─── Lookup tables ────────────────────────────────────────────────────────────
 
-const SPEC_LABEL: Record<string, string> = {
-  "avtotechnicheskaya":       "Автотехническая",
-  "zemleustroitelnaya":       "Землеустроительная",
-  "pocherkovedcheskaya":      "Почерковедческая",
-  "finansovo-ekonomicheskaya":"Финансово-экономическая",
-  "kompyuterno-tehnicheskaya":"Компьютерно-техническая",
-  "stroitelno-tehnicheskaya": "Строительно-техническая",
-  "pozharno-tehnicheskaya":   "Пожарно-техническая",
-  "tovaroved":                "Товароведческая",
-  "psihologicheskaya":        "Психологическая",
-  "lingvisticheskaya":        "Лингвистическая",
-};
-
 const REGION_LABEL: Record<string, string> = {
   "Moskva":          "Москва",
   "Sankt-Peterburg": "Санкт-Петербург",
@@ -158,6 +146,17 @@ export default function ExpertDashboard() {
   const [aiLoading, setAiLoading] = useState(false);
   const [userPhone, setUserPhone] = useState<string | null>(null);
   const [docsState, setDocsState] = useState<DocsState>({ kind: "loading" });
+  const [allDirections, setAllDirections] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    supabase.from("palata_expertise_directions")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("sort_order")
+      .then(({ data }) => setAllDirections(data ?? []));
+  }, []);
+
+  const directionsMap = Object.fromEntries(allDirections.map(d => [d.id, d.name]));
 
   const loadPendingRatings = async (userId: string) => {
     // Fetch completed matches
@@ -255,7 +254,7 @@ export default function ExpertDashboard() {
       .from("palata_request_matches")
       .select(`
         id, request_id, status, matching_round, decline_reason, responded_at,
-        palata_requests ( title, expertise_type, region, urgency, customer_id )
+        palata_requests ( title, expertise_type, expertise_direction_id, region, urgency, customer_id )
       `)
       .eq("expert_id", userId)
       .order("matching_round", { ascending: true })
@@ -451,6 +450,7 @@ export default function ExpertDashboard() {
                 <ExpertCard
                   match={m}
                   needsRating={m.status === "completed" && !ratedMatchIds.has(m.id)}
+                  directionsMap={directionsMap}
                 />
               )}
               emptyText="Нет обращений"
@@ -571,6 +571,7 @@ export default function ExpertDashboard() {
                 profile={profileState.profile}
                 user={{ ...user, phone: userPhone }}
                 userId={user.id}
+                allDirections={allDirections}
                 onSave={reloadProfile}
               />
               <DocumentsSection
@@ -613,11 +614,13 @@ function ProfileView({
   profile: p,
   user,
   userId,
+  allDirections,
   onSave,
 }: {
   profile: ExpertProfile;
   user: { full_name?: string | null; email: string; phone?: string | null };
   userId: string;
+  allDirections: Array<{ id: string; name: string }>;
   onSave: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -630,8 +633,17 @@ function ProfileView({
   const [bio, setBio]                 = useState(p.bio ?? "");
   const [expYears, setExpYears]       = useState(p.experience_years?.toString() ?? "");
   const [education, setEducation]     = useState(p.education ?? "");
-  const [specs, setSpecs]             = useState<string[]>(p.specializations);
+  const [dirIds, setDirIds]           = useState<string[]>([]);
   const [regs, setRegs]               = useState<string[]>(p.regions);
+
+  useEffect(() => {
+    supabase.from("palata_expert_directions")
+      .select("expertise_direction_id")
+      .eq("expert_id", userId)
+      .then(({ data }) =>
+        setDirIds((data ?? []).map((r: { expertise_direction_id: string }) => r.expertise_direction_id))
+      );
+  }, [userId]);
   const [tripReady, setTripReady]     = useState(p.business_trip_ready);
   const [accepts, setAccepts]         = useState(p.accepts_requests);
   const [palataOk, setPalataOk]       = useState(p.palata_registry_verified);
@@ -645,7 +657,6 @@ function ProfileView({
     setBio(p.bio ?? "");
     setExpYears(p.experience_years?.toString() ?? "");
     setEducation(p.education ?? "");
-    setSpecs([...p.specializations]);
     setRegs([...p.regions]);
     setTripReady(p.business_trip_ready);
     setAccepts(p.accepts_requests);
@@ -658,7 +669,7 @@ function ProfileView({
     setEditing(true);
   }
 
-  function toggleSpec(v: string) { setSpecs(s => s.includes(v) ? s.filter(x => x !== v) : [...s, v]); }
+  function toggleSpec(v: string) { setDirIds(s => s.includes(v) ? s.filter(x => x !== v) : [...s, v]); }
   function toggleReg(v: string)  { setRegs(s => s.includes(v) ? s.filter(x => x !== v) : [...s, v]); }
 
   async function handleSave() {
@@ -674,7 +685,7 @@ function ProfileView({
           bio:                              bio.trim() || null,
           experience_years:                 expYears ? parseInt(expYears) : null,
           education:                        education.trim() || null,
-          specializations:                  specs,
+          specializations:                  [],
           regions:                          regs,
           business_trip_ready:              tripReady,
           accepts_requests:                 accepts,
@@ -684,11 +695,18 @@ function ProfileView({
           centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
         }, { onConflict: "user_id" }),
     ]);
-    setSaving(false);
     if (r1.error || r2.error) {
+      setSaving(false);
       setSaveErr((r1.error ?? r2.error)!.message);
       return;
     }
+    await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
+    if (dirIds.length > 0) {
+      await supabase.from("palata_expert_directions").insert(
+        dirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
+      );
+    }
+    setSaving(false);
     setEditing(false);
     setSavedOk(true);
     onSave();
@@ -745,14 +763,14 @@ function ProfileView({
         <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Специализации</p>
           <div className="flex flex-wrap gap-2">
-            {Object.entries(SPEC_LABEL).map(([v, l]) => (
-              <button key={v} type="button" onClick={() => toggleSpec(v)}
+            {allDirections.map(d => (
+              <button key={d.id} type="button" onClick={() => toggleSpec(d.id)}
                 className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-                  specs.includes(v)
+                  dirIds.includes(d.id)
                     ? "bg-[#002B5C] text-white border-[#002B5C]"
                     : "bg-white text-slate-600 border-slate-200 hover:border-[#D0D0D0] hover:text-[#002B5C]"
                 }`}>
-                {l}
+                {d.name}
               </button>
             ))}
           </div>
@@ -926,11 +944,11 @@ function ProfileView({
             <Briefcase className="w-4 h-4 text-slate-400" />
             <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Направления экспертиз</p>
           </div>
-          {p.specializations.length > 0 ? (
+          {dirIds.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {p.specializations.map((s) => (
-                <span key={s} className="text-xs font-medium text-[#002B5C] bg-[#F4F4F4] border border-[#D0D0D0] rounded-lg px-2.5 py-1">
-                  {SPEC_LABEL[s] ?? s}
+              {dirIds.map((id) => (
+                <span key={id} className="text-xs font-medium text-[#002B5C] bg-[#F4F4F4] border border-[#D0D0D0] rounded-lg px-2.5 py-1">
+                  {allDirections.find(d => d.id === id)?.name ?? id}
                 </span>
               ))}
             </div>
@@ -1163,7 +1181,7 @@ function RegistryRow({ verified, label, number }: { verified: boolean; label: st
 
 // ─── Expert request card ──────────────────────────────────────────────────────
 
-function ExpertCard({ match: m, needsRating }: { match: Match; needsRating?: boolean }) {
+function ExpertCard({ match: m, needsRating, directionsMap = {} }: { match: Match; needsRating?: boolean; directionsMap?: Record<string, string> }) {
   const req = m.palata_requests;
   const urgencyColor = req?.urgency === "very_urgent" ? "border-l-red-400"
     : req?.urgency === "urgent" ? "border-l-amber-400"
@@ -1177,10 +1195,10 @@ function ExpertCard({ match: m, needsRating }: { match: Match; needsRating?: boo
         </p>
 
         <div className="space-y-1 mb-2.5">
-          {req?.expertise_type && (
+          {(req?.expertise_direction_id || req?.expertise_type) && (
             <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
               <span className="inline-block h-1 w-1 rounded-full bg-[#0F4C9A]/50 flex-shrink-0" />
-              {SPEC_LABEL[req.expertise_type] ?? req.expertise_type}
+              {directionsMap[req?.expertise_direction_id ?? ""] ?? req?.expertise_type ?? "—"}
             </p>
           )}
           {req?.region && (
@@ -1363,6 +1381,7 @@ function ExpertActionCard({ item, userId, userEmail, onDone }: {
 type RequestDetails = {
   title: string;
   expertise_type: string | null;
+  expertise_direction_id: string | null;
   region: string | null;
   description: string | null;
   customer_id: string | null;
@@ -1376,18 +1395,6 @@ type CustomerContact = {
   email: string | null;
 };
 
-const SPEC_L: Record<string, string> = {
-  "avtotechnicheskaya":        "Автотехническая",
-  "zemleustroitelnaya":        "Землеустроительная",
-  "pocherkovedcheskaya":       "Почерковедческая",
-  "finansovo-ekonomicheskaya": "Финансово-экономическая",
-  "kompyuterno-tehnicheskaya": "Компьютерно-техническая",
-  "stroitelno-tehnicheskaya":  "Строительно-техническая",
-  "pozharno-tehnicheskaya":    "Пожарно-техническая",
-  "tovaroved":                 "Товароведческая",
-  "psihologicheskaya":         "Психологическая",
-  "lingvisticheskaya":         "Лингвистическая",
-};
 const REG_L: Record<string, string> = {
   "Moskva":          "Москва",
   "Sankt-Peterburg": "Санкт-Петербург",
@@ -1416,12 +1423,22 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
   const [comment, setComment] = useState("");
   const [declineReason, setDeclineReason] = useState("not_my_profile");
   const [declineComment, setDeclineComment] = useState("");
+  const [dirMap, setDirMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    supabase.from("palata_expertise_directions").select("id, name").eq("is_active", true)
+      .then(({ data }) => {
+        const m: Record<string, string> = {};
+        for (const d of data ?? []) m[d.id] = d.name;
+        setDirMap(m);
+      });
+  }, []);
 
   useEffect(() => {
     async function load() {
       const { data: reqData } = await supabase
         .from("palata_requests")
-        .select("title, expertise_type, region, description, customer_id, requires_travel, status")
+        .select("title, expertise_type, expertise_direction_id, region, description, customer_id, requires_travel, status")
         .eq("id", item.request_id)
         .maybeSingle();
       const r = reqData as RequestDetails | null;
@@ -1640,14 +1657,14 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
           m.status === "declined" || m.status === "withdrawn",
         );
 
-      if (allDeclined && req?.expertise_type && req?.region) {
+      if (allDeclined && req?.region) {
         const custId2 = item.customer_id ?? req?.customer_id ?? undefined;
         await runMatching({
-          requestId:      item.request_id,
-          expertiseType:  req.expertise_type,
-          region:         req.region,
-          requiresTravel: req.requires_travel ?? false,
-          customerId:     custId2 ?? undefined,
+          requestId:           item.request_id,
+          expertiseDirectionId: req.expertise_direction_id ?? "",
+          region:              req.region,
+          requiresTravel:      req.requires_travel ?? false,
+          customerId:          custId2 ?? undefined,
         });
       }
     } catch { /* non-fatal */ }
@@ -1669,9 +1686,9 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
             <p className="text-[10px] font-mono text-[#666666]">{shortId}</p>
             <p className="text-sm font-semibold text-[#111111]">{req.title}</p>
             <div className="flex flex-wrap gap-1.5 mt-1">
-              {req.expertise_type && (
+              {(req.expertise_direction_id || req.expertise_type) && (
                 <span className="text-[11px] text-[#0F4C9A] bg-[#0F4C9A]/10 px-1.5 py-0.5 rounded">
-                  {SPEC_L[req.expertise_type] ?? req.expertise_type}
+                  {dirMap[req.expertise_direction_id ?? ""] ?? req.expertise_type ?? "—"}
                 </span>
               )}
               {req.region && (
@@ -1826,12 +1843,22 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
   const [busy, setBusy]         = useState(false);
   const [declineReason, setDeclineReason] = useState("not_my_profile");
   const [declineComment, setDeclineComment] = useState("");
+  const [dirMap, setDirMap]     = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    supabase.from("palata_expertise_directions").select("id, name").eq("is_active", true)
+      .then(({ data }) => {
+        const m: Record<string, string> = {};
+        for (const d of data ?? []) m[d.id] = d.name;
+        setDirMap(m);
+      });
+  }, []);
 
   useEffect(() => {
     async function load() {
       const { data: reqData } = await supabase
         .from("palata_requests")
-        .select("title, expertise_type, region, description, customer_id, requires_travel, status")
+        .select("title, expertise_type, expertise_direction_id, region, description, customer_id, requires_travel, status")
         .eq("id", item.request_id)
         .maybeSingle();
       const r = reqData as RequestDetails | null;
@@ -2021,14 +2048,14 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
           m.status === "declined" || m.status === "withdrawn",
         );
 
-      if (allDeclined && req?.expertise_type && req?.region) {
+      if (allDeclined && req?.region) {
         const custId2 = custIdFromPayload ?? req?.customer_id ?? undefined;
         await runMatching({
-          requestId:      item.request_id,
-          expertiseType:  req.expertise_type,
-          region:         req.region,
-          requiresTravel: req.requires_travel ?? false,
-          customerId:     custId2 ?? undefined,
+          requestId:           item.request_id,
+          expertiseDirectionId: req.expertise_direction_id ?? "",
+          region:              req.region,
+          requiresTravel:      req.requires_travel ?? false,
+          customerId:          custId2 ?? undefined,
         });
       }
     } catch { /* non-fatal */ }
@@ -2050,9 +2077,9 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
             <p className="text-[10px] font-mono text-[#666666]">{shortId}</p>
             <p className="text-sm font-semibold text-[#111111]">{req.title}</p>
             <div className="flex flex-wrap gap-1.5 mt-1">
-              {req.expertise_type && (
+              {(req.expertise_direction_id || req.expertise_type) && (
                 <span className="text-[11px] text-[#0F4C9A] bg-[#0F4C9A]/10 px-1.5 py-0.5 rounded">
-                  {SPEC_L[req.expertise_type] ?? req.expertise_type}
+                  {dirMap[req.expertise_direction_id ?? ""] ?? req.expertise_type ?? "—"}
                 </span>
               )}
               {req.region && (

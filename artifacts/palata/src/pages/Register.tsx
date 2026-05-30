@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -17,19 +17,6 @@ const REGION_OPTIONS = [
   { value: "Novosibirsk",     label: "Новосибирск" },
   { value: "Samara",          label: "Самара" },
   { value: "Voronezh",        label: "Воронеж" },
-];
-
-const SPEC_OPTIONS = [
-  { value: "avtotechnicheskaya",        label: "Автотехническая" },
-  { value: "zemleustroitelnaya",        label: "Землеустроительная" },
-  { value: "pocherkovedcheskaya",       label: "Почерковедческая" },
-  { value: "finansovo-ekonomicheskaya", label: "Финансово-экономическая" },
-  { value: "kompyuterno-tehnicheskaya", label: "Компьютерно-техническая" },
-  { value: "stroitelno-tehnicheskaya",  label: "Строительно-техническая" },
-  { value: "pozharno-tehnicheskaya",    label: "Пожарно-техническая" },
-  { value: "tovaroved",                 label: "Товароведческая" },
-  { value: "psihologicheskaya",         label: "Психологическая" },
-  { value: "lingvisticheskaya",         label: "Лингвистическая" },
 ];
 
 type Role = "customer" | "expert";
@@ -68,7 +55,16 @@ export default function Register() {
   const [region, setRegion]               = useState("");
   const [notes, setNotes]                 = useState("");
 
-  const [specializations, setSpecializations] = useState<string[]>([]);
+  const [selectedDirIds, setSelectedDirIds] = useState<string[]>([]);
+  const [directions, setDirections]         = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    supabase.from("palata_expertise_directions")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("sort_order")
+      .then(({ data }) => setDirections(data ?? []));
+  }, []);
   const [regions, setRegions]             = useState<string[]>([]);
   const [tripReady, setTripReady]         = useState(false);
   const [palataOk, setPalataOk]           = useState(false);
@@ -78,7 +74,7 @@ export default function Register() {
   const [bio, setBio]                     = useState("");
 
   function toggleSpec(v: string) {
-    setSpecializations(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]);
+    setSelectedDirIds(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]);
   }
   function toggleRegion(v: string) {
     setRegions(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]);
@@ -121,7 +117,7 @@ export default function Register() {
         palata_registry_number:           palataOk ? palataNum.trim() || null : null,
         centrsudexpert_verified:          centrsudOk,
         centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
-        specializations,
+        specializations: [],
         regions,
       });
     }
@@ -164,9 +160,14 @@ export default function Register() {
           palata_registry_number:           palataOk ? palataNum.trim() || null : null,
           centrsudexpert_verified:          centrsudOk,
           centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
-          specializations,
+          specializations: [],
           regions,
         }, { onConflict: "user_id" });
+        if (selectedDirIds.length > 0 && data?.user) {
+          await supabase.from("palata_expert_directions").insert(
+            selectedDirIds.map(id => ({ expert_id: data.user!.id, expertise_direction_id: id }))
+          );
+        }
       }
       navigate(role === "customer" ? "/customer" : "/expert");
       return;
@@ -351,14 +352,14 @@ export default function Register() {
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Специализации</p>
                 <div className="flex flex-wrap gap-2">
-                  {SPEC_OPTIONS.map(s => (
-                    <button key={s.value} type="button" onClick={() => toggleSpec(s.value)}
+                  {directions.map(d => (
+                    <button key={d.id} type="button" onClick={() => toggleSpec(d.id)}
                       className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-                        specializations.includes(s.value)
+                        selectedDirIds.includes(d.id)
                           ? "bg-[#002B5C] text-white border-[#002B5C]"
                           : "bg-white text-slate-600 border-slate-200 hover:border-[#D0D0D0] hover:text-[#002B5C]"
                       }`}>
-                      {s.label}
+                      {d.name}
                     </button>
                   ))}
                 </div>

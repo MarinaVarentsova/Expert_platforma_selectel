@@ -1,33 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/authContext";
 import { notify } from "@/lib/notifyApi";
 import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const EXPERTISE_TYPES = [
-  "Строительно-техническая",
-  "Оценочная",
-  "Почерковедческая",
-  "Авторедческая (документов)",
-  "Автотехническая",
-  "Трасологическая",
-  "Бухгалтерская",
-  "Финансово-экономическая",
-  "Пожарно-техническая",
-  "Электротехническая",
-  "Психологическая",
-  "Психиатрическая",
-  "Землеустроительная",
-  "Экологическая",
-  "Товароведческая",
-  "Компьютерно-техническая",
-  "Медицинская",
-  "Другая",
-];
 
 const REGIONS = [
   "Москва",
@@ -75,7 +52,7 @@ const ACCEPT_ATTR = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx";
 
 type FormData = {
   title: string;
-  expertise_type: string;
+  expertise_direction_id: string;
   region: string;
   urgency: string;
   requires_travel: boolean;
@@ -101,9 +78,19 @@ export default function NewRequest() {
   const currentUser = authState.kind === "authenticated" ? authState.user : null;
   const currentUserId = currentUser?.id ?? null;
 
+  const [directions, setDirections] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    supabase.from("palata_expertise_directions")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("sort_order")
+      .then(({ data }) => setDirections(data ?? []));
+  }, []);
+
   const [form, setForm] = useState<FormData>({
     title: "",
-    expertise_type: "",
+    expertise_direction_id: "",
     region: "",
     urgency: "normal",
     requires_travel: false,
@@ -129,8 +116,8 @@ export default function NewRequest() {
     const e: Partial<Record<keyof FormData, string>> = {};
     if (!form.title.trim() || form.title.trim().length < 3)
       e.title = "Введите название (минимум 3 символа)";
-    if (!form.expertise_type)
-      e.expertise_type = "Выберите направление экспертизы";
+    if (!form.expertise_direction_id)
+      e.expertise_direction_id = "Выберите направление экспертизы";
     if (!form.region)
       e.region = "Выберите регион";
     if (!form.customer_name.trim())
@@ -174,7 +161,7 @@ export default function NewRequest() {
           status: "new",
           title: form.title.trim(),
           description: fullDescription,
-          expertise_type: form.expertise_type,
+          expertise_direction_id: form.expertise_direction_id,
           region: form.region,
           urgency: form.urgency,
           requires_travel: form.requires_travel,
@@ -237,7 +224,7 @@ export default function NewRequest() {
       try {
         const result = await runMatching({
           requestId,
-          expertiseType: form.expertise_type,
+          expertiseDirectionId: form.expertise_direction_id,
           region: form.region,
           requiresTravel: form.requires_travel,
           customerId: currentUserId ?? undefined,
@@ -254,7 +241,7 @@ export default function NewRequest() {
           requestId,
           requestShortId: requestId.slice(0, 8).toUpperCase(),
           requestTitle:   form.title.trim(),
-          expertiseType:  form.expertise_type,
+          expertiseType:  directions.find(d => d.id === form.expertise_direction_id)?.name ?? "—",
           region:         form.region,
           currentStatus:  "new",
           recipientEmail: form.customer_email.trim(),
@@ -283,7 +270,7 @@ export default function NewRequest() {
                 requestId,
                 requestShortId: requestId.slice(0, 8).toUpperCase(),
                 requestTitle:   form.title.trim(),
-                expertiseType:  form.expertise_type,
+                expertiseType:  directions.find(d => d.id === form.expertise_direction_id)?.name ?? "—",
                 region:         form.region,
                 currentStatus:  "new",
                 recipientEmail: u.email,
@@ -395,16 +382,16 @@ export default function NewRequest() {
             </Field>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Направление экспертизы" required error={errors.expertise_type}>
+              <Field label="Направление экспертизы" required error={errors.expertise_direction_id}>
                 <select
-                  className={inputCls(!!errors.expertise_type)}
-                  value={form.expertise_type}
-                  onChange={e => set("expertise_type", e.target.value)}
+                  className={inputCls(!!errors.expertise_direction_id)}
+                  value={form.expertise_direction_id}
+                  onChange={e => set("expertise_direction_id", e.target.value)}
                   disabled={busy}
                 >
                   <option value="">— выберите —</option>
-                  {EXPERTISE_TYPES.map(t => (
-                    <option key={t} value={t}>{t}</option>
+                  {directions.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
                 </select>
               </Field>

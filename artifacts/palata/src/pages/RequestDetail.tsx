@@ -21,6 +21,7 @@ type Request = {
   description: string | null;
   status: string;
   expertise_type: string;
+  expertise_direction_id: string | null;
   region: string;
   matching_round: number;
   budget_min: number | null;
@@ -298,6 +299,21 @@ async function logEmailEvent(
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+function useDirectionsMap() {
+  const [map, setMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    supabase.from("palata_expertise_directions")
+      .select("id, name")
+      .eq("is_active", true)
+      .then(({ data }) => {
+        const m: Record<string, string> = {};
+        for (const d of data ?? []) m[d.id] = d.name;
+        setMap(m);
+      });
+  }, []);
+  return map;
+}
+
 export default function RequestDetail() {
   const { id } = useParams<{ id: string }>();
   const [loadKey, setLoadKey] = useState(0);
@@ -408,6 +424,7 @@ export default function RequestDetail() {
 // ─── Detail ───────────────────────────────────────────────────────────────────
 
 function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) {
+  const directionsMap = useDirectionsMap();
   const currentUser = useCurrentUser();
   const role = currentUser?.role ?? null;
   const userId = currentUser?.id ?? null;
@@ -445,7 +462,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       requestId:     r.id,
       requestShortId,
       requestTitle:  r.title,
-      expertiseType: r.expertise_type,
+      expertiseType: directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—",
       region:        r.region,
       currentStatus: r.status,
       ...override,
@@ -475,7 +492,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setMatchingRunning(true);
     try {
       await runMatching({
-        requestId: r.id, expertiseType: r.expertise_type,
+        requestId: r.id, expertiseDirectionId: r.expertise_direction_id ?? "",
         region: r.region, requiresTravel: r.requires_travel ?? false,
       });
     } catch (e) { console.error("Rematch error:", e); }
@@ -889,7 +906,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           {role !== "expert" && r.customer_phone && <Field label="Телефон заказчика">{r.customer_phone}</Field>}
           {role !== "expert" && r.customer_email && <Field label="Email заказчика">{r.customer_email}</Field>}
 
-          <Field label="Направление экспертизы">{r.expertise_type}</Field>
+          <Field label="Направление экспертизы">
+            {directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—"}
+          </Field>
           <Field label="Регион">{r.region}</Field>
           <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
           <Field label="Выезд эксперта">{r.requires_travel ? "Требуется" : "Не требуется"}</Field>
@@ -988,7 +1007,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                     </div>
 
                     <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-4">
-                      <Field label="Направление">{r.expertise_type}</Field>
+                      <Field label="Направление">
+                        {directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—"}
+                      </Field>
                       <Field label="Регион">{r.region}</Field>
                       <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
                       <Field label="Предложено">{fmtDate(m.proposed_at)}</Field>

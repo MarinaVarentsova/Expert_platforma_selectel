@@ -120,6 +120,7 @@ function computeMetrics(
   customerProfiles: { user_id: string }[],
   statusEvents: EventRow[],
   directionMap: Record<string, string> = {},
+  expertDirMap: Record<string, string[]> = {},
 ): Metrics {
   const total = requests.length;
 
@@ -273,7 +274,10 @@ function computeMetrics(
       "Не указано"
     ),
     expertBySpec: groupCount(
-      experts.flatMap(e => (e.specializations?.length ? e.specializations : ["Не указано"])),
+      experts.flatMap(e => {
+        const dirs = expertDirMap[e.user_id];
+        return dirs?.length ? dirs : (e.specializations?.length ? e.specializations : ["Не указано"]);
+      }),
       "Не указано"
     ),
   };
@@ -296,7 +300,7 @@ export default function AdminMetrics() {
     if (guard.status !== "ok") return;
 
     async function load() {
-      const [reqRes, expRes, matchRes, expRatRes, custRatRes, custProfRes, eventsRes, dirRes] =
+      const [reqRes, expRes, matchRes, expRatRes, custRatRes, custProfRes, eventsRes, dirRes, expDirRes] =
         await Promise.all([
           supabase.from("palata_requests")
             .select("id, status, region, expertise_type, expertise_direction_id, created_at, customer_id"),
@@ -312,6 +316,7 @@ export default function AdminMetrics() {
             .eq("entity_type", "request")
             .eq("new_status", "completed"),
           supabase.from("palata_expertise_directions").select("id, name"),
+          supabase.from("palata_expert_directions").select("expert_id, expertise_direction_id"),
         ]);
 
       if (reqRes.error) { setState({ kind: "error", message: reqRes.error.message }); return; }
@@ -319,6 +324,12 @@ export default function AdminMetrics() {
       const directionMap: Record<string, string> = {};
       for (const d of (dirRes.data ?? []) as { id: string; name: string }[]) {
         directionMap[d.id] = d.name;
+      }
+
+      const expertDirMap: Record<string, string[]> = {};
+      for (const row of (expDirRes.data ?? []) as { expert_id: string; expertise_direction_id: string }[]) {
+        const name = directionMap[row.expertise_direction_id];
+        if (name) (expertDirMap[row.expert_id] ??= []).push(name);
       }
 
       setState({
@@ -332,6 +343,7 @@ export default function AdminMetrics() {
           (custProfRes.data ?? []) as { user_id: string }[],
           (eventsRes.data ?? []) as EventRow[],
           directionMap,
+          expertDirMap,
         ),
       });
     }

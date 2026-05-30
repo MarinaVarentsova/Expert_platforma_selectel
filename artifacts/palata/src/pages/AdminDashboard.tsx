@@ -11,6 +11,7 @@ type Request = {
   title: string;
   status: string;
   expertise_type: string;
+  expertise_direction_id: string | null;
   region: string;
   matching_round: number;
   budget_min: number | null;
@@ -85,11 +86,22 @@ const COLUMNS = [
 export default function AdminDashboard() {
   const guard = useRequireRole("admin");
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [directionMap, setDirectionMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    supabase.from("palata_expertise_directions")
+      .select("id, name")
+      .then(({ data }) => {
+        const m: Record<string, string> = {};
+        for (const d of (data ?? []) as { id: string; name: string }[]) m[d.id] = d.name;
+        setDirectionMap(m);
+      });
+  }, []);
 
   useEffect(() => {
     supabase
       .from("palata_requests")
-      .select("id, title, status, expertise_type, region, matching_round, budget_min, budget_max, created_at")
+      .select("id, title, status, expertise_type, expertise_direction_id, region, matching_round, budget_min, budget_max, created_at")
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (error) { setState({ kind: "error", message: error.message }); return; }
@@ -187,7 +199,7 @@ export default function AdminDashboard() {
         {state.kind === "ok" && (
           <KanbanBoard
             columns={columns}
-            renderCard={(r: Request) => <AdminCard request={r} />}
+            renderCard={(r: Request) => <AdminCard request={r} directionMap={directionMap} />}
             emptyText="Нет заявок"
           />
         )}
@@ -222,7 +234,7 @@ function KpiCard({
   );
 }
 
-function AdminCard({ request: r }: { request: Request }) {
+function AdminCard({ request: r, directionMap }: { request: Request; directionMap: Record<string, string> }) {
   const urgency =
     r.status === "failed" || r.status === "matching"
       ? "border-l-red-400"
@@ -234,6 +246,11 @@ function AdminCard({ request: r }: { request: Request }) {
       ? "border-l-[#0F4C9A]"
       : "border-l-slate-200";
 
+  const dirName =
+    (r.expertise_direction_id && directionMap[r.expertise_direction_id])
+      ? directionMap[r.expertise_direction_id]
+      : r.expertise_type || null;
+
   return (
     <Link href={`/requests/${r.id}`}>
       <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgency} p-3.5 hover:shadow-md hover:border-[#D0D0D0] hover:border-l-[#0F4C9A] transition-all cursor-pointer group shadow-sm`}>
@@ -242,10 +259,10 @@ function AdminCard({ request: r }: { request: Request }) {
         </p>
 
         <div className="space-y-1 mb-3">
-          {r.expertise_type && (
+          {dirName && (
             <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
               <span className="inline-block h-1 w-1 rounded-full bg-[#666666] flex-shrink-0" />
-              {r.expertise_type}
+              {dirName}
             </p>
           )}
           {r.region && (

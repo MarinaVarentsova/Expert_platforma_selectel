@@ -73,6 +73,7 @@ type MatchedExpert = {
   expert_name: string | null;
   expert_email: string | null;
   specializations: string[];
+  direction_names: string[];
   regions: string[];
   experience_years: number | null;
   business_trip_ready: boolean;
@@ -999,11 +1000,14 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
 
       const expertIds = matches.map((m: { expert_id: string }) => m.expert_id);
 
-      const [{ data: profiles }, { data: users }] = await Promise.all([
+      const [{ data: profiles }, { data: users }, { data: expertDirs }] = await Promise.all([
         supabase.from("palata_expert_profiles").select(
           "user_id, specializations, regions, experience_years, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count, bio"
         ).in("user_id", expertIds),
         supabase.from("palata_users").select("id, full_name, email").in("id", expertIds),
+        supabase.from("palata_expert_directions")
+          .select("expert_id, palata_expertise_directions(name)")
+          .in("expert_id", expertIds),
       ]);
 
       type PRow = {
@@ -1015,9 +1019,17 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
       };
       type URow = { id: string; full_name: string | null; email: string };
       type MRow = { id: string; expert_id: string; status: string; decline_reason: string | null };
+      type EDRow = { expert_id: string; palata_expertise_directions: { name: string }[] };
 
       const pm = Object.fromEntries(((profiles ?? []) as PRow[]).map(p => [p.user_id, p]));
       const um = Object.fromEntries(((users ?? []) as URow[]).map(u => [u.id, u]));
+
+      const dirNamesMap: Record<string, string[]> = {};
+      for (const row of (expertDirs ?? []) as unknown as EDRow[]) {
+        for (const d of row.palata_expertise_directions ?? []) {
+          if (d.name) (dirNamesMap[row.expert_id] ??= []).push(d.name);
+        }
+      }
 
       setExperts(((matches ?? []) as MRow[]).map(m => {
         const p = pm[m.expert_id] as PRow | undefined;
@@ -1029,6 +1041,7 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
           expert_name: u?.full_name ?? null,
           expert_email: u?.email ?? null,
           specializations: p?.specializations ?? [],
+          direction_names: dirNamesMap[m.expert_id] ?? [],
           regions: p?.regions ?? [],
           experience_years: p?.experience_years ?? null,
           business_trip_ready: p?.business_trip_ready ?? false,
@@ -1499,11 +1512,11 @@ function ExpertProfileCard({ expert: e, slugMap, busy, onSelect }: {
           </button>
         </div>
 
-        {(e.specializations.length > 0 || e.regions.length > 0) && (
+        {(e.direction_names.length > 0 || e.regions.length > 0) && (
           <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {e.specializations.slice(0, 3).map(s => (
-              <span key={s} className="text-[10px] font-medium text-[#002B5C] bg-[#F4F4F4] px-1.5 py-0.5 rounded">
-                {slugMap[s] ?? s}
+            {e.direction_names.slice(0, 3).map(n => (
+              <span key={n} className="text-[10px] font-medium text-[#002B5C] bg-[#F4F4F4] px-1.5 py-0.5 rounded">
+                {n}
               </span>
             ))}
             {e.regions.slice(0, 2).map(r => (

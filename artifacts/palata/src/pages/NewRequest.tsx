@@ -83,10 +83,11 @@ export default function NewRequest() {
   useEffect(() => {
     supabase.from("palata_expertise_directions")
       .select("id, name")
-      .eq("is_active", true)
       .order("sort_order")
-      .then(({ data }) => setDirections(data ?? []));
-  }, []);
+      .then(({ data, error }) => {
+        if (!error) setDirections(data ?? []);
+      });
+  }, [authState.kind]);
 
   const [form, setForm] = useState<FormData>({
     title: "",

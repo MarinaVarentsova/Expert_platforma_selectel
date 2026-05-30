@@ -327,7 +327,7 @@ export default function AdminMetrics() {
     return (
       <AdminLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="h-5 w-5 rounded-full border-2 border-[#16a34a]/30 border-t-[#16a34a] animate-spin" />
+          <div className="h-5 w-5 rounded-full border-2 border-[#0F4C9A]/30 border-t-[#0F4C9A] animate-spin" />
         </div>
       </AdminLayout>
     );
@@ -340,8 +340,8 @@ export default function AdminMetrics() {
         {/* Header */}
         <div className="mb-7 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-[#1a3d2b]">Метрики платформы</h1>
-            <p className="text-xs text-[#8aaa90] mt-0.5">Единый источник данных · Supabase · Real-time</p>
+            <h1 className="text-xl font-bold text-[#002B5C]">Метрики платформы</h1>
+            <p className="text-xs text-[#666666] mt-0.5">Единый источник данных · Supabase · Real-time</p>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -350,8 +350,8 @@ export default function AdminMetrics() {
         </div>
 
         {state.kind === "loading" && (
-          <div className="flex items-center gap-3 py-16 text-sm text-[#8aaa90]">
-            <div className="h-4 w-4 rounded-full border-2 border-[#16a34a]/30 border-t-[#16a34a] animate-spin" />
+          <div className="flex items-center gap-3 py-16 text-sm text-[#666666]">
+            <div className="h-4 w-4 rounded-full border-2 border-[#0F4C9A]/30 border-t-[#0F4C9A] animate-spin" />
             Загрузка данных…
           </div>
         )}
@@ -380,7 +380,7 @@ function MetricsBody({ m }: { m: Metrics }) {
         <TopKpi
           label="Всего заказов"
           value={m.total}
-          accent="#16a34a"
+          accent="#0F4C9A"
           sub="palata_requests · всего"
         />
         <TopKpi
@@ -416,13 +416,13 @@ function MetricsBody({ m }: { m: Metrics }) {
 
             {/* Track 1 — основная раскладка */}
             <div className="mb-8">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-4">
                 Раскладка по статусам
               </p>
               <div className="flex flex-wrap gap-3 items-center justify-center">
-                <FunnelBox label="Всего" count={m.total} total={m.total} accent="#5a7560" first />
+                <FunnelBox label="Всего" count={m.total} total={m.total} accent="#666666" first />
                 <Arrow />
-                <FunnelBox label="Новые" count={m.statusNew} total={m.total} accent="#5a7560" />
+                <FunnelBox label="Новые" count={m.statusNew} total={m.total} accent="#666666" />
                 <Arrow />
                 <FunnelBox label="Подбор" count={m.statusMatching} total={m.total} accent="#d97706" />
                 <Arrow />
@@ -432,23 +432,23 @@ function MetricsBody({ m }: { m: Metrics }) {
                 <Arrow />
                 <FunnelBox label="Выполнено" count={m.statusDone} total={m.total} accent="#059669" />
                 <Arrow />
-                <FunnelBox label="Неактуальные" count={m.statusCancelled} total={m.total} accent="#5a7560" />
+                <FunnelBox label="Неактуальные" count={m.statusCancelled} total={m.total} accent="#666666" />
               </div>
             </div>
 
             {/* Track 2 — проблемная воронка */}
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-4">
                 Проблемные заказы
               </p>
               <div className="flex flex-wrap gap-3 items-center justify-center">
-                <FunnelBox label="Всего" count={m.total} total={m.total} accent="#5a7560" first />
+                <FunnelBox label="Всего" count={m.total} total={m.total} accent="#666666" first />
                 <Arrow />
                 <FunnelBox label="Не нашли эксперта" count={m.noExpert} total={m.total} accent="#dc2626" />
                 <Arrow />
                 <FunnelBox label="Отказ эксперта" count={m.allDeclined} total={m.total} accent="#dc2626" />
                 <Arrow />
-                <FunnelBox label="Неактуальные" count={m.cancelled} total={m.total} accent="#8aaa90" />
+                <FunnelBox label="Неактуальные" count={m.cancelled} total={m.total} accent="#666666" />
               </div>
             </div>
           </Section>
@@ -456,7 +456,7 @@ function MetricsBody({ m }: { m: Metrics }) {
           {/* ── ZONE 4: Распределения ───────────────────────────────── */}
           <Section label="Распределение">
             {/* Mode toggle */}
-            <div className="flex gap-1 mb-5 p-1 bg-[#f0f5f1] rounded-xl w-fit">
+            <div className="flex gap-1 mb-5 p-1 bg-[#F4F4F4] rounded-xl w-fit">
               <ModeButton active={distMode === "requests"} onClick={() => setDistMode("requests")}>
                 Заказы
               </ModeButton>
@@ -504,59 +504,59 @@ function MetricsBody({ m }: { m: Metrics }) {
         {/* ══ ZONE 2: Right reference panel ══════════════════════════════════ */}
         <div className="w-full lg:w-64 shrink-0 space-y-3">
 
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] px-1">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] px-1">
             Справочные метрики
           </p>
 
           <RefCard label="Ср. рейтинг эксперта" accent="#d97706">
             <RatingDisplay value={m.avgRatingExpert} />
-            <p className="text-[10px] text-[#8aaa90] mt-0.5">palata_expert_ratings · AVG(score)</p>
+            <p className="text-[10px] text-[#666666] mt-0.5">palata_expert_ratings · AVG(score)</p>
           </RefCard>
 
           <RefCard label="Ср. рейтинг заказчика" accent="#d97706">
             <RatingDisplay value={m.avgRatingCustomer} />
-            <p className="text-[10px] text-[#8aaa90] mt-0.5">palata_customer_ratings · AVG(score)</p>
+            <p className="text-[10px] text-[#666666] mt-0.5">palata_customer_ratings · AVG(score)</p>
           </RefCard>
 
-          <div className="h-px bg-[#d4e5d9] mx-1" />
+          <div className="h-px bg-[#D0D0D0] mx-1" />
 
           <RefCard label="Заказчики" accent="#4f46e5">
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-2xl font-bold text-[#1a3d2b] tabular-nums">{m.totalCustomers}</p>
-                <p className="text-[10px] text-[#8aaa90]">всего</p>
+                <p className="text-2xl font-bold text-[#002B5C] tabular-nums">{m.totalCustomers}</p>
+                <p className="text-[10px] text-[#666666]">всего</p>
               </div>
               <div className="text-right">
-                <p className="text-lg font-bold text-[#16a34a] tabular-nums">{m.activeCustomers}</p>
-                <p className="text-[10px] text-[#8aaa90]">активных</p>
+                <p className="text-lg font-bold text-[#0F4C9A] tabular-nums">{m.activeCustomers}</p>
+                <p className="text-[10px] text-[#666666]">активных</p>
               </div>
             </div>
-            <PctBar pct={m.activeCustomersPct} color="bg-[#16a34a]" />
-            <p className="text-[10px] text-[#8aaa90] mt-1">{m.activeCustomersPct}% активных</p>
+            <PctBar pct={m.activeCustomersPct} color="bg-[#0F4C9A]" />
+            <p className="text-[10px] text-[#666666] mt-1">{m.activeCustomersPct}% активных</p>
           </RefCard>
 
-          <RefCard label="Эксперты" accent="#16a34a">
+          <RefCard label="Эксперты" accent="#0F4C9A">
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-2xl font-bold text-[#1a3d2b] tabular-nums">{m.totalExperts}</p>
-                <p className="text-[10px] text-[#8aaa90]">всего</p>
+                <p className="text-2xl font-bold text-[#002B5C] tabular-nums">{m.totalExperts}</p>
+                <p className="text-[10px] text-[#666666]">всего</p>
               </div>
               <div className="text-right">
-                <p className="text-lg font-bold text-[#16a34a] tabular-nums">{m.activeExperts}</p>
-                <p className="text-[10px] text-[#8aaa90]">в работе</p>
+                <p className="text-lg font-bold text-[#0F4C9A] tabular-nums">{m.activeExperts}</p>
+                <p className="text-[10px] text-[#666666]">в работе</p>
               </div>
             </div>
-            <PctBar pct={m.activeExpertsPct} color="bg-[#8aaa90]" />
-            <p className="text-[10px] text-[#8aaa90] mt-1">{m.activeExpertsPct}% активных</p>
+            <PctBar pct={m.activeExpertsPct} color="bg-[#666666]" />
+            <p className="text-[10px] text-[#666666] mt-1">{m.activeExpertsPct}% активных</p>
           </RefCard>
 
-          <div className="h-px bg-[#d4e5d9] mx-1" />
+          <div className="h-px bg-[#D0D0D0] mx-1" />
 
           <RefCard label="Реестр Палаты СЭ" accent="#059669">
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-2xl font-bold text-[#1a3d2b] tabular-nums">{m.palataVerified}</p>
-                <p className="text-[10px] text-[#8aaa90]">из {m.totalExperts} экспертов</p>
+                <p className="text-2xl font-bold text-[#002B5C] tabular-nums">{m.palataVerified}</p>
+                <p className="text-[10px] text-[#666666]">из {m.totalExperts} экспертов</p>
               </div>
               <p className="text-lg font-bold text-emerald-600 tabular-nums">
                 {m.totalExperts ? Math.round((m.palataVerified / m.totalExperts) * 100) : 0}%
@@ -568,8 +568,8 @@ function MetricsBody({ m }: { m: Metrics }) {
           <RefCard label="Центр судэксперт" accent="#059669">
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-2xl font-bold text-[#1a3d2b] tabular-nums">{m.centrVerified}</p>
-                <p className="text-[10px] text-[#8aaa90]">из {m.totalExperts} экспертов</p>
+                <p className="text-2xl font-bold text-[#002B5C] tabular-nums">{m.centrVerified}</p>
+                <p className="text-[10px] text-[#666666]">из {m.totalExperts} экспертов</p>
               </div>
               <p className="text-lg font-bold text-emerald-600 tabular-nums">
                 {m.totalExperts ? Math.round((m.centrVerified / m.totalExperts) * 100) : 0}%
@@ -594,19 +594,19 @@ function TopKpi({ label, value, accent, sub, raw }: {
 }) {
   const display = raw ? value : typeof value === "number" ? value.toLocaleString("ru-RU") : value;
   return (
-    <div className="bg-white rounded-2xl border border-[#d4e5d9] p-5 shadow-sm relative overflow-hidden">
+    <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5 shadow-sm relative overflow-hidden">
       <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{ background: accent }} />
-      <p className="text-[11px] text-[#8aaa90] font-medium mb-2 leading-tight">{label}</p>
+      <p className="text-[11px] text-[#666666] font-medium mb-2 leading-tight">{label}</p>
       <p className="text-3xl font-bold tabular-nums" style={{ color: accent }}>{display}</p>
-      <p className="text-[10px] text-[#b8ccbe] mt-1.5 font-mono truncate">{sub}</p>
+      <p className="text-[10px] text-[#D0D0D0] mt-1.5 font-mono truncate">{sub}</p>
     </div>
   );
 }
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-2xl border border-[#d4e5d9] p-5 shadow-sm">
-      <p className="text-xs font-bold text-[#1a3d2b] uppercase tracking-widest mb-5">{label}</p>
+    <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5 shadow-sm">
+      <p className="text-xs font-bold text-[#002B5C] uppercase tracking-widest mb-5">{label}</p>
       {children}
     </div>
   );
@@ -620,14 +620,14 @@ function FunnelBox({ label, count, total, accent, first }: {
     <div
       className="rounded-2xl border px-5 py-4 min-w-[104px] text-center transition-shadow hover:shadow-md"
       style={{
-        borderColor: first ? "#d4e5d9" : `${accent}55`,
-        background: first ? "#f7fbf8" : `${accent}11`,
+        borderColor: first ? "#D0D0D0" : `${accent}55`,
+        background: first ? "#F4F4F4" : `${accent}11`,
       }}
     >
-      <p className="text-[11px] font-semibold text-[#8aaa90] leading-tight mb-2 max-w-[90px] mx-auto">
+      <p className="text-[11px] font-semibold text-[#666666] leading-tight mb-2 max-w-[90px] mx-auto">
         {label}
       </p>
-      <p className="text-2xl font-bold tabular-nums" style={{ color: first ? "#5a7560" : accent }}>
+      <p className="text-2xl font-bold tabular-nums" style={{ color: first ? "#666666" : accent }}>
         {count.toLocaleString("ru-RU")}
       </p>
       {!first && (
@@ -640,7 +640,7 @@ function FunnelBox({ label, count, total, accent, first }: {
 }
 
 function Arrow() {
-  return <span className="text-[#b8ccbe] text-sm select-none shrink-0">→</span>;
+  return <span className="text-[#D0D0D0] text-sm select-none shrink-0">→</span>;
 }
 
 function ModeButton({ active, onClick, children }: {
@@ -651,8 +651,8 @@ function ModeButton({ active, onClick, children }: {
       onClick={onClick}
       className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
         active
-          ? "bg-white text-[#16a34a] shadow-sm border border-[#d4e5d9]"
-          : "text-[#8aaa90] hover:text-[#1a3d2b]"
+          ? "bg-white text-[#0F4C9A] shadow-sm border border-[#D0D0D0]"
+          : "text-[#666666] hover:text-[#002B5C]"
       }`}
     >
       {children}
@@ -664,23 +664,23 @@ function RefCard({ label, accent, children }: {
   label: string; accent: string; children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-[#d4e5d9] p-4 shadow-sm relative overflow-hidden">
+    <div className="bg-white rounded-xl border border-[#D0D0D0] p-4 shadow-sm relative overflow-hidden">
       <div className="absolute left-0 top-0 bottom-0 w-0.5 rounded-l-xl" style={{ background: accent }} />
-      <p className="text-[10px] font-semibold text-[#8aaa90] uppercase tracking-widest mb-2 pl-1">{label}</p>
+      <p className="text-[10px] font-semibold text-[#666666] uppercase tracking-widest mb-2 pl-1">{label}</p>
       <div className="pl-1">{children}</div>
     </div>
   );
 }
 
 function RatingDisplay({ value }: { value: number | null }) {
-  if (value == null) return <p className="text-xl font-bold text-[#b8ccbe]">—</p>;
+  if (value == null) return <p className="text-xl font-bold text-[#D0D0D0]">—</p>;
   const stars = Math.round(value);
   return (
     <div className="flex items-center gap-1.5">
-      <p className="text-2xl font-bold text-[#1a3d2b] tabular-nums">{value.toFixed(2)}</p>
+      <p className="text-2xl font-bold text-[#002B5C] tabular-nums">{value.toFixed(2)}</p>
       <div className="flex gap-0.5">
         {[1, 2, 3, 4, 5].map(s => (
-          <span key={s} className={`text-sm ${s <= stars ? "text-amber-400" : "text-[#d4e5d9]"}`}>★</span>
+          <span key={s} className={`text-sm ${s <= stars ? "text-amber-400" : "text-[#D0D0D0]"}`}>★</span>
         ))}
       </div>
     </div>
@@ -689,7 +689,7 @@ function RatingDisplay({ value }: { value: number | null }) {
 
 function PctBar({ pct, color }: { pct: number; color: string }) {
   return (
-    <div className="w-full bg-[#f0f5f1] rounded-full h-1.5 mt-2 overflow-hidden">
+    <div className="w-full bg-[#F4F4F4] rounded-full h-1.5 mt-2 overflow-hidden">
       <div className={`${color} h-1.5 rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
     </div>
   );
@@ -699,34 +699,34 @@ function DistTable({ title, rows, total, subtitle }: {
   title: string; rows: Array<{ label: string; count: number }>; total: number; subtitle: string;
 }) {
   return (
-    <div className="bg-[#f7fbf8] rounded-xl border border-[#d4e5d9] overflow-hidden">
-      <div className="px-4 py-3 border-b border-[#d4e5d9]">
+    <div className="bg-[#F4F4F4] rounded-xl border border-[#D0D0D0] overflow-hidden">
+      <div className="px-4 py-3 border-b border-[#D0D0D0]">
         <div className="flex items-baseline justify-between mb-1">
-          <p className="text-xs font-semibold text-[#1a3d2b]">{title}</p>
-          <p className="text-[10px] text-[#b8ccbe] font-mono">{subtitle}</p>
+          <p className="text-xs font-semibold text-[#002B5C]">{title}</p>
+          <p className="text-[10px] text-[#D0D0D0] font-mono">{subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-[#16a34a] tabular-nums">{total.toLocaleString("ru-RU")}</span>
-          <span className="text-[10px] text-[#8aaa90]">итого</span>
+          <span className="text-lg font-bold text-[#0F4C9A] tabular-nums">{total.toLocaleString("ru-RU")}</span>
+          <span className="text-[10px] text-[#666666]">итого</span>
         </div>
       </div>
       {rows.length === 0 ? (
-        <p className="px-4 py-8 text-xs text-[#b8ccbe] text-center italic">Нет данных</p>
+        <p className="px-4 py-8 text-xs text-[#D0D0D0] text-center italic">Нет данных</p>
       ) : (
-        <div className="divide-y divide-[#f0f5f1]">
+        <div className="divide-y divide-[#F4F4F4]">
           {rows.slice(0, 10).map(({ label, count }) => {
             const share = total > 0 ? Math.round((count / total) * 100) : 0;
             return (
               <div key={label} className="px-4 py-2.5 flex items-center gap-3 hover:bg-white/60 transition-colors">
                 <p className="text-xs text-[#4a4540] flex-1 truncate">{label}</p>
-                <div className="w-20 bg-[#d4e5d9] rounded-full h-1.5 shrink-0 overflow-hidden">
+                <div className="w-20 bg-[#D0D0D0] rounded-full h-1.5 shrink-0 overflow-hidden">
                   <div
-                    className="bg-gradient-to-r from-[#16a34a] to-[#4ade80] h-1.5 rounded-full transition-all duration-500"
+                    className="bg-gradient-to-r from-[#0F4C9A] to-[#4ade80] h-1.5 rounded-full transition-all duration-500"
                     style={{ width: `${share}%` }}
                   />
                 </div>
-                <p className="text-xs font-semibold text-[#1a3d2b] tabular-nums w-5 text-right shrink-0">{count}</p>
-                <p className="text-[10px] text-[#8aaa90] w-7 shrink-0">{share}%</p>
+                <p className="text-xs font-semibold text-[#002B5C] tabular-nums w-5 text-right shrink-0">{count}</p>
+                <p className="text-[10px] text-[#666666] w-7 shrink-0">{share}%</p>
               </div>
             );
           })}

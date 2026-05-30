@@ -35,14 +35,14 @@ const TYPE_OPTS   = [
 
 const STATUS_CLS: Record<string, string> = {
   open:      "bg-amber-50 text-amber-700 border-amber-200",
-  read:      "bg-[#f0f5f1] text-[#1a3d2b] border-[#c8d8cc]",
+  read:      "bg-[#F4F4F4] text-[#002B5C] border-[#D0D0D0]",
   resolved:  "bg-emerald-50 text-emerald-700 border-emerald-200",
   cancelled: "bg-slate-100 text-slate-500 border-slate-200",
 };
 
 const ROLE_CLS: Record<string, string> = {
-  customer: "bg-[#f0f5f1] text-[#1a3d2b]",
-  expert:   "bg-[#d4e5d9] text-[#1a3d2b]",
+  customer: "bg-[#F4F4F4] text-[#002B5C]",
+  expert:   "bg-[#D0D0D0] text-[#002B5C]",
   admin:    "bg-rose-50 text-rose-700",
 };
 
@@ -150,14 +150,14 @@ export default function AdminActionItems() {
           <Select value={fRole}   onChange={setFRole}   opts={ROLE_OPTS}   placeholder="Все роли" />
           <Select value={fType}   onChange={setFType}   opts={TYPE_OPTS}   placeholder="Все типы" />
           <input
-            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 w-48"
+            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 w-48"
             placeholder="Начало request_id…"
             value={fRequest}
             onChange={e => setFRequest(e.target.value)}
           />
           <button
             onClick={load}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#16a34a] text-white hover:bg-[#15803d] transition-colors"
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#0F4C9A] text-white hover:bg-[#003a7a] transition-colors"
           >
             Применить
           </button>
@@ -198,7 +198,7 @@ export default function AdminActionItems() {
                     </td>
                     <td className="px-3 py-2 max-w-[180px]">
                       <Link href={`/requests/${r.request_id}`}>
-                        <span className="text-[#16a34a] hover:text-[#1a3d2b] cursor-pointer truncate block">
+                        <span className="text-[#0F4C9A] hover:text-[#002B5C] cursor-pointer truncate block">
                           {r.request_title ?? r.request_id.slice(0, 8) + "…"}
                         </span>
                       </Link>
@@ -236,7 +236,7 @@ function Select({ value, onChange, opts, placeholder }: {
 }) {
   return (
     <select
-      className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30"
+      className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30"
       value={value}
       onChange={e => onChange(e.target.value)}
     >
@@ -249,7 +249,7 @@ function Select({ value, onChange, opts, placeholder }: {
 function Spinner() {
   return (
     <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
-      <div className="h-4 w-4 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
+      <div className="h-4 w-4 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />
       Загрузка…
     </div>
   );

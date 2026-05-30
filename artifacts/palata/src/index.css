@@ -66,7 +66,7 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* ── GREEN PALETTE ───────────────────────────────────────────────────────── */
+/* ── CORPORATE BLUE PALETTE ─────────────────────────────────────────────── */
 :root {
   --button-outline: rgba(0,0,0, .12);
   --badge-outline: rgba(0,0,0, .06);
@@ -74,66 +74,66 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .07);
 
-  /* Light green page background */
-  --background:   130 17% 95%;      /* #f0f5f1 — light green tint */
-  --foreground:   140 14% 9%;       /* #141c17 — near-black green */
+  /* White page background */
+  --background:   0 0% 100%;        /* #FFFFFF */
+  --foreground:   0 0% 7%;          /* #111111 */
 
-  --border:       130 14% 82%;      /* #c8d8cc — green border */
-  --input:        130 14% 77%;
+  --border:       0 0% 82%;         /* #D0D0D0 */
+  --input:        0 0% 78%;
 
   --card:         0 0% 100%;
-  --card-foreground: 140 14% 9%;
-  --card-border:  130 16% 88%;
+  --card-foreground: 0 0% 7%;
+  --card-border:  0 0% 82%;
 
   --popover:      0 0% 100%;
-  --popover-foreground: 140 14% 9%;
-  --popover-border: 130 16% 88%;
+  --popover-foreground: 0 0% 7%;
+  --popover-border: 0 0% 82%;
 
-  /* Brand — dark forest green (primary buttons) */
-  --primary:      149 38% 17%;      /* #1a3d2b — dark forest green */
-  --primary-foreground: 130 20% 96%;
+  /* Brand — dark navy blue (primary buttons) */
+  --primary:      215 100% 18%;     /* #002B5C */
+  --primary-foreground: 0 0% 100%;
 
-  --secondary:    130 15% 90%;
-  --secondary-foreground: 140 14% 9%;
+  --secondary:    214 82% 33%;      /* #0F4C9A */
+  --secondary-foreground: 0 0% 100%;
 
-  --muted:        130 15% 90%;
-  --muted-foreground: 140 8% 44%;
+  --muted:        0 0% 96%;         /* #F4F4F4 */
+  --muted-foreground: 0 0% 40%;     /* #666666 */
 
-  /* Green accent */
-  --accent:       142 71% 36%;      /* #16a34a — green-600 */
+  /* Blue accent */
+  --accent:       214 78% 37%;      /* #1557A8 */
   --accent-foreground: 0 0% 100%;
 
   --destructive:  0 72% 51%;
   --destructive-foreground: 0 0% 100%;
 
-  --ring:         142 71% 36%;
+  --ring:         215 100% 18%;
 
   /* Charts */
-  --chart-1:      142 71% 36%;
-  --chart-2:      160 84% 39%;
-  --chart-3:      243 75% 59%;
+  --chart-1:      215 100% 18%;
+  --chart-2:      214 82% 33%;
+  --chart-3:      214 78% 37%;
   --chart-4:      0 72% 51%;
   --chart-5:      271 91% 65%;
 
-  /* Sidebar (dark green) */
-  --sidebar:          140 14% 9%;
-  --sidebar-foreground: 130 20% 90%;
-  --sidebar-border:   140 12% 18%;
-  --sidebar-primary:  142 71% 36%;
+  /* Sidebar (dark navy) */
+  --sidebar:          215 100% 18%;
+  --sidebar-foreground: 0 0% 100%;
+  --sidebar-border:   215 60% 28%;
+  --sidebar-primary:  214 82% 33%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent:   140 12% 16%;
-  --sidebar-accent-foreground: 130 20% 90%;
-  --sidebar-ring:     142 71% 36%;
+  --sidebar-accent:   215 60% 25%;
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-ring:     214 82% 33%;
 
   /* Shadows */
-  --shadow-2xs: 0px 1px 2px 0px hsl(140 14% 9% / 0.04);
-  --shadow-xs:  0px 1px 3px 0px hsl(140 14% 9% / 0.06);
-  --shadow-sm:  0px 1px 3px 0px hsl(140 14% 9% / 0.06), 0px 1px 2px -1px hsl(140 14% 9% / 0.04);
-  --shadow:     0px 4px 6px -1px hsl(140 14% 9% / 0.07), 0px 2px 4px -2px hsl(140 14% 9% / 0.04);
-  --shadow-md:  0px 6px 10px -2px hsl(140 14% 9% / 0.08), 0px 4px 6px -2px hsl(140 14% 9% / 0.05);
-  --shadow-lg:  0px 10px 15px -3px hsl(140 14% 9% / 0.08), 0px 4px 6px -4px hsl(140 14% 9% / 0.04);
-  --shadow-xl:  0px 20px 25px -5px hsl(140 14% 9% / 0.10), 0px 8px 10px -6px hsl(140 14% 9% / 0.04);
-  --shadow-2xl: 0px 25px 50px -12px hsl(140 14% 9% / 0.18);
+  --shadow-2xs: 0px 1px 2px 0px hsl(0 0% 7% / 0.04);
+  --shadow-xs:  0px 1px 3px 0px hsl(0 0% 7% / 0.06);
+  --shadow-sm:  0px 1px 3px 0px hsl(0 0% 7% / 0.06), 0px 1px 2px -1px hsl(0 0% 7% / 0.04);
+  --shadow:     0px 4px 6px -1px hsl(0 0% 7% / 0.07), 0px 2px 4px -2px hsl(0 0% 7% / 0.04);
+  --shadow-md:  0px 6px 10px -2px hsl(0 0% 7% / 0.08), 0px 4px 6px -2px hsl(0 0% 7% / 0.05);
+  --shadow-lg:  0px 10px 15px -3px hsl(0 0% 7% / 0.08), 0px 4px 6px -4px hsl(0 0% 7% / 0.04);
+  --shadow-xl:  0px 20px 25px -5px hsl(0 0% 7% / 0.10), 0px 8px 10px -6px hsl(0 0% 7% / 0.04);
+  --shadow-2xl: 0px 25px 50px -12px hsl(0 0% 7% / 0.18);
 
   --app-font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --app-font-serif: Georgia, serif;
@@ -252,18 +252,18 @@
     @apply opacity-40 cursor-not-allowed;
   }
 
-  /* Dark forest green primary */
-  .btn-primary  { @apply px-5 py-2.5 text-sm bg-[#1a3d2b] text-[#f0faf4] hover:bg-[#141c17] active:bg-[#0a1a0f] shadow-sm; }
-  .btn-success  { @apply px-5 py-2.5 text-sm bg-emerald-700 text-white hover:bg-emerald-800 active:bg-emerald-900 shadow-sm; }
+  /* Dark navy primary */
+  .btn-primary  { @apply px-5 py-2.5 text-sm bg-[#002B5C] text-white hover:bg-[#003a7a] active:bg-[#001f45] shadow-sm; }
+  .btn-success  { @apply px-5 py-2.5 text-sm bg-[#2E8B57] text-white hover:bg-[#267348] active:bg-[#1e5c39] shadow-sm; }
   .btn-danger   { @apply px-5 py-2.5 text-sm bg-red-700 text-white hover:bg-red-800 active:bg-red-900 shadow-sm; }
   /* Outlined ghost */
-  .btn-ghost    { @apply px-5 py-2.5 text-sm bg-transparent border border-[#b8ccbe] text-[#1a3d2b] hover:bg-[#e5f0e9] hover:border-[#9ab8a4] active:bg-[#d8ede0] shadow-none; }
+  .btn-ghost    { @apply px-5 py-2.5 text-sm bg-white border border-[#0F4C9A] text-[#0F4C9A] hover:bg-[#F4F4F4] hover:border-[#002B5C] hover:text-[#002B5C] active:bg-[#E9E9E9] shadow-none; }
 
-  .btn-primary-sm { @apply px-4 py-2 text-xs bg-[#1a3d2b] text-[#f0faf4] hover:bg-[#141c17]; }
-  .btn-success-sm { @apply px-4 py-2 text-xs bg-emerald-700 text-white hover:bg-emerald-800; }
+  .btn-primary-sm { @apply px-4 py-2 text-xs bg-[#002B5C] text-white hover:bg-[#003a7a]; }
+  .btn-success-sm { @apply px-4 py-2 text-xs bg-[#2E8B57] text-white hover:bg-[#267348]; }
   .btn-danger-sm  { @apply px-4 py-2 text-xs bg-red-700 text-white hover:bg-red-800; }
-  .btn-teal-sm    { @apply px-4 py-2 text-xs bg-[#16a34a] text-white hover:bg-[#15803d]; }
-  .btn-ghost-sm   { @apply px-4 py-2 text-xs bg-transparent border border-[#b8ccbe] text-[#1a3d2b] hover:bg-[#e5f0e9]; }
+  .btn-teal-sm    { @apply px-4 py-2 text-xs bg-[#0F4C9A] text-white hover:bg-[#003a7a]; }
+  .btn-ghost-sm   { @apply px-4 py-2 text-xs bg-white border border-[#D0D0D0] text-[#002B5C] hover:bg-[#F4F4F4]; }
 
   /* ── Warm card ────────────────────────────────────────────────────── */
   .glass {
@@ -273,20 +273,20 @@
     border: 1px solid rgba(255,255,255,0.6);
   }
 
-  /* ── Hero bg (light green tint) ─────────────────────────────────── */
+  /* ── Hero bg (white) ─────────────────────────────────────────────── */
   .hero-gradient {
-    background: #f0f5f1;
+    background: #FFFFFF;
   }
 
-  /* ── Dot grid (green tint) ───────────────────────────────────────── */
+  /* ── Dot grid (subtle blue tint) ─────────────────────────────────── */
   .dot-grid {
-    background-image: radial-gradient(circle, rgba(100,140,110,0.18) 1px, transparent 1px);
+    background-image: radial-gradient(circle, rgba(0,43,92,0.07) 1px, transparent 1px);
     background-size: 28px 28px;
   }
 
   /* ── KPI card accent bars ────────────────────────────────────────── */
   .kpi-card {
-    @apply bg-white rounded-2xl p-5 shadow-sm border border-[#d4e5d9] relative overflow-hidden;
+    @apply bg-white rounded-2xl p-5 shadow-sm border border-[#D0D0D0] relative overflow-hidden;
   }
   .kpi-card::before {
     content: "";
@@ -297,12 +297,12 @@
     height: 3px;
     border-radius: 999px 999px 0 0;
   }
-  .kpi-indigo::before  { background: linear-gradient(90deg, #1a3d2b, #16a34a); }
-  .kpi-slate::before   { background: linear-gradient(90deg, #5a7560, #8aaa90); }
+  .kpi-indigo::before  { background: linear-gradient(90deg, #002B5C, #0F4C9A); }
+  .kpi-slate::before   { background: linear-gradient(90deg, #666666, #999999); }
   .kpi-yellow::before  { background: linear-gradient(90deg, #d97706, #fbbf24); }
-  .kpi-emerald::before { background: linear-gradient(90deg, #059669, #34d399); }
+  .kpi-emerald::before { background: linear-gradient(90deg, #2E8B57, #34d399); }
   .kpi-red::before     { background: linear-gradient(90deg, #dc2626, #f87171); }
-  .kpi-cyan::before    { background: linear-gradient(90deg, #16a34a, #4ade80); }
+  .kpi-cyan::before    { background: linear-gradient(90deg, #0F4C9A, #1557A8); }
 
   /* ── Status badge ────────────────────────────────────────────────── */
   .status-dot {

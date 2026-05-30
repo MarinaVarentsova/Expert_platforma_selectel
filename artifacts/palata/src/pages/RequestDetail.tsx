@@ -176,10 +176,10 @@ const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
   new:              { label: "Новый",           cls: "bg-slate-100 text-slate-600" },
   draft:            { label: "Черновик",        cls: "bg-slate-100 text-slate-500" },
   pending:          { label: "Ожидает",         cls: "bg-yellow-100 text-yellow-700" },
-  matching:         { label: "Идёт подбор",     cls: "bg-[#f0f5f1] text-[#1a3d2b]" },
-  expert_selection: { label: "Выбор эксперта",  cls: "bg-[#d4e5d9] text-[#1a3d2b]" },
-  in_work:          { label: "В работе",         cls: "bg-[#e5f0e9] text-[#1a3d2b]" },
-  in_progress:      { label: "В работе",         cls: "bg-[#e5f0e9] text-[#1a3d2b]" },
+  matching:         { label: "Идёт подбор",     cls: "bg-[#F4F4F4] text-[#002B5C]" },
+  expert_selection: { label: "Выбор эксперта",  cls: "bg-[#D0D0D0] text-[#002B5C]" },
+  in_work:          { label: "В работе",         cls: "bg-[#E9E9E9] text-[#002B5C]" },
+  in_progress:      { label: "В работе",         cls: "bg-[#E9E9E9] text-[#002B5C]" },
   completed:        { label: "Выполнен",         cls: "bg-green-100 text-green-700" },
   cancelled:        { label: "Неактуален",       cls: "bg-slate-100 text-slate-500" },
   failed:           { label: "Ошибка подбора",   cls: "bg-red-100 text-red-600" },
@@ -187,11 +187,11 @@ const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
 
 const MATCH_STATUS: Record<string, { label: string; cls: string }> = {
   proposed:               { label: "Предложено",          cls: "bg-yellow-100 text-yellow-700" },
-  can_start_from:         { label: "Может взять",          cls: "bg-[#f0f5f1] text-[#1a3d2b]" },
-  selected_by_customer:   { label: "Выбран заказчиком",   cls: "bg-[#16a34a]/10 text-[#1a3d2b]" },
-  contacts_opened:        { label: "Контакты открыты",     cls: "bg-[#d4e5d9] text-[#1a3d2b]" },
+  can_start_from:         { label: "Может взять",          cls: "bg-[#F4F4F4] text-[#002B5C]" },
+  selected_by_customer:   { label: "Выбран заказчиком",   cls: "bg-[#0F4C9A]/10 text-[#002B5C]" },
+  contacts_opened:        { label: "Контакты открыты",     cls: "bg-[#D0D0D0] text-[#002B5C]" },
   accepted:               { label: "Принято",              cls: "bg-emerald-100 text-emerald-700" },
-  accepted_work:          { label: "Взял в работу",        cls: "bg-[#e5f0e9] text-[#1a3d2b]" },
+  accepted_work:          { label: "Взял в работу",        cls: "bg-[#E9E9E9] text-[#002B5C]" },
   declined:                      { label: "Отказ",                    cls: "bg-red-100 text-red-600" },
   customer_declined_start_date:  { label: "Дата отклонена",            cls: "bg-amber-100 text-amber-700" },
   completed:                     { label: "Завершено",                  cls: "bg-emerald-100 text-emerald-700" },
@@ -916,7 +916,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       {role === "customer" && (
         <Card>
           <div className="flex items-center gap-2 mb-4">
-            <span className="w-2 h-2 rounded-full bg-[#16a34a]" />
+            <span className="w-2 h-2 rounded-full bg-[#0F4C9A]" />
             <h2 className="text-sm font-semibold text-slate-700">Действия заказчика</h2>
           </div>
 
@@ -947,7 +947,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
             {/* Prompt: select expert from matched list below */}
             {isOrderActive && expertsMatchedItem && custUI.kind === "idle" && (
-              <div className="w-full mt-1 p-3 rounded-lg bg-[#f0f5f1] border border-[#d4e5d9] text-xs text-[#1a3d2b]">
+              <div className="w-full mt-1 p-3 rounded-lg bg-[#F4F4F4] border border-[#D0D0D0] text-xs text-[#002B5C]">
                 <span className="font-semibold">Подберите эксперта</span> — ниже показаны профили подобранных специалистов. Нажмите «Выбрать эксперта» под карточкой нужного.
               </div>
             )}
@@ -996,26 +996,26 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
                     {/* Customer contacts — visible only when contacts are opened */}
                     {contactsOpen && myContact && (
-                      <div className="p-3 bg-[#f0f5f1] rounded-lg border border-[#d4e5d9] mb-4">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-2">
+                      <div className="p-3 bg-[#F4F4F4] rounded-lg border border-[#D0D0D0] mb-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-2">
                           Контакты заказчика
                         </p>
                         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
                           {myContact.customer_phone && (
                             <div>
-                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Телефон</p>
-                              <p className="text-sm font-semibold text-[#1a3d2b]">{myContact.customer_phone}</p>
+                              <p className="text-[10px] text-[#666666] mb-0.5">Телефон</p>
+                              <p className="text-sm font-semibold text-[#002B5C]">{myContact.customer_phone}</p>
                             </div>
                           )}
                           {myContact.customer_email && (
                             <div>
-                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Email</p>
-                              <p className="text-sm font-semibold text-[#1a3d2b]">{myContact.customer_email}</p>
+                              <p className="text-[10px] text-[#666666] mb-0.5">Email</p>
+                              <p className="text-sm font-semibold text-[#002B5C]">{myContact.customer_email}</p>
                             </div>
                           )}
                         </div>
                         {myContact.revealed_at && (
-                          <p className="text-[10px] text-[#8aaa90] mt-1.5">Открыты: {fmtDate(myContact.revealed_at)}</p>
+                          <p className="text-[10px] text-[#666666] mt-1.5">Открыты: {fmtDate(myContact.revealed_at)}</p>
                         )}
                       </div>
                     )}
@@ -1051,7 +1051,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                             <span className="text-xs text-slate-600">Дата начала:</span>
                             <input
                               type="date"
-                              className="text-sm border border-[#c8d8cc] rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/40"
+                              className="text-sm border border-[#D0D0D0] rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/40"
                               value={ui.date}
                               onChange={e => setMS(m.id, { kind: "date_picker", date: e.target.value })}
                             />
@@ -1182,7 +1182,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       {role === "admin" && (
         <Card>
           <div className="flex items-center gap-2 mb-4">
-            <span className="w-2 h-2 rounded-full bg-[#16a34a]" />
+            <span className="w-2 h-2 rounded-full bg-[#0F4C9A]" />
             <h2 className="text-sm font-semibold text-slate-700">Административные действия</h2>
           </div>
 
@@ -1198,7 +1198,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             <div className="flex flex-wrap items-center gap-2">
               <label className="text-xs text-slate-500 shrink-0 w-28">Изменить статус:</label>
               <select
-                className="text-sm border border-[#c8d8cc] rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#16a34a]/40 focus:border-[#16a34a]"
+                className="text-sm border border-[#D0D0D0] rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/40 focus:border-[#0F4C9A]"
                 value={adminStatus}
                 onChange={e => setAdminStatus(e.target.value)}
               >
@@ -1220,7 +1220,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
               <div className="flex flex-wrap items-center gap-2">
                 <label className="text-xs text-slate-500 shrink-0 w-28">Назначить эксперта:</label>
                 <select
-                  className="text-sm border border-[#c8d8cc] rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#16a34a]/40 focus:border-[#16a34a]"
+                  className="text-sm border border-[#D0D0D0] rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/40 focus:border-[#0F4C9A]"
                   value={adminAssignMatchId}
                   onChange={e => setAdminAssignMatchId(e.target.value)}
                 >
@@ -1276,7 +1276,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
               <input
                 type="text"
                 placeholder="Добавить комментарий администратора…"
-                className="flex-1 text-sm border border-[#c8d8cc] rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/40 focus:border-[#16a34a]"
+                className="flex-1 text-sm border border-[#D0D0D0] rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/40 focus:border-[#0F4C9A]"
                 value={adminComment}
                 onChange={e => setAdminComment(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleAdminComment()}
@@ -1310,7 +1310,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                   <a
                     href={filePublicUrl(f.bucket_path)}
                     target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-[#16a34a] hover:text-[#1a3d2b] hover:underline shrink-0 transition-colors"
+                    className="text-xs text-[#0F4C9A] hover:text-[#002B5C] hover:underline shrink-0 transition-colors"
                   >
                     Скачать
                   </a>
@@ -1386,7 +1386,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                           <Field label="Выполнено заказов">{profile.completed_orders_count}</Field>
                           <Field label="Командировки">
                             {profile.business_trip_ready
-                              ? <span className="text-[#16a34a] font-medium">Готов ✈</span>
+                              ? <span className="text-[#0F4C9A] font-medium">Готов ✈</span>
                               : <span className="text-slate-400">Без командировок</span>}
                           </Field>
                         </div>
@@ -1414,9 +1414,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
                     {/* Customer: Выбрать эксперта — shown when experts_matched is open */}
                     {role === "customer" && isOrderActive && CUSTOMER_CAN_SELECT.has(m.status) && expertsMatchedItem && (
-                      <div className="px-4 py-3 bg-[#f0f5f1] border-t border-[#d4e5d9]">
+                      <div className="px-4 py-3 bg-[#F4F4F4] border-t border-[#D0D0D0]">
                         {custUI.kind === "submitting" ? (
-                          <div className="flex items-center gap-2 text-sm text-[#5a7560]">
+                          <div className="flex items-center gap-2 text-sm text-[#666666]">
                             <Spinner inline />
                             Обрабатывается…
                           </div>
@@ -1433,45 +1433,45 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
                     {/* Contacts — role-aware */}
                     {hasContacts && contact && (
-                      <div className="px-4 py-3 bg-[#f0f5f1] border-t border-[#d4e5d9]">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#5a7560] mb-2">Контакты открыты</p>
+                      <div className="px-4 py-3 bg-[#F4F4F4] border-t border-[#D0D0D0]">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-2">Контакты открыты</p>
                         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
                           {/* Customer sees expert contacts */}
                           {contact.expert_phone && (
                             <div>
-                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Телефон эксперта</p>
-                              <p className="text-sm font-semibold text-[#141c17]">{contact.expert_phone}</p>
+                              <p className="text-[10px] text-[#666666] mb-0.5">Телефон эксперта</p>
+                              <p className="text-sm font-semibold text-[#111111]">{contact.expert_phone}</p>
                             </div>
                           )}
                           {contact.expert_email && (
                             <div>
-                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Email эксперта</p>
-                              <p className="text-sm font-semibold text-[#141c17]">{contact.expert_email}</p>
+                              <p className="text-[10px] text-[#666666] mb-0.5">Email эксперта</p>
+                              <p className="text-sm font-semibold text-[#111111]">{contact.expert_email}</p>
                             </div>
                           )}
                           {/* Admin also sees customer contacts */}
                           {isAdminView && contact.customer_phone && (
                             <div>
-                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Телефон заказчика</p>
-                              <p className="text-sm font-semibold text-[#141c17]">{contact.customer_phone}</p>
+                              <p className="text-[10px] text-[#666666] mb-0.5">Телефон заказчика</p>
+                              <p className="text-sm font-semibold text-[#111111]">{contact.customer_phone}</p>
                             </div>
                           )}
                           {isAdminView && contact.customer_email && (
                             <div>
-                              <p className="text-[10px] text-[#8aaa90] mb-0.5">Email заказчика</p>
-                              <p className="text-sm font-semibold text-[#141c17]">{contact.customer_email}</p>
+                              <p className="text-[10px] text-[#666666] mb-0.5">Email заказчика</p>
+                              <p className="text-sm font-semibold text-[#111111]">{contact.customer_email}</p>
                             </div>
                           )}
                         </div>
                         {contact.contact_opened_at && (
-                          <p className="text-[10px] text-[#8aaa90] mt-2">Выбран: {fmtDate(contact.contact_opened_at)}</p>
+                          <p className="text-[10px] text-[#666666] mt-2">Выбран: {fmtDate(contact.contact_opened_at)}</p>
                         )}
                       </div>
                     )}
 
                     {/* can_start_from_date */}
                     {m.can_start_from_date && (
-                      <div className="px-4 py-2 bg-[#f0f5f1] border-t border-[#c8d8cc] text-xs text-[#1a3d2b]">
+                      <div className="px-4 py-2 bg-[#F4F4F4] border-t border-[#D0D0D0] text-xs text-[#002B5C]">
                         Может взять с: <span className="font-semibold">{fmtDate(m.can_start_from_date)}</span>
                       </div>
                     )}
@@ -1494,8 +1494,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
                     {/* Admin: expert actions (simulate/override) */}
                     {canAct && isAdminView && (
-                      <div className="px-4 py-3 bg-[#f0f5f1] border-t border-[#d4e5d9]">
-                        <p className="text-xs font-semibold text-[#1a3d2b] mb-2 uppercase tracking-wide">
+                      <div className="px-4 py-3 bg-[#F4F4F4] border-t border-[#D0D0D0]">
+                        <p className="text-xs font-semibold text-[#002B5C] mb-2 uppercase tracking-wide">
                           Действия от имени эксперта
                         </p>
                         {ui.kind === "error" && (

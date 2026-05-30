@@ -305,21 +305,21 @@ export default function NewRequest() {
   // ── Success screen ──────────────────────────────────────────────────────────
   if (state.kind === "success") {
     return (
-      <div className="min-h-[calc(100vh-56px)] flex items-center justify-center px-6 bg-[#f0f5f1]">
+      <div className="min-h-[calc(100vh-56px)] flex items-center justify-center px-6 bg-[#F4F4F4]">
         <div className="max-w-md w-full text-center">
-          <div className="w-16 h-16 rounded-full bg-[#16a34a]/10 flex items-center justify-center mx-auto mb-6">
-            <CheckCircle2 className="w-8 h-8 text-[#16a34a]" />
+          <div className="w-16 h-16 rounded-full bg-[#0F4C9A]/10 flex items-center justify-center mx-auto mb-6">
+            <CheckCircle2 className="w-8 h-8 text-[#0F4C9A]" />
           </div>
-          <h1 className="text-2xl font-bold text-[#141c17] mb-2">Заказ создан</h1>
-          <p className="text-sm text-[#5a7560] mb-1 font-medium">{state.title}</p>
-          <p className="text-xs font-mono text-[#8aaa90] mb-6">{state.requestId.slice(0, 8).toUpperCase()}</p>
+          <h1 className="text-2xl font-bold text-[#111111] mb-2">Заказ создан</h1>
+          <p className="text-sm text-[#666666] mb-1 font-medium">{state.title}</p>
+          <p className="text-xs font-mono text-[#666666] mb-6">{state.requestId.slice(0, 8).toUpperCase()}</p>
 
           {state.matchedCount > 0 ? (
-            <div className="bg-[#16a34a]/8 border border-[#16a34a]/20 rounded-xl px-5 py-4 mb-8 text-left">
-              <p className="text-sm font-semibold text-[#1a3d2b] mb-1">
+            <div className="bg-[#0F4C9A]/8 border border-[#0F4C9A]/20 rounded-xl px-5 py-4 mb-8 text-left">
+              <p className="text-sm font-semibold text-[#002B5C] mb-1">
                 Подобрано {state.matchedCount} эксперт{state.matchedCount === 1 ? "" : state.matchedCount < 5 ? "а" : "ов"}
               </p>
-              <p className="text-xs text-[#5a7560] leading-relaxed">
+              <p className="text-xs text-[#666666] leading-relaxed">
                 Эксперты получат предложение и смогут принять заказ. Как только кто-то примет — вы увидите уведомление во вкладке «Требуют действия».
               </p>
             </div>
@@ -349,13 +349,13 @@ export default function NewRequest() {
   const busy = state.kind === "submitting";
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-[#f0f5f1]">
+    <div className="min-h-[calc(100vh-56px)] bg-[#F4F4F4]">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
 
         {/* Back */}
         <button
           onClick={() => navigate("/customer")}
-          className="inline-flex items-center gap-1.5 text-sm text-[#5a7560] hover:text-[#141c17] mb-6 transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#111111] mb-6 transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           Личный кабинет
@@ -363,9 +363,9 @@ export default function NewRequest() {
 
         {/* Header */}
         <div className="mb-7">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-1">Новый заказ</p>
-          <h1 className="text-2xl font-bold text-[#141c17]">Создать заказ на экспертизу</h1>
-          <p className="text-sm text-[#5a7560] mt-1">Заполните форму — система автоматически подберёт эксперта</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-1">Новый заказ</p>
+          <h1 className="text-2xl font-bold text-[#111111]">Создать заказ на экспертизу</h1>
+          <p className="text-sm text-[#666666] mt-1">Заполните форму — система автоматически подберёт эксперта</p>
         </div>
 
         {/* Error */}
@@ -433,8 +433,8 @@ export default function NewRequest() {
                     className={[
                       "flex flex-col items-center text-center px-3 py-3 rounded-lg border cursor-pointer transition-all select-none",
                       form.urgency === opt.value
-                        ? "border-[#16a34a] bg-[#16a34a]/8 text-[#1a3d2b]"
-                        : "border-[#d4e5d9] hover:border-[#16a34a]/50 text-[#5a7560]",
+                        ? "border-[#0F4C9A] bg-[#0F4C9A]/8 text-[#002B5C]"
+                        : "border-[#D0D0D0] hover:border-[#0F4C9A]/50 text-[#666666]",
                     ].join(" ")}
                   >
                     <input
@@ -447,7 +447,7 @@ export default function NewRequest() {
                       disabled={busy}
                     />
                     <span className="text-sm font-medium">{opt.label}</span>
-                    <span className="text-xs text-[#8aaa90] mt-0.5">{opt.sub}</span>
+                    <span className="text-xs text-[#666666] mt-0.5">{opt.sub}</span>
                   </label>
                 ))}
               </div>
@@ -455,7 +455,7 @@ export default function NewRequest() {
 
             {/* Выезд / дистанционно */}
             <div className="space-y-2">
-              <p className="text-sm font-medium text-[#141c17]">Формат работы</p>
+              <p className="text-sm font-medium text-[#111111]">Формат работы</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { value: false, label: "Дистанционно", desc: "Без выезда к объекту" },
@@ -466,8 +466,8 @@ export default function NewRequest() {
                     className={[
                       "flex flex-col px-4 py-3 rounded-lg border cursor-pointer transition-all select-none",
                       form.requires_travel === opt.value
-                        ? "border-[#16a34a] bg-[#16a34a]/8 text-[#1a3d2b]"
-                        : "border-[#d4e5d9] hover:border-[#16a34a]/50 text-[#5a7560]",
+                        ? "border-[#0F4C9A] bg-[#0F4C9A]/8 text-[#002B5C]"
+                        : "border-[#D0D0D0] hover:border-[#0F4C9A]/50 text-[#666666]",
                     ].join(" ")}
                   >
                     <input
@@ -479,7 +479,7 @@ export default function NewRequest() {
                       disabled={busy}
                     />
                     <span className="text-sm font-medium">{opt.label}</span>
-                    <span className="text-xs text-[#8aaa90]">{opt.desc}</span>
+                    <span className="text-xs text-[#666666]">{opt.desc}</span>
                   </label>
                 ))}
               </div>
@@ -524,7 +524,7 @@ export default function NewRequest() {
 
           {/* ── 3: Контакты ─────────────────────────────────────────── */}
           <FormCard title="Контактные данные" num="03">
-            <p className="text-xs text-[#8aaa90] -mt-1">
+            <p className="text-xs text-[#666666] -mt-1">
               Необходимы для связи с экспертом после подбора
             </p>
 
@@ -569,21 +569,21 @@ export default function NewRequest() {
 
           {/* ── 4: Файлы ────────────────────────────────────────────── */}
           <FormCard title="Прикреплённые документы" num="04">
-            <p className="text-xs text-[#8aaa90] -mt-1">
+            <p className="text-xs text-[#666666] -mt-1">
               PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — не более 50 МБ каждый
             </p>
 
             {files.length > 0 && (
               <div className="space-y-1.5">
                 {files.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 bg-[#f0f5f1] rounded-lg border border-[#d4e5d9]">
-                    <span className="text-[#5a7560] shrink-0">{fileIconEl(f.type)}</span>
-                    <span className="text-sm text-[#141c17] flex-1 truncate">{f.name}</span>
-                    <span className="text-xs text-[#8aaa90] shrink-0">{fmtSize(f.size)}</span>
+                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 bg-[#F4F4F4] rounded-lg border border-[#D0D0D0]">
+                    <span className="text-[#666666] shrink-0">{fileIconEl(f.type)}</span>
+                    <span className="text-sm text-[#111111] flex-1 truncate">{f.name}</span>
+                    <span className="text-xs text-[#666666] shrink-0">{fmtSize(f.size)}</span>
                     <button
                       type="button"
                       onClick={() => removeFile(i)}
-                      className="text-[#8aaa90] hover:text-red-500 transition-colors ml-0.5 shrink-0"
+                      className="text-[#666666] hover:text-red-500 transition-colors ml-0.5 shrink-0"
                       disabled={busy}
                     >
                       <X className="w-3.5 h-3.5" />
@@ -596,7 +596,7 @@ export default function NewRequest() {
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-dashed border-[#b8ccbe] text-sm text-[#5a7560] hover:border-[#16a34a] hover:text-[#16a34a] hover:bg-[#16a34a]/5 transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-dashed border-[#D0D0D0] text-sm text-[#666666] hover:border-[#0F4C9A] hover:text-[#0F4C9A] hover:bg-[#0F4C9A]/5 transition-colors"
               disabled={busy}
             >
               <Upload className="w-4 h-4" />
@@ -645,12 +645,12 @@ export default function NewRequest() {
 
 function FormCard({ title, num, children }: { title: string; num: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl border border-[#d4e5d9] p-6 space-y-4 shadow-sm">
+    <div className="bg-white rounded-xl border border-[#D0D0D0] p-6 space-y-4 shadow-sm">
       <div className="flex items-center gap-2.5">
-        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#1a3d2b] text-[#f0faf4] text-[9px] font-bold flex items-center justify-center">
+        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-[#FFFFFF] text-[9px] font-bold flex items-center justify-center">
           {num}
         </span>
-        <h2 className="text-xs font-bold uppercase tracking-widest text-[#8aaa90]">{title}</h2>
+        <h2 className="text-xs font-bold uppercase tracking-widest text-[#666666]">{title}</h2>
       </div>
       {children}
     </div>
@@ -664,7 +664,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-[#141c17] mb-1.5">
+      <label className="block text-sm font-medium text-[#111111] mb-1.5">
         {label}
         {required && <span className="text-red-400 ml-0.5">*</span>}
       </label>
@@ -676,11 +676,11 @@ function Field({
 
 function inputCls(hasError: boolean) {
   return [
-    "w-full text-sm rounded-lg border px-3 py-2.5 bg-white text-[#141c17]",
-    "focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 focus:border-[#16a34a]",
-    "disabled:bg-[#f0f5f1] disabled:text-[#8aaa90]",
-    "transition-colors placeholder:text-[#b8ccbe]",
-    hasError ? "border-red-300 bg-red-50" : "border-[#d4e5d9]",
+    "w-full text-sm rounded-lg border px-3 py-2.5 bg-white text-[#111111]",
+    "focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A]",
+    "disabled:bg-[#F4F4F4] disabled:text-[#666666]",
+    "transition-colors placeholder:text-[#D0D0D0]",
+    hasError ? "border-red-300 bg-red-50" : "border-[#D0D0D0]",
   ].join(" ");
 }
 

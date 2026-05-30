@@ -138,8 +138,8 @@ const DECLINE_LABEL: Record<string, string> = {
 
 const COLUMNS = [
   { id: "proposed",  label: "Новые предложения", accent: "", dotColor: "bg-amber-400",    bgColor: "bg-amber-50/60 border-amber-200",    statuses: ["proposed", "contacts_opened"] },
-  { id: "cantake",   label: "Могу взять",        accent: "", dotColor: "bg-[#16a34a]",   bgColor: "bg-[#f0f5f1] border-[#c8d8cc]",     statuses: ["can_start_from"] },
-  { id: "accepted",  label: "В работе",          accent: "", dotColor: "bg-[#1a3d2b]",   bgColor: "bg-[#eaf3ec]/60 border-[#c8d8cc]",  statuses: ["accepted", "accepted_work"] },
+  { id: "cantake",   label: "Могу взять",        accent: "", dotColor: "bg-[#0F4C9A]",   bgColor: "bg-[#F4F4F4] border-[#D0D0D0]",     statuses: ["can_start_from"] },
+  { id: "accepted",  label: "В работе",          accent: "", dotColor: "bg-[#002B5C]",   bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]",  statuses: ["accepted", "accepted_work"] },
   { id: "completed", label: "Завершено",         accent: "", dotColor: "bg-emerald-400", bgColor: "bg-emerald-50/60 border-emerald-200", statuses: ["completed"] },
   { id: "declined",  label: "Отказ / не взял",   accent: "", dotColor: "bg-slate-300",   bgColor: "bg-slate-50 border-slate-200",      statuses: ["declined", "withdrawn", "closed_by_other_expert"] },
 ];
@@ -402,17 +402,14 @@ export default function ExpertDashboard() {
     <div className="px-4 sm:px-6 lg:px-8 py-6 lg:py-8 max-w-screen-2xl mx-auto">
 
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет эксперта</p>
-          <h1 className="text-xl font-bold text-slate-900">{user.full_name ?? user.email}</h1>
-          <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
-        </div>
-
+      <div className="mb-6">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет эксперта</p>
+        <h1 className="text-xl font-bold text-slate-900">{user.full_name ?? user.email}</h1>
+        <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-slate-200">
+      <div className="flex gap-1 mb-6 border-b border-slate-200 overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 scrollbar-none">
         <TabButton active={tab === "profile"} onClick={() => setTab("profile")}>
           <User className="w-3.5 h-3.5" />
           Мой профиль
@@ -502,7 +499,7 @@ export default function ExpertDashboard() {
                   <div>
                     <p className="text-[10px] font-mono text-slate-400 mb-0.5">#{item.request_id.slice(0, 8).toUpperCase()}</p>
                     <Link href={`/requests/${item.request_id}`}>
-                      <p className="text-sm font-semibold text-slate-800 hover:text-[#1a3d2b] transition-colors cursor-pointer">
+                      <p className="text-sm font-semibold text-slate-800 hover:text-[#002B5C] transition-colors cursor-pointer">
                         {item.title}
                       </p>
                     </Link>
@@ -601,8 +598,8 @@ function TabButton({ active, onClick, children }: {
       onClick={onClick}
       className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold transition-colors border-b-2 -mb-px
         ${active
-          ? "border-[#16a34a] text-[#1a3d2b]"
-          : "border-transparent text-slate-500 hover:text-[#1a3d2b] hover:border-[#c8d8cc]"
+          ? "border-[#0F4C9A] text-[#002B5C]"
+          : "border-transparent text-slate-500 hover:text-[#002B5C] hover:border-[#D0D0D0]"
         }`}
     >
       {children}
@@ -698,7 +695,7 @@ function ProfileView({
     setTimeout(() => setSavedOk(false), 3000);
   }
 
-  const ic = "w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 focus:border-[#16a34a] bg-white";
+  const ic = "w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A] bg-white";
   const rating = p.avg_customer_rating ? Number(p.avg_customer_rating).toFixed(2) : null;
 
   if (editing) {
@@ -752,8 +749,8 @@ function ProfileView({
               <button key={v} type="button" onClick={() => toggleSpec(v)}
                 className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
                   specs.includes(v)
-                    ? "bg-[#1a3d2b] text-white border-[#1a3d2b]"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-[#c8d8cc] hover:text-[#1a3d2b]"
+                    ? "bg-[#002B5C] text-white border-[#002B5C]"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-[#D0D0D0] hover:text-[#002B5C]"
                 }`}>
                 {l}
               </button>
@@ -768,8 +765,8 @@ function ProfileView({
               <button key={v} type="button" onClick={() => toggleReg(v)}
                 className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
                   regs.includes(v)
-                    ? "bg-[#1a3d2b] text-white border-[#1a3d2b]"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-[#c8d8cc] hover:text-[#1a3d2b]"
+                    ? "bg-[#002B5C] text-white border-[#002B5C]"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-[#D0D0D0] hover:text-[#002B5C]"
                 }`}>
                 {l}
               </button>
@@ -782,7 +779,7 @@ function ProfileView({
 
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={accepts} onChange={e => setAccepts(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+              className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
             <div>
               <p className="text-sm font-medium text-slate-800">Принимает заказы</p>
               <p className="text-xs text-slate-400">Новые запросы будут поступать</p>
@@ -791,7 +788,7 @@ function ProfileView({
 
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={tripReady} onChange={e => setTripReady(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+              className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
             <div>
               <p className="text-sm font-medium text-slate-800">Готов к командировкам</p>
               <p className="text-xs text-slate-400">Выезд в другой регион</p>
@@ -801,7 +798,7 @@ function ProfileView({
           <div className="space-y-2">
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={palataOk} onChange={e => setPalataOk(e.target.checked)}
-                className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+                className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
               <p className="text-sm font-medium text-slate-800">Зарегистрирован в Палате судебных экспертов</p>
             </label>
             {palataOk && (
@@ -813,7 +810,7 @@ function ProfileView({
           <div className="space-y-2">
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={centrsudOk} onChange={e => setCentrsudOk(e.target.checked)}
-                className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+                className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
               <p className="text-sm font-medium text-slate-800">Зарегистрирован в Центр судебных экспертиз</p>
             </label>
             {centrsudOk && (
@@ -854,7 +851,7 @@ function ProfileView({
           </span>
         )}
         <button onClick={beginEdit}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-[#f0f5f1] hover:border-[#c8d8cc] hover:text-[#1a3d2b] transition-all">
+          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-[#F4F4F4] hover:border-[#D0D0D0] hover:text-[#002B5C] transition-all">
           <Pencil className="w-3.5 h-3.5" />
           Редактировать профиль
         </button>
@@ -866,8 +863,8 @@ function ProfileView({
         {/* Identity card */}
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-[#f0f5f1] flex items-center justify-center flex-shrink-0">
-              <User className="w-6 h-6 text-[#8aaa90]" />
+            <div className="w-12 h-12 rounded-xl bg-[#F4F4F4] flex items-center justify-center flex-shrink-0">
+              <User className="w-6 h-6 text-[#666666]" />
             </div>
             <div className="min-w-0">
               <p className="text-sm font-bold text-slate-900 truncate">{user.full_name ?? "—"}</p>
@@ -906,7 +903,7 @@ function ProfileView({
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Настройки</p>
           <div className="space-y-2.5">
             <FlagRow active={p.accepts_requests} label="Принимает заказы" activeColor="text-emerald-700 bg-emerald-50" inactiveColor="text-slate-500 bg-slate-50" />
-            <FlagRow active={p.business_trip_ready} label="Готов к командировкам" activeColor="text-[#1a3d2b] bg-[#f0f5f1]" inactiveColor="text-slate-500 bg-slate-50" />
+            <FlagRow active={p.business_trip_ready} label="Готов к командировкам" activeColor="text-[#002B5C] bg-[#F4F4F4]" inactiveColor="text-slate-500 bg-slate-50" />
           </div>
         </div>
 
@@ -932,7 +929,7 @@ function ProfileView({
           {p.specializations.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {p.specializations.map((s) => (
-                <span key={s} className="text-xs font-medium text-[#1a3d2b] bg-[#f0f5f1] border border-[#c8d8cc] rounded-lg px-2.5 py-1">
+                <span key={s} className="text-xs font-medium text-[#002B5C] bg-[#F4F4F4] border border-[#D0D0D0] rounded-lg px-2.5 py-1">
                   {SPEC_LABEL[s] ?? s}
                 </span>
               ))}
@@ -1077,7 +1074,7 @@ function DocumentsSection({
         </div>
         <div className="flex items-center gap-2">
           <select value={docType} onChange={e => setDocType(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 bg-white">
+            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 bg-white">
             {Object.entries(DOC_TYPE_LABELS).map(([v, l]) => (
               <option key={v} value={v}>{l}</option>
             ))}
@@ -1085,7 +1082,7 @@ function DocumentsSection({
           <label className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border cursor-pointer transition-all ${
             uploading
               ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
-              : "bg-[#f0f5f1] border-[#c8d8cc] text-[#1a3d2b] hover:bg-[#e5f0e9]"
+              : "bg-[#F4F4F4] border-[#D0D0D0] text-[#002B5C] hover:bg-[#E9E9E9]"
           }`}>
             <Upload className="w-3.5 h-3.5" />
             {uploading ? "Загрузка…" : "Загрузить"}
@@ -1170,19 +1167,19 @@ function ExpertCard({ match: m, needsRating }: { match: Match; needsRating?: boo
   const req = m.palata_requests;
   const urgencyColor = req?.urgency === "very_urgent" ? "border-l-red-400"
     : req?.urgency === "urgent" ? "border-l-amber-400"
-    : "border-l-[#c8d8cc]";
+    : "border-l-[#D0D0D0]";
 
   return (
     <Link href={`/requests/${m.request_id}`}>
-      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgencyColor} p-3.5 hover:shadow-md hover:border-[#c8d8cc] transition-all cursor-pointer group shadow-sm`}>
-        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2 group-hover:text-[#1a3d2b] transition-colors">
+      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgencyColor} p-3.5 hover:shadow-md hover:border-[#D0D0D0] transition-all cursor-pointer group shadow-sm`}>
+        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2 group-hover:text-[#002B5C] transition-colors">
           {req?.title ?? "—"}
         </p>
 
         <div className="space-y-1 mb-2.5">
           {req?.expertise_type && (
             <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
-              <span className="inline-block h-1 w-1 rounded-full bg-[#16a34a]/50 flex-shrink-0" />
+              <span className="inline-block h-1 w-1 rounded-full bg-[#0F4C9A]/50 flex-shrink-0" />
               {SPEC_LABEL[req.expertise_type] ?? req.expertise_type}
             </p>
           )}
@@ -1221,8 +1218,8 @@ function ExpertCard({ match: m, needsRating }: { match: Match; needsRating?: boo
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-24 gap-4">
-      <div className="w-16 h-16 rounded-2xl bg-[#f0f5f1] flex items-center justify-center">
-        <Inbox className="w-8 h-8 text-[#8aaa90]" />
+      <div className="w-16 h-16 rounded-2xl bg-[#F4F4F4] flex items-center justify-center">
+        <Inbox className="w-8 h-8 text-[#666666]" />
       </div>
       <div className="text-center">
         <p className="text-base font-semibold text-slate-700 mb-1">Обращений пока нет</p>
@@ -1237,8 +1234,8 @@ function EmptyState() {
 function NoProfileState() {
   return (
     <div className="flex flex-col items-center justify-center py-24 gap-4">
-      <div className="w-16 h-16 rounded-2xl bg-[#f0f5f1] flex items-center justify-center">
-        <User className="w-8 h-8 text-[#8aaa90]" />
+      <div className="w-16 h-16 rounded-2xl bg-[#F4F4F4] flex items-center justify-center">
+        <User className="w-8 h-8 text-[#666666]" />
       </div>
       <div className="text-center">
         <p className="text-base font-semibold text-slate-700 mb-1">Профиль не заполнен</p>
@@ -1253,7 +1250,7 @@ function NoProfileState() {
 function LoadingScreen() {
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="h-5 w-5 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
+      <div className="h-5 w-5 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />
     </div>
   );
 }
@@ -1261,7 +1258,7 @@ function LoadingScreen() {
 function LoadingRows() {
   return (
     <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
-      <div className="h-4 w-4 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
+      <div className="h-4 w-4 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />
       Загрузка…
     </div>
   );
@@ -1279,10 +1276,10 @@ function ErrorCard({ message }: { message: string }) {
 // ─── Expert Action Inbox ───────────────────────────────────────────────────────
 
 const ACTION_LABEL_EX: Record<string, { label: string; color: string }> = {
-  customer_selected_you:        { label: "Вас выбрали",          color: "text-[#1a3d2b] bg-[#f0f5f1]" },
+  customer_selected_you:        { label: "Вас выбрали",          color: "text-[#002B5C] bg-[#F4F4F4]" },
   customer_approved_start_date: { label: "Дата согласована",     color: "text-emerald-700 bg-emerald-50" },
-  you_are_approved_for_work:    { label: "Вы назначены на заказ",color: "text-[#1a3d2b] bg-[#d4e5d9]" },
-  experts_matched:              { label: "Подобраны эксперты",   color: "text-[#1a3d2b] bg-[#f0f5f1]" },
+  you_are_approved_for_work:    { label: "Вы назначены на заказ",color: "text-[#002B5C] bg-[#D0D0D0]" },
+  experts_matched:              { label: "Подобраны эксперты",   color: "text-[#002B5C] bg-[#F4F4F4]" },
   expert_declined:              { label: "Эксперт отказался",    color: "text-red-700 bg-red-50" },
   expert_can_start_from:        { label: "Предложена дата",      color: "text-amber-700 bg-amber-50" },
   expert_completed_order:       { label: "Заказ завершён",       color: "text-emerald-700 bg-emerald-50" },
@@ -1317,8 +1314,8 @@ function ExpertActionInbox({ items, userId, userEmail, onDone }: {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-[#f0f5f1] flex items-center justify-center">
-          <Zap className="w-8 h-8 text-[#8aaa90]" />
+        <div className="w-16 h-16 rounded-2xl bg-[#F4F4F4] flex items-center justify-center">
+          <Zap className="w-8 h-8 text-[#666666]" />
         </div>
         <div className="text-center">
           <p className="text-base font-semibold text-slate-700 mb-1">Нет активных задач</p>
@@ -1660,47 +1657,47 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
   }
 
   return (
-    <div className="bg-white border border-[#16a34a]/30 rounded-xl shadow-sm overflow-hidden">
+    <div className="bg-white border border-[#0F4C9A]/30 rounded-xl shadow-sm overflow-hidden">
       <div className="p-5">
         <ExpertActionItemHeader item={item} />
 
         {/* Request details */}
         {reqLoading ? (
-          <p className="text-xs text-[#8aaa90] mt-3">Загрузка деталей заказа…</p>
+          <p className="text-xs text-[#666666] mt-3">Загрузка деталей заказа…</p>
         ) : req ? (
-          <div className="mt-3 bg-[#f0f5f1] rounded-xl px-4 py-3 space-y-1.5">
-            <p className="text-[10px] font-mono text-[#8aaa90]">{shortId}</p>
-            <p className="text-sm font-semibold text-[#141c17]">{req.title}</p>
+          <div className="mt-3 bg-[#F4F4F4] rounded-xl px-4 py-3 space-y-1.5">
+            <p className="text-[10px] font-mono text-[#666666]">{shortId}</p>
+            <p className="text-sm font-semibold text-[#111111]">{req.title}</p>
             <div className="flex flex-wrap gap-1.5 mt-1">
               {req.expertise_type && (
-                <span className="text-[11px] text-[#16a34a] bg-[#16a34a]/10 px-1.5 py-0.5 rounded">
+                <span className="text-[11px] text-[#0F4C9A] bg-[#0F4C9A]/10 px-1.5 py-0.5 rounded">
                   {SPEC_L[req.expertise_type] ?? req.expertise_type}
                 </span>
               )}
               {req.region && (
-                <span className="text-[11px] text-[#5a7560] bg-[#d4e5d9] px-1.5 py-0.5 rounded">
+                <span className="text-[11px] text-[#666666] bg-[#D0D0D0] px-1.5 py-0.5 rounded">
                   {REG_L[req.region] ?? req.region}
                 </span>
               )}
             </div>
             {req.description && (
-              <p className="text-xs text-[#5a7560] leading-relaxed mt-1.5 line-clamp-4">{req.description}</p>
+              <p className="text-xs text-[#666666] leading-relaxed mt-1.5 line-clamp-4">{req.description}</p>
             )}
           </div>
         ) : null}
 
         {/* Customer info */}
         {custContact && (custContact.name || custContact.phone || custContact.email) && (
-          <div className="mt-3 px-4 py-3 bg-white border border-[#d4e5d9] rounded-xl">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-2">Заказчик</p>
+          <div className="mt-3 px-4 py-3 bg-white border border-[#D0D0D0] rounded-xl">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-2">Заказчик</p>
             {custContact.name && (
-              <p className="text-sm font-semibold text-[#141c17]">{custContact.name}</p>
+              <p className="text-sm font-semibold text-[#111111]">{custContact.name}</p>
             )}
             {custContact.phone && (
-              <p className="text-xs text-[#5a7560] mt-1">Телефон: <span className="font-medium text-[#141c17]">{custContact.phone}</span></p>
+              <p className="text-xs text-[#666666] mt-1">Телефон: <span className="font-medium text-[#111111]">{custContact.phone}</span></p>
             )}
             {custContact.email && (
-              <p className="text-xs text-[#5a7560]">Email: <span className="font-medium text-[#141c17]">{custContact.email}</span></p>
+              <p className="text-xs text-[#666666]">Email: <span className="font-medium text-[#111111]">{custContact.email}</span></p>
             )}
           </div>
         )}
@@ -1734,11 +1731,11 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
 
         {/* Date picker form */}
         {action === "date" && (
-          <div className="mt-4 space-y-3 border-t border-[#d4e5d9] pt-3">
-            <p className="text-xs font-semibold text-[#1a3d2b]">Укажите дату готовности начать:</p>
+          <div className="mt-4 space-y-3 border-t border-[#D0D0D0] pt-3">
+            <p className="text-xs font-semibold text-[#002B5C]">Укажите дату готовности начать:</p>
             <input
               type="date"
-              className="text-sm border border-[#b8ccbe] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/40 w-full"
+              className="text-sm border border-[#D0D0D0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/40 w-full"
               value={startDate}
               min={new Date().toISOString().split("T")[0]}
               onChange={e => setStartDate(e.target.value)}
@@ -1746,7 +1743,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
             <textarea
               rows={2}
               placeholder="Комментарий (необязательно)"
-              className="w-full text-sm border border-[#b8ccbe] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/40 resize-none"
+              className="w-full text-sm border border-[#D0D0D0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/40 resize-none"
               value={comment}
               onChange={e => setComment(e.target.value)}
             />
@@ -1760,7 +1757,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
               </button>
               <button
                 onClick={() => setAction("idle")}
-                className="px-3 py-1.5 text-xs text-[#5a7560] hover:text-[#141c17] transition-colors"
+                className="px-3 py-1.5 text-xs text-[#666666] hover:text-[#111111] transition-colors"
               >
                 Отмена
               </button>
@@ -1771,7 +1768,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
         {/* Decline form */}
         {action === "decline" && (
           <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
-            <p className="text-xs font-semibold text-[#1a3d2b]">Причина отказа:</p>
+            <p className="text-xs font-semibold text-[#002B5C]">Причина отказа:</p>
             <select
               className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300"
               value={declineReason}
@@ -2041,25 +2038,25 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
   }
 
   return (
-    <div className="bg-white border border-[#16a34a]/40 rounded-xl shadow-sm overflow-hidden">
+    <div className="bg-white border border-[#0F4C9A]/40 rounded-xl shadow-sm overflow-hidden">
       <div className="p-5">
         <ExpertActionItemHeader item={item} />
 
         {/* Request details */}
         {reqLoading ? (
-          <p className="text-xs text-[#8aaa90] mt-3">Загрузка деталей заказа…</p>
+          <p className="text-xs text-[#666666] mt-3">Загрузка деталей заказа…</p>
         ) : req ? (
-          <div className="mt-3 bg-[#f0f5f1] rounded-xl px-4 py-3 space-y-1.5">
-            <p className="text-[10px] font-mono text-[#8aaa90]">{shortId}</p>
-            <p className="text-sm font-semibold text-[#141c17]">{req.title}</p>
+          <div className="mt-3 bg-[#F4F4F4] rounded-xl px-4 py-3 space-y-1.5">
+            <p className="text-[10px] font-mono text-[#666666]">{shortId}</p>
+            <p className="text-sm font-semibold text-[#111111]">{req.title}</p>
             <div className="flex flex-wrap gap-1.5 mt-1">
               {req.expertise_type && (
-                <span className="text-[11px] text-[#16a34a] bg-[#16a34a]/10 px-1.5 py-0.5 rounded">
+                <span className="text-[11px] text-[#0F4C9A] bg-[#0F4C9A]/10 px-1.5 py-0.5 rounded">
                   {SPEC_L[req.expertise_type] ?? req.expertise_type}
                 </span>
               )}
               {req.region && (
-                <span className="text-[11px] text-[#5a7560] bg-[#d4e5d9] px-1.5 py-0.5 rounded">
+                <span className="text-[11px] text-[#666666] bg-[#D0D0D0] px-1.5 py-0.5 rounded">
                   {REG_L[req.region] ?? req.region}
                 </span>
               )}
@@ -2069,27 +2066,27 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
 
         {/* Approved start date */}
         {startFmt && (
-          <div className="mt-3 bg-[#16a34a]/5 border border-[#16a34a]/20 rounded-xl px-4 py-3">
+          <div className="mt-3 bg-[#0F4C9A]/5 border border-[#0F4C9A]/20 rounded-xl px-4 py-3">
             <p className="text-xs text-slate-700 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-[#16a34a] shrink-0" />
-              <span className="text-[#5a7560]">Согласованная дата начала:</span>
-              <span className="font-semibold text-[#141c17]">{startFmt}</span>
+              <Calendar className="w-3.5 h-3.5 text-[#0F4C9A] shrink-0" />
+              <span className="text-[#666666]">Согласованная дата начала:</span>
+              <span className="font-semibold text-[#111111]">{startFmt}</span>
             </p>
           </div>
         )}
 
         {/* Customer contacts */}
         {custContact && (custContact.name || custContact.phone || custContact.email) && (
-          <div className="mt-3 px-4 py-3 bg-white border border-[#d4e5d9] rounded-xl">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-2">Заказчик</p>
+          <div className="mt-3 px-4 py-3 bg-white border border-[#D0D0D0] rounded-xl">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-2">Заказчик</p>
             {custContact.name && (
-              <p className="text-sm font-semibold text-[#141c17]">{custContact.name}</p>
+              <p className="text-sm font-semibold text-[#111111]">{custContact.name}</p>
             )}
             {custContact.phone && (
-              <p className="text-xs text-[#5a7560] mt-1">Телефон: <span className="font-medium text-[#141c17]">{custContact.phone}</span></p>
+              <p className="text-xs text-[#666666] mt-1">Телефон: <span className="font-medium text-[#111111]">{custContact.phone}</span></p>
             )}
             {custContact.email && (
-              <p className="text-xs text-[#5a7560]">Email: <span className="font-medium text-[#141c17]">{custContact.email}</span></p>
+              <p className="text-xs text-[#666666]">Email: <span className="font-medium text-[#111111]">{custContact.email}</span></p>
             )}
           </div>
         )}
@@ -2117,7 +2114,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
         {/* Decline form */}
         {action === "decline" && (
           <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
-            <p className="text-xs font-semibold text-[#1a3d2b]">Причина отказа:</p>
+            <p className="text-xs font-semibold text-[#002B5C]">Причина отказа:</p>
             <select
               className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300"
               value={declineReason}

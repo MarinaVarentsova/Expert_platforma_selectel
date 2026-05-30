@@ -90,8 +90,8 @@ type MatchedExpert = {
 const COLUMNS = [
   { id: "new",     label: "Новый",         dotColor: "bg-slate-400",  bgColor: "bg-white border-slate-200",         accent: "", statuses: ["draft", "new"] },
   { id: "pending", label: "Идёт подбор",   dotColor: "bg-amber-400",  bgColor: "bg-amber-50/60 border-amber-200",   accent: "", statuses: ["pending", "matching"] },
-  { id: "match",   label: "Выбор эксперта",dotColor: "bg-[#16a34a]",  bgColor: "bg-[#f0f5f1] border-[#c8d8cc]",    accent: "", statuses: ["expert_selection"] },
-  { id: "working", label: "В работе",      dotColor: "bg-[#1a3d2b]",  bgColor: "bg-[#eaf3ec]/60 border-[#c8d8cc]", accent: "", statuses: ["in_progress", "in_work"] },
+  { id: "match",   label: "Выбор эксперта",dotColor: "bg-[#0F4C9A]",  bgColor: "bg-[#F4F4F4] border-[#D0D0D0]",    accent: "", statuses: ["expert_selection"] },
+  { id: "working", label: "В работе",      dotColor: "bg-[#002B5C]",  bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]", accent: "", statuses: ["in_progress", "in_work"] },
   { id: "done",    label: "Выполнен",      dotColor: "bg-emerald-400",bgColor: "bg-emerald-50/60 border-emerald-200",accent:"", statuses: ["completed"] },
   { id: "closed",  label: "Неактуален",    dotColor: "bg-slate-300",  bgColor: "bg-slate-50 border-slate-200",      accent: "", statuses: ["cancelled", "failed", "declined"] },
 ];
@@ -333,19 +333,19 @@ export default function CustomerDashboard() {
 
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет заказчика</p>
             <h1 className="text-xl font-bold text-slate-900">{user.full_name ?? user.email}</h1>
             <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-wrap sm:flex-shrink-0">
             <button
               onClick={() => setTab(tab === "profile" ? "requests" : "profile")}
               className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-all ${
                 tab === "profile"
-                  ? "bg-[#f0f5f1] border-[#c8d8cc] text-[#1a3d2b]"
-                  : "bg-white border-slate-200 text-slate-600 hover:bg-[#f0f5f1] hover:border-[#c8d8cc] hover:text-[#1a3d2b]"
+                  ? "bg-[#F4F4F4] border-[#D0D0D0] text-[#002B5C]"
+                  : "bg-white border-slate-200 text-slate-600 hover:bg-[#F4F4F4] hover:border-[#D0D0D0] hover:text-[#002B5C]"
               }`}
             >
               <User className="w-3.5 h-3.5" />
@@ -363,7 +363,7 @@ export default function CustomerDashboard() {
 
       {/* Tabs */}
       {tab !== "profile" && (
-        <div className="flex gap-1 mb-6 border-b border-slate-200">
+        <div className="flex gap-1 mb-6 border-b border-slate-200 overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 scrollbar-none">
           <TabButton active={tab === "requests"} onClick={() => setTab("requests")}>
             <ClipboardList className="w-3.5 h-3.5" />
             Мои заказы
@@ -444,7 +444,7 @@ export default function CustomerDashboard() {
                   <div>
                     <p className="text-[10px] font-mono text-slate-400 mb-0.5">#{item.request_id.slice(0, 8).toUpperCase()}</p>
                     <Link href={`/requests/${item.request_id}`}>
-                      <p className="text-sm font-semibold text-slate-800 hover:text-[#1a3d2b] transition-colors cursor-pointer">
+                      <p className="text-sm font-semibold text-slate-800 hover:text-[#002B5C] transition-colors cursor-pointer">
                         {item.title}
                       </p>
                     </Link>
@@ -533,8 +533,8 @@ function TabButton({ active, onClick, children }: {
       onClick={onClick}
       className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold transition-colors border-b-2 -mb-px
         ${active
-          ? "border-[#16a34a] text-[#1a3d2b]"
-          : "border-transparent text-slate-500 hover:text-[#1a3d2b] hover:border-[#c8d8cc]"
+          ? "border-[#0F4C9A] text-[#002B5C]"
+          : "border-transparent text-slate-500 hover:text-[#002B5C] hover:border-[#D0D0D0]"
         }`}
     >
       {children}
@@ -609,7 +609,7 @@ function ProfileView({
     setTimeout(() => setSavedOk(false), 3000);
   }
 
-  const ic = "w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 focus:border-[#16a34a] bg-white";
+  const ic = "w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A] bg-white";
 
   if (editing) {
     return (
@@ -696,7 +696,7 @@ function ProfileView({
           </span>
         )}
         <button onClick={beginEdit}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-[#f0f5f1] hover:border-[#c8d8cc] hover:text-[#1a3d2b] transition-all">
+          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-[#F4F4F4] hover:border-[#D0D0D0] hover:text-[#002B5C] transition-all">
           <Pencil className="w-3.5 h-3.5" />
           Редактировать профиль
         </button>
@@ -763,7 +763,7 @@ function ProfileView({
               </p>
             </div>
             <button onClick={beginEdit}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-[#c8d8cc] text-[#1a3d2b] bg-[#f0f5f1] hover:bg-[#e5f0e9] transition-all">
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-[#D0D0D0] text-[#002B5C] bg-[#F4F4F4] hover:bg-[#E9E9E9] transition-all">
               <Pencil className="w-3.5 h-3.5" />
               Заполнить профиль
             </button>
@@ -800,7 +800,7 @@ function InfoRow({ icon, label, value, mono }: {
 function CustomerCard({ request: r, needsRating }: { request: Request; needsRating?: boolean }) {
   const urgencyColor = r.urgency === "very_urgent" ? "border-l-red-400"
     : r.urgency === "urgent" ? "border-l-amber-400"
-    : "border-l-[#c8d8cc]";
+    : "border-l-[#D0D0D0]";
 
   const urgencyLabel: Record<string, string> = {
     urgent: "Срочно",
@@ -809,15 +809,15 @@ function CustomerCard({ request: r, needsRating }: { request: Request; needsRati
 
   return (
     <Link href={`/requests/${r.id}`}>
-      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgencyColor} p-3.5 hover:shadow-md hover:border-[#c8d8cc] transition-all cursor-pointer group shadow-sm`}>
-        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2 group-hover:text-[#1a3d2b] transition-colors">
+      <div className={`bg-white rounded-xl border border-slate-100 border-l-[3px] ${urgencyColor} p-3.5 hover:shadow-md hover:border-[#D0D0D0] transition-all cursor-pointer group shadow-sm`}>
+        <p className="text-xs font-semibold text-slate-800 leading-snug mb-2 line-clamp-2 group-hover:text-[#002B5C] transition-colors">
           {r.title}
         </p>
 
         <div className="space-y-1 mb-2.5">
           {r.expertise_type && (
             <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
-              <span className="inline-block h-1 w-1 rounded-full bg-[#8aaa90] flex-shrink-0" />
+              <span className="inline-block h-1 w-1 rounded-full bg-[#666666] flex-shrink-0" />
               {EXPERTISE_LABEL[r.expertise_type] ?? r.expertise_type}
             </p>
           )}
@@ -856,8 +856,8 @@ function CustomerCard({ request: r, needsRating }: { request: Request; needsRati
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-24 gap-4">
-      <div className="w-16 h-16 rounded-2xl bg-[#f0f5f1] flex items-center justify-center">
-        <FileText className="w-8 h-8 text-[#b8ccbe]" />
+      <div className="w-16 h-16 rounded-2xl bg-[#F4F4F4] flex items-center justify-center">
+        <FileText className="w-8 h-8 text-[#D0D0D0]" />
       </div>
       <div className="text-center">
         <p className="text-base font-semibold text-slate-700 mb-1">Заказов пока нет</p>
@@ -878,7 +878,7 @@ function EmptyState() {
 function LoadingScreen() {
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="h-5 w-5 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
+      <div className="h-5 w-5 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />
     </div>
   );
 }
@@ -886,7 +886,7 @@ function LoadingScreen() {
 function LoadingRows() {
   return (
     <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
-      <div className="h-4 w-4 rounded-full border-2 border-[#b8ccbe] border-t-[#1a3d2b] animate-spin" />
+      <div className="h-4 w-4 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />
       Загрузка…
     </div>
   );
@@ -911,8 +911,8 @@ function CustomerActionInbox({ items, userId, onDone }: {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-[#f0f5f1] flex items-center justify-center">
-          <Zap className="w-8 h-8 text-[#8aaa90]" />
+        <div className="w-16 h-16 rounded-2xl bg-[#F4F4F4] flex items-center justify-center">
+          <Zap className="w-8 h-8 text-[#666666]" />
         </div>
         <div className="text-center">
           <p className="text-base font-semibold text-slate-700 mb-1">Нет активных задач</p>
@@ -1127,19 +1127,19 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
 
         <button
           onClick={() => setExpanded(v => !v)}
-          className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#1a3d2b] hover:text-[#0a1a0f] transition-colors"
+          className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#002B5C] hover:text-[#0a1a0f] transition-colors"
         >
           {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           {isDecline ? "Выбрать другого эксперта" : "Посмотреть экспертов"}
           {!loading && experts.length > 0 && (
-            <span className="ml-1 text-[#8aaa90] font-normal">({experts.length})</span>
+            <span className="ml-1 text-[#666666] font-normal">({experts.length})</span>
           )}
         </button>
       </div>
 
       {expanded && (
         <div className="border-t border-slate-100 bg-slate-50/50 p-4 space-y-3">
-          {loading && <div className="flex items-center gap-2 text-xs text-slate-400 py-4"><div className="h-3.5 w-3.5 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />Загрузка экспертов…</div>}
+          {loading && <div className="flex items-center gap-2 text-xs text-slate-400 py-4"><div className="h-3.5 w-3.5 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />Загрузка экспертов…</div>}
           {!loading && experts.length === 0 && (
             <p className="text-xs text-slate-400 py-4 text-center">Нет доступных экспертов</p>
           )}
@@ -1291,13 +1291,13 @@ function ExpertCanStartCard({ item, userId, onDone }: {
 
         {/* Request details */}
         {loading ? (
-          <p className="text-xs text-[#8aaa90] mt-3">Загрузка…</p>
+          <p className="text-xs text-[#666666] mt-3">Загрузка…</p>
         ) : (
-          <div className="mt-3 bg-[#f0f5f1] rounded-xl px-4 py-3 space-y-1">
-            <p className="text-[10px] font-mono text-[#8aaa90]">{shortId}</p>
-            {reqTitle && <p className="text-sm font-semibold text-[#141c17]">{reqTitle}</p>}
+          <div className="mt-3 bg-[#F4F4F4] rounded-xl px-4 py-3 space-y-1">
+            <p className="text-[10px] font-mono text-[#666666]">{shortId}</p>
+            {reqTitle && <p className="text-sm font-semibold text-[#111111]">{reqTitle}</p>}
             {reqStatus && (
-              <span className="inline-block text-[10px] text-[#5a7560] bg-[#d4e5d9] px-1.5 py-0.5 rounded">
+              <span className="inline-block text-[10px] text-[#666666] bg-[#D0D0D0] px-1.5 py-0.5 rounded">
                 {REQUEST_STATUS_LABEL[reqStatus] ?? reqStatus}
               </span>
             )}
@@ -1475,7 +1475,7 @@ function ExpertProfileCard({ expert: e, busy, onSelect }: {
                 {e.completed_orders_count} выполнено
               </span>
               {e.business_trip_ready && (
-                <span className="text-[11px] text-[#1a3d2b] bg-[#f0f5f1] px-1.5 py-0.5 rounded">Командировки ✓</span>
+                <span className="text-[11px] text-[#002B5C] bg-[#F4F4F4] px-1.5 py-0.5 rounded">Командировки ✓</span>
               )}
             </div>
           </div>
@@ -1491,7 +1491,7 @@ function ExpertProfileCard({ expert: e, busy, onSelect }: {
         {(e.specializations.length > 0 || e.regions.length > 0) && (
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {e.specializations.slice(0, 3).map(s => (
-              <span key={s} className="text-[10px] font-medium text-[#1a3d2b] bg-[#f0f5f1] px-1.5 py-0.5 rounded">
+              <span key={s} className="text-[10px] font-medium text-[#002B5C] bg-[#F4F4F4] px-1.5 py-0.5 rounded">
                 {EXPERTISE_LABEL[s] ?? s}
               </span>
             ))}
@@ -1540,12 +1540,12 @@ function ExpertProfileCard({ expert: e, busy, onSelect }: {
 // ─── Shared: action item header ───────────────────────────────────────────────
 
 const ACTION_LABEL: Record<string, { label: string; color: string }> = {
-  experts_matched:              { label: "Подобраны эксперты",       color: "text-[#1a3d2b] bg-[#f0f5f1]" },
+  experts_matched:              { label: "Подобраны эксперты",       color: "text-[#002B5C] bg-[#F4F4F4]" },
   expert_declined:              { label: "Эксперт отказался",        color: "text-red-700 bg-red-50" },
   expert_can_start_from:        { label: "Предложена дата",          color: "text-amber-700 bg-amber-50" },
   expert_completed_order:       { label: "Заказ завершён",           color: "text-emerald-700 bg-emerald-50" },
   expert_started_work:          { label: "Эксперт взял в работу",   color: "text-emerald-700 bg-emerald-50" },
-  customer_selected_you:        { label: "Вас выбрали",              color: "text-[#1a3d2b] bg-[#f0f5f1]" },
+  customer_selected_you:        { label: "Вас выбрали",              color: "text-[#002B5C] bg-[#F4F4F4]" },
   customer_approved_start_date: { label: "Дата согласована",         color: "text-emerald-700 bg-emerald-50" },
   choose_another_expert:        { label: "Выберите другого эксперта",color: "text-amber-700 bg-amber-50" },
   manual_matching_required:     { label: "Нет доступных экспертов",  color: "text-slate-600 bg-slate-100" },

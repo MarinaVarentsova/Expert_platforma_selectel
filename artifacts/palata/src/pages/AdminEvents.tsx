@@ -123,7 +123,7 @@ export default function AdminEvents() {
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-5">
           <select
-            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30"
+            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30"
             value={fStatus}
             onChange={e => setFStatus(e.target.value)}
           >
@@ -131,27 +131,27 @@ export default function AdminEvents() {
             {statuses.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <input
-            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 w-48"
+            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 w-48"
             placeholder="Начало request_id…"
             value={fRequest}
             onChange={e => setFRequest(e.target.value)}
           />
           <input
             type="date"
-            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30"
+            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30"
             value={fDateFrom}
             onChange={e => setFDateFrom(e.target.value)}
           />
           <span className="text-xs text-slate-400 self-center">—</span>
           <input
             type="date"
-            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30"
+            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30"
             value={fDateTo}
             onChange={e => setFDateTo(e.target.value)}
           />
           <button
             onClick={load}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#16a34a] text-white hover:bg-[#15803d] transition-colors"
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#0F4C9A] text-white hover:bg-[#003a7a] transition-colors"
           >
             Применить
           </button>
@@ -188,7 +188,7 @@ export default function AdminEvents() {
                     <td className="px-3 py-2 max-w-[200px]">
                       {r.entity_type === "request" ? (
                         <Link href={`/requests/${r.entity_id}`}>
-                          <span className="text-[#16a34a] hover:text-[#1a3d2b] cursor-pointer truncate block">
+                          <span className="text-[#0F4C9A] hover:text-[#002B5C] cursor-pointer truncate block">
                             {r.request_title ?? r.entity_id.slice(0, 8) + "…"}
                           </span>
                         </Link>
@@ -227,7 +227,7 @@ export default function AdminEvents() {
 function Spinner() {
   return (
     <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
-      <div className="h-4 w-4 rounded-full border-2 border-[#c8d8cc] border-t-[#1a3d2b] animate-spin" />
+      <div className="h-4 w-4 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />
       Загрузка…
     </div>
   );

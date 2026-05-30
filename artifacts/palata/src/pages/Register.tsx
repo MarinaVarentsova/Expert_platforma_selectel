@@ -36,7 +36,7 @@ type Role = "customer" | "expert";
 type Step = "role" | "form" | "success";
 
 function inputClass(extra = "") {
-  return `w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#16a34a]/30 focus:border-[#16a34a] bg-white ${extra}`;
+  return `w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A] bg-white ${extra}`;
 }
 
 function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
@@ -178,18 +178,18 @@ export default function Register() {
 
   if (step === "success") {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-[#f0f5f1] flex items-center justify-center px-4 py-12">
+      <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl border border-[#d4e5d9] p-8 text-center shadow-sm">
+          <div className="bg-white rounded-2xl border border-[#D0D0D0] p-8 text-center shadow-sm">
             <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-5">
               <Check className="w-7 h-7 text-emerald-500" />
             </div>
-            <h2 className="text-xl font-bold text-[#141c17] mb-2">Проверьте email</h2>
-            <p className="text-sm text-[#5a7560] leading-relaxed mb-2">
+            <h2 className="text-xl font-bold text-[#111111] mb-2">Проверьте email</h2>
+            <p className="text-sm text-[#666666] leading-relaxed mb-2">
               Мы отправили письмо на{" "}
-              <span className="font-semibold text-[#141c17]">{email}</span>.
+              <span className="font-semibold text-[#111111]">{email}</span>.
             </p>
-            <p className="text-sm text-[#5a7560] leading-relaxed mb-6">
+            <p className="text-sm text-[#666666] leading-relaxed mb-6">
               Перейдите по ссылке в письме, чтобы активировать аккаунт.
             </p>
             <Link href="/login">
@@ -203,45 +203,45 @@ export default function Register() {
 
   if (step === "role") {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-[#f0f5f1] flex items-center justify-center px-4 py-12">
+      <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-lg">
           <div className="text-center mb-8">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-3">Регистрация</p>
-            <h1 className="text-2xl font-bold text-[#141c17] mb-2">Кто вы?</h1>
-            <p className="text-sm text-[#5a7560]">Выберите роль для создания аккаунта</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Регистрация</p>
+            <h1 className="text-2xl font-bold text-[#111111] mb-2">Кто вы?</h1>
+            <p className="text-sm text-[#666666]">Выберите роль для создания аккаунта</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             <button
               onClick={() => chooseRole("customer")}
-              className="bg-white rounded-2xl border border-[#d4e5d9] p-6 hover:border-[#b8ccbe] hover:shadow-md transition-all text-left group"
+              className="bg-white rounded-2xl border border-[#D0D0D0] p-6 hover:border-[#D0D0D0] hover:shadow-md transition-all text-left group"
             >
-              <div className="w-10 h-10 rounded-xl bg-[#f0f5f1] border border-[#c8d8cc] flex items-center justify-center mb-4">
-                <Building2 className="w-5 h-5 text-[#1a3d2b]" />
+              <div className="w-10 h-10 rounded-xl bg-[#F4F4F4] border border-[#D0D0D0] flex items-center justify-center mb-4">
+                <Building2 className="w-5 h-5 text-[#002B5C]" />
               </div>
-              <p className="text-sm font-bold text-[#141c17] mb-1 group-hover:text-[#1a3d2b] transition-colors">Заказчик</p>
-              <p className="text-xs text-[#5a7560] leading-relaxed">
+              <p className="text-sm font-bold text-[#111111] mb-1 group-hover:text-[#002B5C] transition-colors">Заказчик</p>
+              <p className="text-xs text-[#666666] leading-relaxed">
                 Организация или физическое лицо, которому нужна судебная экспертиза
               </p>
             </button>
 
             <button
               onClick={() => chooseRole("expert")}
-              className="bg-white rounded-2xl border border-[#d4e5d9] p-6 hover:border-[#b8ccbe] hover:shadow-md transition-all text-left group"
+              className="bg-white rounded-2xl border border-[#D0D0D0] p-6 hover:border-[#D0D0D0] hover:shadow-md transition-all text-left group"
             >
-              <div className="w-10 h-10 rounded-xl bg-[#f0f5f1] border border-[#c8d8cc] flex items-center justify-center mb-4">
-                <GraduationCap className="w-5 h-5 text-[#1a3d2b]" />
+              <div className="w-10 h-10 rounded-xl bg-[#F4F4F4] border border-[#D0D0D0] flex items-center justify-center mb-4">
+                <GraduationCap className="w-5 h-5 text-[#002B5C]" />
               </div>
-              <p className="text-sm font-bold text-[#141c17] mb-1 group-hover:text-[#1a3d2b] transition-colors">Эксперт</p>
-              <p className="text-xs text-[#5a7560] leading-relaxed">
+              <p className="text-sm font-bold text-[#111111] mb-1 group-hover:text-[#002B5C] transition-colors">Эксперт</p>
+              <p className="text-xs text-[#666666] leading-relaxed">
                 Аккредитованный судебный эксперт, принимающий заказы через платформу
               </p>
             </button>
           </div>
 
-          <p className="text-center text-xs text-[#8aaa90]">
+          <p className="text-center text-xs text-[#666666]">
             Уже есть аккаунт?{" "}
-            <Link href="/login" className="text-[#1a3d2b] font-semibold hover:underline">Войти</Link>
+            <Link href="/login" className="text-[#002B5C] font-semibold hover:underline">Войти</Link>
           </p>
         </div>
       </div>
@@ -249,12 +249,12 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-[#f0f5f1] px-4 py-10">
+    <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] px-4 py-10">
       <div className="max-w-xl mx-auto">
 
         <button
           onClick={() => setStep("role")}
-          className="flex items-center gap-1.5 text-xs text-[#5a7560] hover:text-[#1a3d2b] transition-colors mb-6"
+          className="flex items-center gap-1.5 text-xs text-[#666666] hover:text-[#002B5C] transition-colors mb-6"
         >
           <ChevronLeft className="w-3.5 h-3.5" />
           Назад к выбору роли
@@ -262,20 +262,20 @@ export default function Register() {
 
         <div className="mb-6 flex items-center gap-2">
           {role === "customer"
-            ? <Building2 className="w-5 h-5 text-[#1a3d2b]" />
-            : <GraduationCap className="w-5 h-5 text-[#1a3d2b]" />}
+            ? <Building2 className="w-5 h-5 text-[#002B5C]" />
+            : <GraduationCap className="w-5 h-5 text-[#002B5C]" />}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90]">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666]">
               {role === "customer" ? "Регистрация заказчика" : "Регистрация эксперта"}
             </p>
-            <h1 className="text-xl font-bold text-[#141c17] leading-snug">Создать аккаунт</h1>
+            <h1 className="text-xl font-bold text-[#111111] leading-snug">Создать аккаунт</h1>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
 
-          <div className="bg-white rounded-2xl border border-[#d4e5d9] p-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-4">Данные аккаунта</p>
+          <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-4">Данные аккаунта</p>
             <div className="space-y-3">
               <div>
                 <Label required>ФИО</Label>
@@ -312,8 +312,8 @@ export default function Register() {
           </div>
 
           {role === "customer" && (
-            <div className="bg-white rounded-2xl border border-[#d4e5d9] p-5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-4">Данные организации</p>
+            <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-4">Данные организации</p>
               <div className="space-y-3">
                 <div>
                   <Label>Компания / Организация</Label>
@@ -348,15 +348,15 @@ export default function Register() {
 
           {role === "expert" && (
             <>
-              <div className="bg-white rounded-2xl border border-[#d4e5d9] p-5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-3">Специализации</p>
+              <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Специализации</p>
                 <div className="flex flex-wrap gap-2">
                   {SPEC_OPTIONS.map(s => (
                     <button key={s.value} type="button" onClick={() => toggleSpec(s.value)}
                       className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
                         specializations.includes(s.value)
-                          ? "bg-[#1a3d2b] text-white border-[#1a3d2b]"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-[#c8d8cc] hover:text-[#1a3d2b]"
+                          ? "bg-[#002B5C] text-white border-[#002B5C]"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-[#D0D0D0] hover:text-[#002B5C]"
                       }`}>
                       {s.label}
                     </button>
@@ -364,15 +364,15 @@ export default function Register() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-[#d4e5d9] p-5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-3">Регионы работы</p>
+              <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Регионы работы</p>
                 <div className="flex flex-wrap gap-2">
                   {REGION_OPTIONS.map(r => (
                     <button key={r.value} type="button" onClick={() => toggleRegion(r.value)}
                       className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
                         regions.includes(r.value)
-                          ? "bg-[#1a3d2b] text-white border-[#1a3d2b]"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-[#c8d8cc] hover:text-[#1a3d2b]"
+                          ? "bg-[#002B5C] text-white border-[#002B5C]"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-[#D0D0D0] hover:text-[#002B5C]"
                       }`}>
                       {r.label}
                     </button>
@@ -380,12 +380,12 @@ export default function Register() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-[#d4e5d9] p-5 space-y-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90]">Статус и реестры</p>
+              <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5 space-y-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666]">Статус и реестры</p>
 
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input type="checkbox" checked={tripReady} onChange={e => setTripReady(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+                    className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
                   <div>
                     <p className="text-sm font-medium text-slate-800">Готов к командировкам</p>
                     <p className="text-xs text-slate-400">Выезд в другой регион</p>
@@ -395,7 +395,7 @@ export default function Register() {
                 <div className="space-y-2">
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" checked={palataOk} onChange={e => setPalataOk(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+                      className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
                     <p className="text-sm font-medium text-slate-800">Зарегистрирован в Палате судебных экспертов</p>
                   </label>
                   {palataOk && (
@@ -407,7 +407,7 @@ export default function Register() {
                 <div className="space-y-2">
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" checked={centrsudOk} onChange={e => setCentrsudOk(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 accent-[#1a3d2b]" />
+                      className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
                     <p className="text-sm font-medium text-slate-800">Зарегистрирован в Центр судебных экспертиз</p>
                   </label>
                   {centrsudOk && (
@@ -417,8 +417,8 @@ export default function Register() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-[#d4e5d9] p-5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90] mb-3">Описание опыта</p>
+              <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Описание опыта</p>
                 <textarea value={bio} onChange={e => setBio(e.target.value)} rows={4}
                   placeholder="Опишите ваш опыт, специализации, достижения..."
                   className={inputClass("resize-none")} />
@@ -436,9 +436,9 @@ export default function Register() {
             {loading ? "Создание аккаунта…" : "Зарегистрироваться"}
           </button>
 
-          <p className="text-center text-xs text-[#8aaa90] pb-2">
+          <p className="text-center text-xs text-[#666666] pb-2">
             Уже есть аккаунт?{" "}
-            <Link href="/login" className="text-[#1a3d2b] font-semibold hover:underline">Войти</Link>
+            <Link href="/login" className="text-[#002B5C] font-semibold hover:underline">Войти</Link>
           </p>
 
         </form>

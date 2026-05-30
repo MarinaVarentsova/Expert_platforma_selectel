@@ -23,15 +23,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <>
       {/* Admin sub-header */}
-      <div className="bg-white border-b border-[#d4e5d9]">
+      <div className="bg-white border-b border-[#D0D0D0]">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between pt-4 pb-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#8aaa90]">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666]">
               Панель управления
             </p>
             <div className="flex items-center gap-1.5 pb-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] text-[#8aaa90] font-medium">Live</span>
+              <span className="text-[10px] text-[#666666] font-medium">Live</span>
             </div>
           </div>
 
@@ -43,10 +43,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <span className={[
                     "inline-flex items-center gap-1.5 px-3.5 py-2.5 text-sm font-medium border-b-2 transition-all select-none rounded-t-lg",
                     active
-                      ? "border-[#16a34a] text-[#141c17] bg-[#f0f5f1]"
-                      : "border-transparent text-[#8aaa90] hover:text-[#1a3d2b] hover:border-[#c8d8cc] hover:bg-[#f5faf6]",
+                      ? "border-[#0F4C9A] text-[#111111] bg-[#F4F4F4]"
+                      : "border-transparent text-[#666666] hover:text-[#002B5C] hover:border-[#D0D0D0] hover:bg-[#f5faf6]",
                   ].join(" ")}>
-                    <tab.Icon className={["w-3.5 h-3.5", active ? "text-[#16a34a]" : "text-[#b8ccbe]"].join(" ")} />
+                    <tab.Icon className={["w-3.5 h-3.5", active ? "text-[#0F4C9A]" : "text-[#D0D0D0]"].join(" ")} />
                     {tab.label}
                   </span>
                 </Link>

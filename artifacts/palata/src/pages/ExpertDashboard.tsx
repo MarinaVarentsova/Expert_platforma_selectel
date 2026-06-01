@@ -5,6 +5,11 @@ import { runMatching } from "@/lib/matching";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { CertificateInputList } from "@/components/CertificateInputList";
+import {
+  verifyCertificate, mergeDirectionIds, normalizeCertNumber,
+  type CertResult,
+} from "@/lib/certificates";
 import {
   Inbox, Star, User, CheckCircle2, XCircle, MapPin,
   Briefcase, FileText, GraduationCap, ClipboardList, Zap, Calendar,
@@ -628,6 +633,9 @@ function ProfileView({
   const [dirIds, setDirIds]           = useState<string[]>([]);
   const [regs, setRegs]               = useState<string[]>([]);
   const [regionNames, setRegionNames] = useState<string[]>([]);
+  const [certNumbers, setCertNumbers]   = useState<string[]>([""]);
+  const [certResults, setCertResultsS]  = useState<(CertResult | null)[]>([null]);
+  const [certVerifying, setCertVerifying] = useState<boolean[]>([false]);
 
   useEffect(() => {
     supabase.from("palata_expert_directions")
@@ -646,6 +654,16 @@ function ProfileView({
           const { data: rd } = await supabase.from("palata_regions").select("id, name").in("id", ids);
           const nm = Object.fromEntries((rd ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
           setRegionNames(ids.map(id => nm[id] ?? id));
+        }
+      });
+    supabase.from("palata_expert_certificates")
+      .select("certificate_number, status, cert_valid_to, cert_direction_ids")
+      .eq("expert_id", userId)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setCertNumbers(data.map((c: { certificate_number: string }) => c.certificate_number));
+          setCertResultsS(data.map(() => null));
+          setCertVerifying(data.map(() => false));
         }
       });
   }, [userId]);
@@ -673,7 +691,28 @@ function ProfileView({
     setEditing(true);
   }
 
-  function toggleSpec(v: string) { setDirIds(s => s.includes(v) ? s.filter(x => x !== v) : [...s, v]); }
+  function addCert() {
+    setCertNumbers(p => [...p, ""]);
+    setCertResultsS(p => [...p, null]);
+    setCertVerifying(p => [...p, false]);
+  }
+  function removeCert(idx: number) {
+    setCertNumbers(p => p.filter((_, i) => i !== idx));
+    setCertResultsS(p => p.filter((_, i) => i !== idx));
+    setCertVerifying(p => p.filter((_, i) => i !== idx));
+  }
+  function updateCert(idx: number, val: string) {
+    setCertNumbers(p => p.map((v, i) => i === idx ? val : v));
+    setCertResultsS(p => p.map((v, i) => i === idx ? null : v));
+  }
+  async function verifyCert(idx: number) {
+    const raw = certNumbers[idx];
+    if (!raw.trim()) return;
+    setCertVerifying(p => p.map((v, i) => i === idx ? true : v));
+    const result = await verifyCertificate(raw, allDirections);
+    setCertResultsS(p => p.map((v, i) => i === idx ? result : v));
+    setCertVerifying(p => p.map((v, i) => i === idx ? false : v));
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -701,12 +740,41 @@ function ProfileView({
       setSaveErr((r1.error ?? r2.error)!.message);
       return;
     }
+    // Re-verify certs and derive directions
+    const finalResults = [...certResults];
+    for (let i = 0; i < certNumbers.length; i++) {
+      if (certNumbers[i].trim() && !certResults[i]) {
+        finalResults[i] = await verifyCertificate(certNumbers[i], allDirections);
+      }
+    }
+    const newDirIds = mergeDirectionIds(finalResults.filter(Boolean) as NonNullable<typeof finalResults[0]>[]);
+
     await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
-    if (dirIds.length > 0) {
+    if (newDirIds.length > 0) {
       await supabase.from("palata_expert_directions").insert(
-        dirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
+        newDirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
       );
     }
+    setDirIds(newDirIds);
+
+    // Save certificates (replace all)
+    await supabase.from("palata_expert_certificates").delete().eq("expert_id", userId);
+    const certsToSave = certNumbers
+      .map((num, i) => ({ num: normalizeCertNumber(num), result: finalResults[i] }))
+      .filter(({ num }) => num.length > 0);
+    if (certsToSave.length > 0) {
+      await supabase.from("palata_expert_certificates").insert(
+        certsToSave.map(({ num, result }) => ({
+          expert_id:          userId,
+          certificate_number: num,
+          status:             result?.status ?? "pending",
+          cert_valid_to:      result?.validTo ?? null,
+          cert_expert_name:   result?.expertName ?? null,
+          cert_direction_ids: result?.directionIds ?? [],
+        }))
+      );
+    }
+    setCertResultsS(finalResults);
     await supabase.from("palata_expert_regions").delete().eq("expert_id", userId);
     if (regs.length > 0) {
       await supabase.from("palata_expert_regions").insert(
@@ -773,19 +841,19 @@ function ProfileView({
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Специализации</p>
-          <div className="flex flex-wrap gap-2">
-            {allDirections.map(d => (
-              <button key={d.id} type="button" onClick={() => toggleSpec(d.id)}
-                className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-                  dirIds.includes(d.id)
-                    ? "bg-[#002B5C] text-white border-[#002B5C]"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-[#D0D0D0] hover:text-[#002B5C]"
-                }`}>
-                {d.name}
-              </button>
-            ))}
-          </div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Сертификаты эксперта</p>
+          <p className="text-xs text-slate-400 mb-4">
+            Направления экспертизы определяются автоматически по сертификатам.
+          </p>
+          <CertificateInputList
+            numbers={certNumbers}
+            results={certResults}
+            verifying={certVerifying}
+            onChange={updateCert}
+            onVerify={verifyCert}
+            onAdd={addCert}
+            onRemove={removeCert}
+          />
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
@@ -943,6 +1011,37 @@ function ProfileView({
       {/* Right column */}
       <div className="xl:col-span-2 flex flex-col gap-4">
 
+        {/* Certificates */}
+        <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <GraduationCap className="w-4 h-4 text-slate-400" />
+            <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Сертификаты</p>
+          </div>
+          {certNumbers.filter(n => n.trim()).length > 0 ? (
+            <div className="space-y-2">
+              {certNumbers.filter(n => n.trim()).map((num, i) => {
+                const r = certResults[i];
+                const statusLabel =
+                  r?.status === "verified" ? "✓ Подтверждён" :
+                  r?.status === "expired"  ? "⚠ Истёк" :
+                  r?.status === "not_found"? "✗ Не найден" : "Ожидает проверки";
+                const statusCls =
+                  r?.status === "verified" ? "text-emerald-700 bg-emerald-50" :
+                  r?.status === "expired"  ? "text-red-600 bg-red-50" :
+                  r?.status === "not_found"? "text-amber-700 bg-amber-50" : "text-slate-500 bg-slate-50";
+                return (
+                  <div key={i} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-mono text-slate-700">{num}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusCls}`}>{statusLabel}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400">Не добавлены</p>
+          )}
+        </div>
+
         {/* Specializations */}
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
@@ -958,7 +1057,7 @@ function ProfileView({
               ))}
             </div>
           ) : (
-            <p className="text-xs text-slate-400">Не указаны</p>
+            <p className="text-xs text-slate-400">Определяются по сертификатам</p>
           )}
         </div>
 

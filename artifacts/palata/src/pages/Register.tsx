@@ -5,9 +5,12 @@ import {
   ChevronLeft, Building2, GraduationCap, Check,
   Eye, EyeOff,
 } from "lucide-react";
-import { useRef } from "react";
-import { ChevronDown, X } from "lucide-react";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
+import { CertificateInputList } from "@/components/CertificateInputList";
+import {
+  verifyCertificate, mergeDirectionIds, normalizeCertNumber,
+  type CertResult,
+} from "@/lib/certificates";
 
 type Role = "customer" | "expert";
 type Step = "role" | "form" | "success";
@@ -47,30 +50,20 @@ export default function Register() {
   // Shared region IDs for both customer and expert
   const [regionIds, setRegionIds]         = useState<string[]>([]);
 
-  const [selectedDirIds, setSelectedDirIds] = useState<string[]>([]);
-  const [directions, setDirections]         = useState<Array<{ id: string; name: string }>>([]);
-  const [dirDropOpen, setDirDropOpen]       = useState(false);
-  const [dirSearch, setDirSearch]           = useState("");
-  const dirDropRef                          = useRef<HTMLDivElement>(null);
+  // All directions — needed for cert → direction fallback lookup
+  const [allDirections, setAllDirections] = useState<Array<{ id: string; name: string }>>([]);
+
+  // Expert certificates
+  const [certNumbers, setCertNumbers]     = useState<string[]>([""]);
+  const [certResults, setCertResults]     = useState<(CertResult | null)[]>([null]);
+  const [certVerifying, setCertVerifying] = useState<boolean[]>([false]);
 
   useEffect(() => {
     supabase.from("palata_expertise_directions")
       .select("id, name")
       .order("sort_order")
-      .then(({ data }) => setDirections(data ?? []));
+      .then(({ data }) => setAllDirections(data ?? []));
   }, []);
-
-  useEffect(() => {
-    if (!dirDropOpen) return;
-    function handler(e: MouseEvent) {
-      if (dirDropRef.current && !dirDropRef.current.contains(e.target as Node)) {
-        setDirDropOpen(false);
-        setDirSearch("");
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [dirDropOpen]);
 
   const [tripReady, setTripReady]         = useState(false);
   const [palataOk, setPalataOk]           = useState(false);
@@ -79,13 +72,27 @@ export default function Register() {
   const [centrsudNum, setCentrsudNum]     = useState("");
   const [bio, setBio]                     = useState("");
 
-  const MAX_DIRS = 10;
-  function toggleSpec(v: string) {
-    setSelectedDirIds(p => {
-      if (p.includes(v)) return p.filter(x => x !== v);
-      if (p.length >= MAX_DIRS) return p;
-      return [...p, v];
-    });
+  function addCert() {
+    setCertNumbers(p => [...p, ""]);
+    setCertResults(p => [...p, null]);
+    setCertVerifying(p => [...p, false]);
+  }
+  function removeCert(idx: number) {
+    setCertNumbers(p => p.filter((_, i) => i !== idx));
+    setCertResults(p => p.filter((_, i) => i !== idx));
+    setCertVerifying(p => p.filter((_, i) => i !== idx));
+  }
+  function updateCert(idx: number, val: string) {
+    setCertNumbers(p => p.map((v, i) => i === idx ? val : v));
+    setCertResults(p => p.map((v, i) => i === idx ? null : v));
+  }
+  async function verifyCert(idx: number) {
+    const raw = certNumbers[idx];
+    if (!raw.trim()) return;
+    setCertVerifying(p => p.map((v, i) => i === idx ? true : v));
+    const result = await verifyCertificate(raw, allDirections);
+    setCertResults(p => p.map((v, i) => i === idx ? result : v));
+    setCertVerifying(p => p.map((v, i) => i === idx ? false : v));
   }
 
   function chooseRole(r: Role) {
@@ -175,9 +182,32 @@ export default function Register() {
           centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
         }, { onConflict: "user_id" });
 
-        if (selectedDirIds.length > 0) {
+        // Verify any unverified certs, then save directions + certificates
+        const finalResults = [...certResults];
+        for (let i = 0; i < certNumbers.length; i++) {
+          if (certNumbers[i].trim() && !certResults[i]) {
+            finalResults[i] = await verifyCertificate(certNumbers[i], allDirections);
+          }
+        }
+        const dirIds = mergeDirectionIds(finalResults.filter(Boolean) as NonNullable<typeof finalResults[0]>[]);
+        if (dirIds.length > 0) {
           await supabase.from("palata_expert_directions").insert(
-            selectedDirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
+            dirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
+          );
+        }
+        const certsToSave = certNumbers
+          .map((num, i) => ({ num: num.trim(), result: finalResults[i] }))
+          .filter(({ num }) => num.length > 0);
+        if (certsToSave.length > 0) {
+          await supabase.from("palata_expert_certificates").insert(
+            certsToSave.map(({ num, result }) => ({
+              expert_id:          userId,
+              certificate_number: normalizeCertNumber(num),
+              status:             result?.status ?? "pending",
+              cert_valid_to:      result?.validTo ?? null,
+              cert_expert_name:   result?.expertName ?? null,
+              cert_direction_ids: result?.directionIds ?? [],
+            }))
           );
         }
 
@@ -369,96 +399,19 @@ export default function Register() {
           {role === "expert" && (
             <>
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666]">Направления экспертизы</p>
-                  <span className="text-[10px] text-slate-400">{selectedDirIds.length}/{MAX_DIRS}</span>
-                </div>
-
-                <div className="relative" ref={dirDropRef}>
-                  <button
-                    type="button"
-                    onClick={() => setDirDropOpen(v => !v)}
-                    className="w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A] hover:border-slate-300 transition-colors"
-                  >
-                    <span className={selectedDirIds.length === 0 ? "text-slate-400" : "text-[#111111]"}>
-                      {selectedDirIds.length === 0
-                        ? "Выберите направления экспертизы…"
-                        : `Выбрано направлений: ${selectedDirIds.length}`}
-                    </span>
-                    <ChevronDown className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${dirDropOpen ? "rotate-180" : ""}`} />
-                  </button>
-
-                  {dirDropOpen && (
-                    <div className="absolute z-20 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
-                      <div className="p-2 border-b border-slate-100">
-                        <input
-                          type="text"
-                          value={dirSearch}
-                          onChange={e => setDirSearch(e.target.value)}
-                          placeholder="Поиск направления…"
-                          autoFocus
-                          className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A]"
-                        />
-                      </div>
-
-                      <div className="max-h-56 overflow-y-auto">
-                        {directions
-                          .filter(d => d.name.toLowerCase().includes(dirSearch.toLowerCase()))
-                          .map(d => {
-                            const sel = selectedDirIds.includes(d.id);
-                            const disabled = !sel && selectedDirIds.length >= MAX_DIRS;
-                            return (
-                              <button
-                                key={d.id}
-                                type="button"
-                                disabled={disabled}
-                                onClick={() => toggleSpec(d.id)}
-                                className={`w-full text-left px-3 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
-                                  disabled
-                                    ? "opacity-40 cursor-not-allowed"
-                                    : sel
-                                    ? "bg-[#F0F4FF] text-[#002B5C]"
-                                    : "hover:bg-[#F4F4F4] text-[#111111]"
-                                }`}
-                              >
-                                <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
-                                  sel ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300"
-                                }`}>
-                                  {sel && <Check className="w-2.5 h-2.5 text-white" />}
-                                </div>
-                                {d.name}
-                              </button>
-                            );
-                          })}
-                        {directions.filter(d => d.name.toLowerCase().includes(dirSearch.toLowerCase())).length === 0 && (
-                          <p className="text-sm text-slate-400 text-center py-6">Ничего не найдено</p>
-                        )}
-                      </div>
-
-                      {selectedDirIds.length >= MAX_DIRS && (
-                        <div className="px-3 py-2 border-t border-slate-100 bg-amber-50">
-                          <p className="text-[11px] text-amber-700">Выбрано максимальное количество направлений ({MAX_DIRS})</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {selectedDirIds.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {selectedDirIds.map(id => {
-                      const d = directions.find(x => x.id === id);
-                      return (
-                        <span key={id} className="inline-flex items-center gap-1 text-xs bg-[#002B5C] text-white px-2.5 py-1 rounded-full">
-                          {d?.name ?? id}
-                          <button type="button" onClick={() => toggleSpec(id)} className="hover:opacity-70 transition-opacity ml-0.5">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-1">Сертификаты эксперта</p>
+                <p className="text-xs text-slate-400 mb-4">
+                  Введите номера сертификатов. Направления экспертизы будут определены автоматически.
+                </p>
+                <CertificateInputList
+                  numbers={certNumbers}
+                  results={certResults}
+                  verifying={certVerifying}
+                  onChange={updateCert}
+                  onVerify={verifyCert}
+                  onAdd={addCert}
+                  onRemove={removeCert}
+                />
               </div>
 
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">

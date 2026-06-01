@@ -122,6 +122,12 @@ export default function Register() {
     let newCertWarnings: string[]          = [];
 
     if (role === "expert") {
+      if (!palataOk) {
+        setError("Регистрация эксперта возможна только при наличии действующего сертификата Палаты судебных экспертов.");
+        setLoading(false);
+        return;
+      }
+
       for (let i = 0; i < certNumbers.length; i++) {
         if (certNumbers[i].trim() && !preVerified[i]) {
           preVerified[i] = await verifyCertificate(certNumbers[i], allDirections);
@@ -477,22 +483,7 @@ export default function Register() {
 
           {role === "expert" && (
             <>
-              <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-1">Сертификаты эксперта</p>
-                <p className="text-xs text-slate-400 mb-4">
-                  Введите номера сертификатов. Направления экспертизы будут определены автоматически.
-                </p>
-                <CertificateInputList
-                  numbers={certNumbers}
-                  results={certResults}
-                  verifying={certVerifying}
-                  onChange={updateCert}
-                  onVerify={verifyCert}
-                  onAdd={addCert}
-                  onRemove={removeCert}
-                />
-              </div>
-
+              {/* Регионы работы */}
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Регионы работы</p>
                 <RegionMultiSelect
@@ -502,6 +493,7 @@ export default function Register() {
                 />
               </div>
 
+              {/* Статус и реестры */}
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5 space-y-4">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666]">Статус и реестры</p>
 
@@ -514,18 +506,36 @@ export default function Register() {
                   </div>
                 </label>
 
-                <div className="space-y-2">
+                {/* Палата: checkbox + сертификаты внутри */}
+                <div className="space-y-3">
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" checked={palataOk} onChange={e => setPalataOk(e.target.checked)}
                       className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
                     <p className="text-sm font-medium text-slate-800">Сертифицирован Палатой судебных экспертов</p>
                   </label>
-                  {palataOk && (
-                    <input type="text" value={palataNum} onChange={e => setPalataNum(e.target.value)}
-                      placeholder="Номер регистрации" className={inputClass("font-mono ml-7")} />
+                  {palataOk ? (
+                    <div className="ml-7">
+                      <p className="text-xs text-slate-400 mb-3">
+                        Введите номера сертификатов. Направления экспертизы определятся автоматически.
+                      </p>
+                      <CertificateInputList
+                        numbers={certNumbers}
+                        results={certResults}
+                        verifying={certVerifying}
+                        onChange={updateCert}
+                        onVerify={verifyCert}
+                        onAdd={addCert}
+                        onRemove={removeCert}
+                      />
+                    </div>
+                  ) : (
+                    <p className="ml-7 text-xs text-slate-400">
+                      Регистрация эксперта возможна только при наличии действующего сертификата Палаты.
+                    </p>
                   )}
                 </div>
 
+                {/* СРО ЦСЭ */}
                 <div className="space-y-2">
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" checked={centrsudOk} onChange={e => setCentrsudOk(e.target.checked)}
@@ -539,6 +549,7 @@ export default function Register() {
                 </div>
               </div>
 
+              {/* Описание опыта */}
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Описание опыта</p>
                 <textarea value={bio} onChange={e => setBio(e.target.value)} rows={4}

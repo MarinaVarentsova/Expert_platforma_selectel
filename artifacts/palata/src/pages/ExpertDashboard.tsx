@@ -633,9 +633,12 @@ function ProfileView({
   const [dirIds, setDirIds]           = useState<string[]>([]);
   const [regs, setRegs]               = useState<string[]>([]);
   const [regionNames, setRegionNames] = useState<string[]>([]);
-  const [certNumbers, setCertNumbers]   = useState<string[]>([""]);
-  const [certResults, setCertResultsS]  = useState<(CertResult | null)[]>([null]);
+  const [certNumbers, setCertNumbers]     = useState<string[]>([""]);
+  const [certResults, setCertResultsS]    = useState<(CertResult | null)[]>([null]);
   const [certVerifying, setCertVerifying] = useState<boolean[]>([false]);
+  const [certWarnMsgs, setCertWarnMsgs]   = useState<string[]>([]);
+
+  const PALATA_URL = "https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/";
 
   useEffect(() => {
     supabase.from("palata_expert_directions")
@@ -717,6 +720,38 @@ function ProfileView({
   async function handleSave() {
     setSaving(true);
     setSaveErr(null);
+    setCertWarnMsgs([]);
+
+    // 1. Re-verify any unverified certs
+    const finalResults = [...certResults];
+    for (let i = 0; i < certNumbers.length; i++) {
+      if (certNumbers[i].trim() && !certResults[i]) {
+        finalResults[i] = await verifyCertificate(certNumbers[i], allDirections);
+      }
+    }
+    setCertResultsS(finalResults);
+
+    // 2. Keep only verified certs
+    const verifiedResults = finalResults.filter(
+      (r): r is CertResult => r?.status === "verified"
+    );
+
+    // 3. Warn about invalid certs
+    const warnMsgs: string[] = certNumbers
+      .map((num, i) => ({ num: normalizeCertNumber(num.trim()), result: finalResults[i] }))
+      .filter(({ num, result }) => num.length > 0 && result?.status !== "verified")
+      .map(({ num }) =>
+        `Сертификат ${num} не найден или срок его действия истёк. Добавить можно только действующий сертификат. ` +
+        `Новый сертификат можно получить на сайте Палаты: ${PALATA_URL}`
+      );
+    setCertWarnMsgs(warnMsgs);
+
+    // 4. accepts_requests → false if no verified certs remain
+    const hasVerified = verifiedResults.length > 0;
+    const effectiveAccepts = hasVerified ? accepts : false;
+    if (!hasVerified) setAccepts(false);
+
+    // 5. Save user + profile
     const [r1, r2] = await Promise.all([
       supabase.from("palata_users")
         .update({ full_name: fullName.trim() || null, phone: phone.trim() || null })
@@ -728,7 +763,7 @@ function ProfileView({
           experience_years:                 expYears ? parseInt(expYears) : null,
           education:                        education.trim() || null,
           business_trip_ready:              tripReady,
-          accepts_requests:                 accepts,
+          accepts_requests:                 effectiveAccepts,
           palata_registry_verified:         palataOk,
           palata_registry_number:           palataOk ? palataNum.trim() || null : null,
           centrsudexpert_verified:          centrsudOk,
@@ -740,15 +775,9 @@ function ProfileView({
       setSaveErr((r1.error ?? r2.error)!.message);
       return;
     }
-    // Re-verify certs and derive directions
-    const finalResults = [...certResults];
-    for (let i = 0; i < certNumbers.length; i++) {
-      if (certNumbers[i].trim() && !certResults[i]) {
-        finalResults[i] = await verifyCertificate(certNumbers[i], allDirections);
-      }
-    }
-    const newDirIds = mergeDirectionIds(finalResults.filter(Boolean) as NonNullable<typeof finalResults[0]>[]);
 
+    // 6. Recalculate directions from verified certs only
+    const newDirIds = mergeDirectionIds(verifiedResults);
     await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
     if (newDirIds.length > 0) {
       await supabase.from("palata_expert_directions").insert(
@@ -757,24 +786,28 @@ function ProfileView({
     }
     setDirIds(newDirIds);
 
-    // Save certificates (replace all)
+    // 7. Save only verified certs (replace all)
     await supabase.from("palata_expert_certificates").delete().eq("expert_id", userId);
-    const certsToSave = certNumbers
-      .map((num, i) => ({ num: normalizeCertNumber(num), result: finalResults[i] }))
-      .filter(({ num }) => num.length > 0);
-    if (certsToSave.length > 0) {
+    if (verifiedResults.length > 0) {
       await supabase.from("palata_expert_certificates").insert(
-        certsToSave.map(({ num, result }) => ({
+        verifiedResults.map(r => ({
           expert_id:          userId,
-          certificate_number: num,
-          status:             result?.status ?? "pending",
-          cert_valid_to:      result?.validTo ?? null,
-          cert_expert_name:   result?.expertName ?? null,
-          cert_direction_ids: result?.directionIds ?? [],
+          certificate_number: r.number,
+          status:             "verified" as const,
+          cert_valid_to:      r.validTo ?? null,
+          cert_expert_name:   r.expertName ?? null,
+          cert_direction_ids: r.directionIds,
         }))
       );
     }
-    setCertResultsS(finalResults);
+
+    // 8. Update cert UI to show only verified certs
+    const verifiedNums = verifiedResults.map(r => r.number);
+    setCertNumbers(verifiedNums.length > 0 ? verifiedNums : [""]);
+    setCertResultsS(verifiedNums.length > 0 ? verifiedResults : [null]);
+    setCertVerifying(verifiedNums.length > 0 ? verifiedNums.map(() => false) : [false]);
+
+    // 9. Save regions
     await supabase.from("palata_expert_regions").delete().eq("expert_id", userId);
     if (regs.length > 0) {
       await supabase.from("palata_expert_regions").insert(
@@ -786,6 +819,7 @@ function ProfileView({
     } else {
       setRegionNames([]);
     }
+
     setSaving(false);
     setEditing(false);
     setSavedOk(true);
@@ -1010,6 +1044,22 @@ function ProfileView({
 
       {/* Right column */}
       <div className="xl:col-span-2 flex flex-col gap-4">
+
+        {/* No active certs warning */}
+        {certNumbers.filter(n => n.trim()).length === 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+            <p className="text-sm text-amber-800 leading-relaxed">
+              У вас нет действующих сертификатов. Вы не участвуете в подборе заказов.
+            </p>
+          </div>
+        )}
+
+        {/* Per-cert warnings after save */}
+        {certWarnMsgs.map((msg, i) => (
+          <div key={i} className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+            <p className="text-sm text-amber-800 leading-relaxed">{msg}</p>
+          </div>
+        ))}
 
         {/* Certificates */}
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">

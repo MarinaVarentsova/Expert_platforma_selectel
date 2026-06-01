@@ -58,7 +58,7 @@ export default function Nav() {
           {/* Brand */}
           <Link href="/">
             <div className="flex items-center mr-4 sm:mr-8 cursor-pointer select-none">
-              <span className="text-sm font-bold text-[#111111] tracking-tight">Палата СЭ</span>
+              <span className="text-sm font-bold text-[#111111] tracking-tight">Главная</span>
             </div>
           </Link>
 

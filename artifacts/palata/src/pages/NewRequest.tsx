@@ -68,7 +68,7 @@ export default function NewRequest() {
 
   useEffect(() => {
     supabase.from("palata_regions").select("id, name")
-      .eq("is_active", true).order("sort_order").order("name")
+      .order("sort_order").order("name")
       .then(({ data }) => setAllRegions(data ?? []));
   }, []);
 

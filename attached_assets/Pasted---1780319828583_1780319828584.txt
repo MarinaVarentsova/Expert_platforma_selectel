@@ -1,0 +1,150 @@
+СРОЧНО. Нужно переключить код приложения на новую нормализованную модель БД.
+
+Не менять бизнес-статусы заказов, workflow, action items и email events.
+
+# 1. Регионы
+
+Источник истины:
+
+- palata_regions
+- palata_requests.region_id
+- palata_customer_profiles.region_id
+- palata_expert_regions
+
+Больше не использовать как источник истины:
+
+- palata_requests.region
+- palata_customer_profiles.region
+- palata_expert_profiles.regions
+
+Формы регистрации, профиля, создания заказа и фильтры должны брать регионы из palata_regions.
+
+Эксперт может иметь несколько регионов через palata_expert_regions.
+
+Если регион не указан — показывать "Регион не указан", приложение не должно падать.
+
+# 2. Направления экспертиз
+
+Источник истины:
+
+- palata_expertise_directions
+- palata_requests.expertise_direction_id
+- palata_expert_directions
+
+Больше не использовать как источник истины:
+
+- palata_requests.expertise_type
+- palata_expert_profiles.specializations
+
+# 3. Коды специальностей
+
+Есть таблица:
+
+- palata_specialty_codes
+
+Связь:
+
+palata_specialty_codes.expertise_direction_id
+→ palata_expertise_directions.id
+
+Код сертификата определяет направление экспертизы.
+
+# 4. Сертификаты
+
+Есть таблица:
+
+- palata_certificates
+
+В ней загружены активные сертификаты экспертов.
+
+Основные поля:
+
+- certificate_number
+- expert_full_name
+- specialty_text
+- certificate_period
+- specialty_code
+- valid_from
+- valid_to
+- is_active
+
+При регистрации эксперт вводит номер сертификата.
+
+Логика:
+
+1. Найти сертификат в palata_certificates по certificate_number.
+2. Проверить is_active = true.
+3. Проверить valid_to >= current_date.
+4. Найти коды сертификата.
+5. Через palata_specialty_codes определить expertise_direction_id.
+6. Автоматически записать направления эксперту в palata_expert_directions.
+7. Эксперт НЕ выбирает направления вручную, если сертификат найден.
+8. Если сертификат не найден — профиль получает статус requires_review / draft.
+9. Если сертификат найден, но ФИО не совпадает — показать предупреждение и отправить на ручную проверку.
+
+# 5. Matching
+
+Matching по направлению:
+
+palata_requests.expertise_direction_id
+=
+palata_expert_directions.expertise_direction_id
+
+Matching по региону:
+
+если palata_requests.region_id is null:
+региональный фильтр не применяется.
+
+если region_id заполнен:
+эксперт подходит, если:
+- есть такой же region_id в palata_expert_regions;
+- или у эксперта есть регион "Вся Россия".
+
+# 6. Карточка эксперта
+
+Показывать:
+
+- ФИО
+- регионы через palata_expert_regions → palata_regions
+- направления через palata_expert_directions → palata_expertise_directions
+- сертификат подтверждён / не подтверждён
+- номер сертификата
+- срок действия сертификата
+
+# 7. Админка
+
+Добавить/проверить отображение:
+
+- эксперты
+- сертификаты
+- направления эксперта
+- регионы эксперта
+- сертификаты, требующие ручной проверки
+
+# 8. Legacy-поля
+
+Пока НЕ удалять из БД:
+
+- palata_requests.region
+- palata_requests.expertise_type
+- palata_customer_profiles.region
+- palata_expert_profiles.regions
+- palata_expert_profiles.specializations
+
+Но код больше не должен писать в них новые данные и не должен использовать их для matching, фильтров и метрик.
+
+Можно использовать только как временный fallback для отображения.
+
+# 9. Отчёт после выполнения
+
+Вернуть:
+
+1. Какие файлы изменены.
+2. Где используется palata_regions.
+3. Где используется palata_expertise_directions.
+4. Где используется palata_specialty_codes.
+5. Как работает проверка сертификата.
+6. Как автоматически назначаются направления эксперту.
+7. Как теперь работает matching.
+8. Остались ли обращения к legacy-полям.
+9. Какие legacy-поля можно будет удалить после проверки.

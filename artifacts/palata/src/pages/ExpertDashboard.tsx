@@ -1003,7 +1003,7 @@ function ProfileView({
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Регистрация</p>
           <div className="space-y-3">
             <RegistryRow verified={p.palata_registry_verified} label="Палата судебных экспертов РФ" number={p.palata_registry_number} />
-            <RegistryRow verified={p.centrsudexpert_verified} label="Центр судебных экспертиз" number={p.centrsudexpert_registry_number} />
+            <RegistryRow verified={p.centrsudexpert_verified} label="СРО «ЦСЭ»" number={p.centrsudexpert_registry_number} />
           </div>
         </div>
       </div>

@@ -33,13 +33,13 @@ function StatusBadge({ result, verifying }: { result: CertResult | null; verifyi
     },
     not_found: {
       icon: <XCircle className="w-3.5 h-3.5 flex-shrink-0" />,
-      text: "Сертификат не найден. Заявка будет направлена на ручную проверку.",
+      text: `Сертификат ${result.raw.trim()} не найден или срок его действия истёк. Новый сертификат можно получить на сайте Палаты: https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/`,
       cls: "text-amber-700 bg-amber-50 border-amber-200",
     },
     expired: {
       icon: <Clock className="w-3.5 h-3.5 flex-shrink-0" />,
-      text: `Срок действия истёк${result.validTo ? ` (${new Date(result.validTo).toLocaleDateString("ru-RU")})` : ""}.`,
-      cls: "text-red-700 bg-red-50 border-red-200",
+      text: `Сертификат ${result.raw.trim()} не найден или срок его действия истёк. Новый сертификат можно получить на сайте Палаты: https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/`,
+      cls: "text-amber-700 bg-amber-50 border-amber-200",
     },
     idle: { icon: null, text: "", cls: "" },
     verifying: { icon: null, text: "", cls: "" },

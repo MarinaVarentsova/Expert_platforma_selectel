@@ -16,6 +16,20 @@ export function normalizeCertNumber(raw: string): string {
   return raw.replace(/^[№#]\s*/, "").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Extract the numeric suffix used for DB lookup.
+ * "PS 003755" → "003755"
+ * "№ PS 003755" → "003755"
+ * "PS003755" → "003755"
+ * "003755" → "003755"
+ */
+function extractNumericId(raw: string): string {
+  const compact = raw.replace(/\s+/g, "");
+  const match = compact.match(/(\d+)$/);
+  if (match) return match[1];
+  return compact.replace(/\D/g, "");
+}
+
 export async function verifyCertificate(
   raw: string,
   allDirections: Array<{ id: string; name: string }>,
@@ -33,17 +47,21 @@ export async function verifyCertificate(
 
   if (!normalized) return base;
 
+  const certId = extractNumericId(raw);
+  if (!certId) return { ...base, status: "not_found" };
+
   const { data: certs } = await supabase
     .from("palata_certificates")
     .select("certificate_number, expert_full_name, specialty_code, valid_to, is_active")
-    .ilike("certificate_number", `%${normalized}%`)
-    .limit(1);
+    .ilike("certificate_number", `%${certId}%`);
 
   if (!certs || certs.length === 0) {
     return { ...base, status: "not_found" };
   }
 
-  const cert = certs[0] as {
+  const today = new Date().toISOString().slice(0, 10);
+
+  type CertRow = {
     certificate_number: string;
     expert_full_name: string | null;
     specialty_code: string | null;
@@ -51,11 +69,17 @@ export async function verifyCertificate(
     is_active: boolean;
   };
 
+  const rows = certs as CertRow[];
+
+  // Prefer active cert with valid_to >= today
+  const cert =
+    rows.find((c) => c.is_active && (!c.valid_to || c.valid_to >= today)) ??
+    rows[0];
+
   if (!cert.is_active) {
     return { ...base, status: "not_found", expertName: cert.expert_full_name };
   }
 
-  const today = new Date().toISOString().slice(0, 10);
   if (cert.valid_to && cert.valid_to < today) {
     return {
       ...base,

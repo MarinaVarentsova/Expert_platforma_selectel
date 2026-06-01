@@ -54,9 +54,11 @@ export default function Register() {
   const [allDirections, setAllDirections] = useState<Array<{ id: string; name: string }>>([]);
 
   // Expert certificates
-  const [certNumbers, setCertNumbers]     = useState<string[]>([""]);
-  const [certResults, setCertResults]     = useState<(CertResult | null)[]>([null]);
-  const [certVerifying, setCertVerifying] = useState<boolean[]>([false]);
+  const [certNumbers, setCertNumbers]       = useState<string[]>([""]);
+  const [certResults, setCertResults]       = useState<(CertResult | null)[]>([null]);
+  const [certVerifying, setCertVerifying]   = useState<boolean[]>([false]);
+  // Resolved direction names shown on success screen
+  const [registeredDirNames, setRegisteredDirNames] = useState<string[]>([]);
 
   useEffect(() => {
     supabase.from("palata_expertise_directions")
@@ -189,7 +191,13 @@ export default function Register() {
             finalResults[i] = await verifyCertificate(certNumbers[i], allDirections);
           }
         }
-        const dirIds = mergeDirectionIds(finalResults.filter(Boolean) as NonNullable<typeof finalResults[0]>[]);
+        const validResults = finalResults.filter(Boolean) as NonNullable<typeof finalResults[0]>[];
+        const dirIds = mergeDirectionIds(validResults);
+        const dirNames = dirIds.map(id => allDirections.find(d => d.id === id)?.name ?? id);
+        setRegisteredDirNames(dirNames);
+
+        // Always delete first (safety for re-registration edge cases)
+        await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
         if (dirIds.length > 0) {
           await supabase.from("palata_expert_directions").insert(
             dirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
@@ -228,7 +236,7 @@ export default function Register() {
   if (step === "success") {
     return (
       <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md space-y-4">
           <div className="bg-white rounded-2xl border border-[#D0D0D0] p-8 text-center shadow-sm">
             <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-5">
               <Check className="w-7 h-7 text-emerald-500" />
@@ -245,6 +253,28 @@ export default function Register() {
               <button className="w-full btn-primary">Перейти на страницу входа</button>
             </Link>
           </div>
+
+          {role === "expert" && (
+            <div className="bg-white rounded-2xl border border-[#D0D0D0] p-6 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">
+                Направления экспертизы
+              </p>
+              {registeredDirNames.length > 0 ? (
+                <ul className="space-y-2">
+                  {registeredDirNames.map(name => (
+                    <li key={name} className="flex items-center gap-2 text-sm text-[#111111]">
+                      <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                      {name}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-slate-400">
+                  Направления не определены — сертификаты будут проверены вручную.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );

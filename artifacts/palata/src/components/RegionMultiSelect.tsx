@@ -32,7 +32,10 @@ export function RegionMultiSelect({
       .select("id, name")
       .order("sort_order")
       .order("name")
-      .then(({ data }) => setRegions(data ?? []));
+      .then(({ data, error }) => {
+        console.log("[RegionMultiSelect] data:", data, "error:", error);
+        setRegions(data ?? []);
+      });
   }, []);
 
   useEffect(() => {

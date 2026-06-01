@@ -491,9 +491,12 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleRematch() {
     setMatchingRunning(true);
     try {
+      const { data: reqRegions } = await supabase
+        .from("palata_request_regions").select("region_id").eq("request_id", r.id);
       await runMatching({
         requestId: r.id, expertiseDirectionId: r.expertise_direction_id ?? "",
-        region: r.region, requiresTravel: r.requires_travel ?? false,
+        regionIds: (reqRegions ?? []).map((rr: { region_id: string }) => rr.region_id),
+        requiresTravel: r.requires_travel ?? false,
       });
     } catch (e) { console.error("Rematch error:", e); }
     finally { setMatchingRunning(false); onReload(); }

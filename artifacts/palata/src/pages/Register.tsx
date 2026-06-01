@@ -2,23 +2,12 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import {
-  ChevronLeft, ChevronDown, Building2, GraduationCap, Check, X,
+  ChevronLeft, Building2, GraduationCap, Check,
   Eye, EyeOff,
 } from "lucide-react";
 import { useRef } from "react";
-
-const REGION_OPTIONS = [
-  { value: "Moskva",          label: "Москва" },
-  { value: "Sankt-Peterburg", label: "Санкт-Петербург" },
-  { value: "Krasnodar",       label: "Краснодар" },
-  { value: "Nizhny Novgorod", label: "Нижний Новгород" },
-  { value: "Ekaterinburg",    label: "Екатеринбург" },
-  { value: "Kazan",           label: "Казань" },
-  { value: "Rostov-na-Donu",  label: "Ростов-на-Дону" },
-  { value: "Novosibirsk",     label: "Новосибирск" },
-  { value: "Samara",          label: "Самара" },
-  { value: "Voronezh",        label: "Воронеж" },
-];
+import { ChevronDown, X } from "lucide-react";
+import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 
 type Role = "customer" | "expert";
 type Step = "role" | "form" | "success";
@@ -53,8 +42,10 @@ export default function Register() {
   const [companyName, setCompanyName]     = useState("");
   const [inn, setInn]                     = useState("");
   const [contactName, setContactName]     = useState("");
-  const [region, setRegion]               = useState("");
   const [notes, setNotes]                 = useState("");
+
+  // Shared region IDs for both customer and expert
+  const [regionIds, setRegionIds]         = useState<string[]>([]);
 
   const [selectedDirIds, setSelectedDirIds] = useState<string[]>([]);
   const [directions, setDirections]         = useState<Array<{ id: string; name: string }>>([]);
@@ -65,7 +56,6 @@ export default function Register() {
   useEffect(() => {
     supabase.from("palata_expertise_directions")
       .select("id, name")
-      .eq("is_active", true)
       .order("sort_order")
       .then(({ data }) => setDirections(data ?? []));
   }, []);
@@ -82,7 +72,6 @@ export default function Register() {
     return () => document.removeEventListener("mousedown", handler);
   }, [dirDropOpen]);
 
-  const [regions, setRegions]             = useState<string[]>([]);
   const [tripReady, setTripReady]         = useState(false);
   const [palataOk, setPalataOk]           = useState(false);
   const [palataNum, setPalataNum]         = useState("");
@@ -98,12 +87,10 @@ export default function Register() {
       return [...p, v];
     });
   }
-  function toggleRegion(v: string) {
-    setRegions(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]);
-  }
 
   function chooseRole(r: Role) {
     setRole(r);
+    setRegionIds([]);
     setStep("form");
   }
 
@@ -128,7 +115,6 @@ export default function Register() {
         company_name: companyName.trim() || null,
         inn:          inn.trim() || null,
         contact_name: contactName.trim() || null,
-        region:       region || null,
         notes:        notes.trim() || null,
       });
     } else {
@@ -140,7 +126,7 @@ export default function Register() {
         centrsudexpert_verified:          centrsudOk,
         centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
         specializations: [],
-        regions,
+        regions: [],
       });
     }
 
@@ -163,18 +149,25 @@ export default function Register() {
     }
 
     if (data.session) {
+      const userId = data.user.id;
+
       if (role === "customer") {
         await supabase.from("palata_customer_profiles").upsert({
-          user_id:      data.user.id,
+          user_id:      userId,
           company_name: companyName.trim() || null,
           inn:          inn.trim() || null,
           contact_name: contactName.trim() || null,
-          region:       region || null,
           notes:        notes.trim() || null,
         }, { onConflict: "user_id" });
+
+        if (regionIds.length > 0) {
+          await supabase.from("palata_customer_regions").insert(
+            regionIds.map(id => ({ customer_id: userId, region_id: id }))
+          );
+        }
       } else {
         await supabase.from("palata_expert_profiles").upsert({
-          user_id:                          data.user.id,
+          user_id:                          userId,
           bio:                              bio.trim() || null,
           business_trip_ready:              tripReady,
           accepts_requests:                 true,
@@ -183,11 +176,18 @@ export default function Register() {
           centrsudexpert_verified:          centrsudOk,
           centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
           specializations: [],
-          regions,
+          regions: [],
         }, { onConflict: "user_id" });
-        if (selectedDirIds.length > 0 && data?.user) {
+
+        if (selectedDirIds.length > 0) {
           await supabase.from("palata_expert_directions").insert(
-            selectedDirIds.map(id => ({ expert_id: data.user!.id, expertise_direction_id: id }))
+            selectedDirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
+          );
+        }
+
+        if (regionIds.length > 0) {
+          await supabase.from("palata_expert_regions").insert(
+            regionIds.map(id => ({ expert_id: userId, region_id: id }))
           );
         }
       }
@@ -354,11 +354,12 @@ export default function Register() {
                     placeholder="Иванов Иван Иванович" className={inputClass()} />
                 </div>
                 <div>
-                  <Label>Регион</Label>
-                  <select value={region} onChange={e => setRegion(e.target.value)} className={inputClass()}>
-                    <option value="">Выберите регион</option>
-                    {REGION_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                  </select>
+                  <Label>Регионы</Label>
+                  <RegionMultiSelect
+                    selectedIds={regionIds}
+                    onChange={setRegionIds}
+                    placeholder="Выберите регионы присутствия…"
+                  />
                 </div>
                 <div>
                   <Label>Примечания</Label>
@@ -377,7 +378,6 @@ export default function Register() {
                   <span className="text-[10px] text-slate-400">{selectedDirIds.length}/{MAX_DIRS}</span>
                 </div>
 
-                {/* Dropdown multiselect */}
                 <div className="relative" ref={dirDropRef}>
                   <button
                     type="button"
@@ -394,7 +394,6 @@ export default function Register() {
 
                   {dirDropOpen && (
                     <div className="absolute z-20 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
-                      {/* Search */}
                       <div className="p-2 border-b border-slate-100">
                         <input
                           type="text"
@@ -406,7 +405,6 @@ export default function Register() {
                         />
                       </div>
 
-                      {/* List */}
                       <div className="max-h-56 overflow-y-auto">
                         {directions
                           .filter(d => d.name.toLowerCase().includes(dirSearch.toLowerCase()))
@@ -450,7 +448,6 @@ export default function Register() {
                   )}
                 </div>
 
-                {/* Selected chips */}
                 {selectedDirIds.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {selectedDirIds.map(id => {
@@ -470,18 +467,11 @@ export default function Register() {
 
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Регионы работы</p>
-                <div className="flex flex-wrap gap-2">
-                  {REGION_OPTIONS.map(r => (
-                    <button key={r.value} type="button" onClick={() => toggleRegion(r.value)}
-                      className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-                        regions.includes(r.value)
-                          ? "bg-[#002B5C] text-white border-[#002B5C]"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-[#D0D0D0] hover:text-[#002B5C]"
-                      }`}>
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
+                <RegionMultiSelect
+                  selectedIds={regionIds}
+                  onChange={setRegionIds}
+                  placeholder="Выберите регионы работы…"
+                />
               </div>
 
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5 space-y-4">

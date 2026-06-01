@@ -5,31 +5,7 @@ import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/authContext";
 import { notify } from "@/lib/notifyApi";
 import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check } from "lucide-react";
-
-const REGIONS = [
-  "Москва",
-  "Московская область",
-  "Санкт-Петербург",
-  "Ленинградская область",
-  "Краснодарский край",
-  "Новосибирская область",
-  "Свердловская область",
-  "Республика Татарстан",
-  "Нижегородская область",
-  "Ростовская область",
-  "Челябинская область",
-  "Самарская область",
-  "Республика Башкортостан",
-  "Омская область",
-  "Красноярский край",
-  "Воронежская область",
-  "Пермский край",
-  "Волгоградская область",
-  "Саратовская область",
-  "Ивановская область",
-  "Иваново",
-  "Другой регион",
-];
+import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 
 const URGENCY_OPTIONS = [
   { value: "normal",      label: "Стандартная",   sub: "14–30 дней" },
@@ -53,7 +29,7 @@ const ACCEPT_ATTR = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx";
 type FormData = {
   title: string;
   expertise_direction_id: string;
-  region: string;
+  region_ids: string[];
   urgency: string;
   requires_travel: boolean;
   description: string;
@@ -79,6 +55,7 @@ export default function NewRequest() {
   const currentUserId = currentUser?.id ?? null;
 
   const [directions, setDirections] = useState<Array<{ id: string; name: string }>>([]);
+  const [allRegions, setAllRegions] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
     supabase.from("palata_expertise_directions")
@@ -89,10 +66,15 @@ export default function NewRequest() {
       });
   }, [authState.kind]);
 
+  useEffect(() => {
+    supabase.from("palata_regions").select("id, name").order("sort_order")
+      .then(({ data }) => setAllRegions(data ?? []));
+  }, []);
+
   const [form, setForm] = useState<FormData>({
     title: "",
     expertise_direction_id: "",
-    region: "",
+    region_ids: [],
     urgency: "normal",
     requires_travel: false,
     description: "",
@@ -135,8 +117,8 @@ export default function NewRequest() {
       e.title = "Введите название (минимум 3 символа)";
     if (!form.expertise_direction_id)
       e.expertise_direction_id = "Выберите направление экспертизы";
-    if (!form.region)
-      e.region = "Выберите регион";
+    if (form.region_ids.length === 0)
+      e.region_ids = "Выберите хотя бы один регион";
     if (!form.customer_name.trim())
       e.customer_name = "Введите ваше имя";
     if (!form.customer_email.trim() && !form.customer_phone.trim())
@@ -179,7 +161,6 @@ export default function NewRequest() {
           title: form.title.trim(),
           description: fullDescription,
           expertise_direction_id: form.expertise_direction_id,
-          region: form.region,
           urgency: form.urgency,
           requires_travel: form.requires_travel,
           materials_available: form.materials_available.trim() || null,
@@ -194,7 +175,14 @@ export default function NewRequest() {
       if (reqError) throw new Error(reqError.message);
       const requestId: string = reqData.id;
 
-      // 2. Upload files (if any)
+      // 2. Save request regions
+      if (form.region_ids.length > 0) {
+        await supabase.from("palata_request_regions").insert(
+          form.region_ids.map(rid => ({ request_id: requestId, region_id: rid }))
+        );
+      }
+
+      // 3. Upload files (if any)
       if (files.length > 0) {
         setState({ kind: "submitting", step: `Загрузка файлов (0 / ${files.length})…` });
         const uploads = files.map(async (file, idx) => {
@@ -242,7 +230,7 @@ export default function NewRequest() {
         const result = await runMatching({
           requestId,
           expertiseDirectionId: form.expertise_direction_id,
-          region: form.region,
+          regionIds: form.region_ids,
           requiresTravel: form.requires_travel,
           customerId: currentUserId ?? undefined,
         });
@@ -259,7 +247,7 @@ export default function NewRequest() {
           requestShortId: requestId.slice(0, 8).toUpperCase(),
           requestTitle:   form.title.trim(),
           expertiseType:  directions.find(d => d.id === form.expertise_direction_id)?.name ?? "—",
-          region:         form.region,
+          region:         form.region_ids.map(id => allRegions.find(r => r.id === id)?.name ?? "").filter(Boolean).join(", "),
           currentStatus:  "new",
           recipientEmail: form.customer_email.trim(),
           recipientType:  "customer",
@@ -288,7 +276,7 @@ export default function NewRequest() {
                 requestShortId: requestId.slice(0, 8).toUpperCase(),
                 requestTitle:   form.title.trim(),
                 expertiseType:  directions.find(d => d.id === form.expertise_direction_id)?.name ?? "—",
-                region:         form.region,
+                region:         form.region_ids.map(id => allRegions.find(r => r.id === id)?.name ?? "").filter(Boolean).join(", "),
                 currentStatus:  "new",
                 recipientEmail: u.email,
                 recipientType:  "expert" as const,
@@ -465,18 +453,14 @@ export default function NewRequest() {
                 </div>
               </Field>
 
-              <Field label="Регион" required error={errors.region}>
-                <select
-                  className={inputCls(!!errors.region)}
-                  value={form.region}
-                  onChange={e => set("region", e.target.value)}
+              <Field label="Регион" required error={errors.region_ids}>
+                <RegionMultiSelect
+                  selectedIds={form.region_ids}
+                  onChange={ids => set("region_ids", ids)}
                   disabled={busy}
-                >
-                  <option value="">— выберите —</option>
-                  {REGIONS.map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
+                  hasError={!!errors.region_ids}
+                  placeholder="— выберите регион(ы) —"
+                />
               </Field>
             </div>
 

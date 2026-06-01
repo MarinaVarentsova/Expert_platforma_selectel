@@ -1,0 +1,212 @@
+Нужно провести контрольный аудит кода после перехода БД на нормализованные справочники.
+
+Цель:
+убедиться, что старые legacy-поля больше не используются как источник истины и их можно будет безопасно удалить из БД отдельной миграцией.
+
+ВАЖНО:
+Пока НЕ удалять поля из БД.
+Пока НЕ создавать DROP COLUMN migration.
+Сначала только аудит кода + точечное исправление найденных зависимостей.
+
+# Legacy-поля, которые готовим к удалению
+
+## palata_requests
+
+* `expertise_type`
+* `region`
+
+## palata_expert_profiles
+
+* `specializations`
+* `regions`
+
+## palata_customer_profiles
+
+* `region`
+
+# Новые источники истины
+
+## Направления заказа
+
+Использовать:
+
+* `palata_requests.expertise_direction_id`
+* `palata_expertise_directions.name`
+
+## Регион заказа
+
+Использовать:
+
+* `palata_requests.region_id`
+* `palata_regions.name`
+
+## Направления эксперта
+
+Использовать:
+
+* `palata_expert_directions`
+* `palata_expertise_directions`
+
+## Регионы эксперта
+
+Использовать:
+
+* `palata_expert_regions`
+* `palata_regions`
+
+## Регион заказчика
+
+Использовать:
+
+* `palata_customer_profiles.region_id`
+* `palata_regions.name`
+
+# Что проверить в коде
+
+Найти все обращения к legacy-полям:
+
+* `expertise_type`
+* `.region`
+* `region:`
+* `specializations`
+* `regions`
+
+Проверить:
+
+* select-запросы Supabase;
+* insert-запросы;
+* update-запросы;
+* формы;
+* карточки;
+* фильтры;
+* метрики;
+* matching;
+* админский канбан;
+* ЛК заказчика;
+* ЛК эксперта;
+* регистрация;
+* профиль заказчика;
+* профиль эксперта.
+
+# Правила исправления
+
+1. Новые записи НЕ должны писать данные в legacy-поля.
+
+2. Формы должны писать только:
+
+   * `expertise_direction_id`
+   * `region_id`
+   * `palata_expert_directions`
+   * `palata_expert_regions`
+   * `palata_customer_profiles.region_id`
+
+3. Отображение должно брать названия через справочники:
+
+   * `palata_expertise_directions.name`
+   * `palata_regions.name`
+
+4. Legacy-поля можно оставить только как временный fallback при отображении:
+
+   * `new_value ?? legacy_value ?? "Не указано"`
+
+5. Matching НЕ должен использовать legacy-поля вообще.
+
+6. Метрики НЕ должны использовать legacy-поля.
+
+7. Фильтры НЕ должны использовать legacy-поля.
+
+# Особо проверить
+
+## Matching
+
+Должен работать так:
+
+Направление:
+
+# `palata_requests.expertise_direction_id`
+
+`palata_expert_directions.expertise_direction_id`
+
+Регион:
+
+если `palata_requests.region_id is null`:
+региональный фильтр не применяется.
+
+если `region_id` заполнен:
+эксперт подходит, если:
+
+* есть такой же `region_id` в `palata_expert_regions`;
+* или у эксперта есть регион `Вся Россия`.
+
+## AdminDashboard
+
+Канбан должен отображать:
+
+* направление через `expertise_direction_id`;
+* регион через `region_id`.
+
+Не использовать:
+
+* `expertise_type`;
+* `region`.
+
+## AdminMetrics
+
+Распределение по направлениям и регионам должно строиться по новым справочникам.
+
+Не использовать:
+
+* `expertise_type`;
+* `region`;
+* `specializations`;
+* `regions`.
+
+## CustomerDashboard
+
+Карточки заказов, экспертов и профиль заказчика должны использовать новые связи.
+
+## ExpertDashboard
+
+Профиль эксперта, карточки заказов и фильтры должны использовать новые связи.
+
+# Отчёт вернуть строго в таблице
+
+Таблица 1. Найденные обращения к legacy-полям:
+
+* файл;
+* поле;
+* строка/фрагмент;
+* используется как источник истины / fallback / типизация;
+* исправлено да/нет.
+
+Таблица 2. Готовность к удалению:
+
+* `palata_requests.expertise_type`
+* `palata_requests.region`
+* `palata_expert_profiles.specializations`
+* `palata_expert_profiles.regions`
+* `palata_customer_profiles.region`
+
+Для каждого поля указать:
+
+* можно удалить сейчас: да/нет;
+* что ещё держит поле;
+* какой файл нужно исправить.
+
+# Критерий готовности
+
+Можно будет удалить legacy-поля только если:
+
+1. Нет insert/update в эти поля.
+2. Нет фильтров по этим полям.
+3. Нет matching по этим полям.
+4. Нет метрик по этим полям.
+5. Нет обязательного отображения, которое падает без этих полей.
+6. Остались только fallback-обращения, которые можно удалить после финальной проверки.
+
+# Важно
+
+Не писать "готово", пока не проверены все обращения по проекту.
+Не удалять legacy-поля из БД.
+Не создавать DROP COLUMN migration.
+Сначала вернуть отчёт и список точечных правок.

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { useRequireRole } from "@/lib/useRequireRole";
+import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import {
   PlusCircle, FileText, User, MapPin, Building2,
@@ -99,23 +100,12 @@ const COLUMNS = [
 ];
 
 
-const REGION_LABEL: Record<string, string> = {
-  "Moskva":          "Москва",
-  "Sankt-Peterburg": "Санкт-Петербург",
-  "Krasnodar":       "Краснодар",
-  "Nizhny Novgorod": "Нижний Новгород",
-  "Ekaterinburg":    "Екатеринбург",
-  "Kazan":           "Казань",
-  "Rostov-na-Donu":  "Ростов-на-Дону",
-  "Novosibirsk":     "Новосибирск",
-  "Samara":          "Самара",
-  "Voronezh":        "Воронеж",
-};
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function CustomerDashboard() {
   const guard = useRequireRole("customer");
+  const [customerRegionIds, setCustomerRegionIds] = useState<string[]>([]);
   const [allDirections, setAllDirections] = useState<Array<{ id: string; name: string; slug: string }>>([]);
 
   useEffect(() => {
@@ -232,6 +222,12 @@ export default function CustomerDashboard() {
       });
 
     supabase
+      .from("palata_customer_regions")
+      .select("region_id")
+      .eq("customer_id", userId)
+      .then(({ data }) => setCustomerRegionIds((data ?? []).map((r: { region_id: string }) => r.region_id)));
+
+    supabase
       .from("palata_users")
       .select("phone")
       .eq("id", userId)
@@ -263,6 +259,8 @@ export default function CustomerDashboard() {
       .then(({ data, error }) => {
         if (!error) setProfileState({ kind: "ok", profile: data as CustomerProfile | null });
       });
+    supabase.from("palata_customer_regions").select("region_id").eq("customer_id", uid)
+      .then(({ data }) => setCustomerRegionIds((data ?? []).map((r: { region_id: string }) => r.region_id)));
   }
 
   if (guard.status === "loading" || guard.status === "redirecting") {
@@ -510,6 +508,7 @@ export default function CustomerDashboard() {
               user={{ ...user, phone: userPhone }}
               profile={profileState.profile}
               userId={user.id}
+              initialRegionIds={customerRegionIds}
               onSave={reloadProfile}
             />
           )}
@@ -546,11 +545,13 @@ function ProfileView({
   user,
   profile,
   userId,
+  initialRegionIds,
   onSave,
 }: {
   user: { full_name?: string | null; email: string; phone?: string | null };
   profile: CustomerProfile | null;
   userId: string;
+  initialRegionIds: string[];
   onSave: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -563,8 +564,22 @@ function ProfileView({
   const [companyName, setCompanyName]   = useState(profile?.company_name ?? "");
   const [inn, setInn]                   = useState(profile?.inn ?? "");
   const [contactName, setContactName]   = useState(profile?.contact_name ?? "");
-  const [region, setRegion]             = useState(profile?.region ?? "");
+  const [regionIds, setRegionIds]       = useState<string[]>(initialRegionIds);
+  const [regionNames, setRegionNames]   = useState<string[]>([]);
   const [notes, setNotes]               = useState(profile?.notes ?? "");
+
+  useEffect(() => {
+    setRegionIds(initialRegionIds);
+  }, [initialRegionIds.join(",")]);
+
+  useEffect(() => {
+    if (regionIds.length === 0) { setRegionNames([]); return; }
+    supabase.from("palata_regions").select("id, name").in("id", regionIds)
+      .then(({ data }) => {
+        const nm = Object.fromEntries((data ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
+        setRegionNames(regionIds.map(id => nm[id] ?? id));
+      });
+  }, [regionIds.join(",")]);
 
   function beginEdit() {
     setFullName(user.full_name ?? "");
@@ -572,7 +587,6 @@ function ProfileView({
     setCompanyName(profile?.company_name ?? "");
     setInn(profile?.inn ?? "");
     setContactName(profile?.contact_name ?? "");
-    setRegion(profile?.region ?? "");
     setNotes(profile?.notes ?? "");
     setSavedOk(false);
     setSaveErr(null);
@@ -592,15 +606,21 @@ function ProfileView({
           company_name: companyName.trim() || null,
           inn:          inn.trim() || null,
           contact_name: contactName.trim() || null,
-          region:       region || null,
           notes:        notes.trim() || null,
         }, { onConflict: "user_id" }),
     ]);
-    setSaving(false);
     if (r1.error || r2.error) {
+      setSaving(false);
       setSaveErr((r1.error ?? r2.error)!.message);
       return;
     }
+    await supabase.from("palata_customer_regions").delete().eq("customer_id", userId);
+    if (regionIds.length > 0) {
+      await supabase.from("palata_customer_regions").insert(
+        regionIds.map(rid => ({ customer_id: userId, region_id: rid }))
+      );
+    }
+    setSaving(false);
     setEditing(false);
     setSavedOk(true);
     onSave();
@@ -651,11 +671,12 @@ function ProfileView({
             <input type="text" value={contactName} onChange={e => setContactName(e.target.value)} className={ic} />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Регион</label>
-            <select value={region} onChange={e => setRegion(e.target.value)} className={ic}>
-              <option value="">— Выберите регион —</option>
-              {Object.entries(REGION_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Регионы</label>
+            <RegionMultiSelect
+              selectedIds={regionIds}
+              onChange={setRegionIds}
+              placeholder="Выберите регионы присутствия…"
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">Примечания</label>
@@ -734,8 +755,8 @@ function ProfileView({
                 <InfoRow icon={<User className="w-3.5 h-3.5" />} label="Контактное лицо" value={profile.contact_name} />
                 <InfoRow
                   icon={<MapPin className="w-3.5 h-3.5" />}
-                  label="Регион"
-                  value={profile.region ? (REGION_LABEL[profile.region] ?? profile.region) : null}
+                  label="Регионы"
+                  value={regionNames.length > 0 ? regionNames.join(", ") : null}
                 />
               </div>
             </div>
@@ -821,7 +842,7 @@ function CustomerCard({ request: r, needsRating, directionMap = {} }: { request:
           )}
           {r.region && (
             <p className="text-[11px] text-slate-400 truncate">
-              {REGION_LABEL[r.region] ?? r.region}
+              {r.region}
             </p>
           )}
           {r.urgency && r.urgency !== "normal" && (
@@ -1519,7 +1540,7 @@ function ExpertProfileCard({ expert: e, slugMap, busy, onSelect }: {
             ))}
             {e.regions.slice(0, 2).map(r => (
               <span key={r} className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-                {REGION_LABEL[r] ?? r}
+                {r}
               </span>
             ))}
           </div>

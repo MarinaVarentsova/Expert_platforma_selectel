@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useRequireRole } from "@/lib/useRequireRole";
+import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import {
   Inbox, Star, User, CheckCircle2, XCircle, MapPin,
@@ -100,18 +101,6 @@ type DocsState =
 
 // ─── Lookup tables ────────────────────────────────────────────────────────────
 
-const REGION_LABEL: Record<string, string> = {
-  "Moskva":          "Москва",
-  "Sankt-Peterburg": "Санкт-Петербург",
-  "Krasnodar":       "Краснодар",
-  "Nizhny Novgorod": "Нижний Новгород",
-  "Ekaterinburg":    "Екатеринбург",
-  "Kazan":           "Казань",
-  "Rostov-na-Donu":  "Ростов-на-Дону",
-  "Novosibirsk":     "Новосибирск",
-  "Samara":          "Самара",
-  "Voronezh":        "Воронеж",
-};
 
 const DECLINE_LABEL: Record<string, string> = {
   not_my_profile:    "Не мой профиль",
@@ -641,7 +630,8 @@ function ProfileView({
   const [expYears, setExpYears]       = useState(p.experience_years?.toString() ?? "");
   const [education, setEducation]     = useState(p.education ?? "");
   const [dirIds, setDirIds]           = useState<string[]>([]);
-  const [regs, setRegs]               = useState<string[]>(p.regions);
+  const [regs, setRegs]               = useState<string[]>([]);
+  const [regionNames, setRegionNames] = useState<string[]>([]);
 
   useEffect(() => {
     supabase.from("palata_expert_directions")
@@ -650,6 +640,18 @@ function ProfileView({
       .then(({ data }) =>
         setDirIds((data ?? []).map((r: { expertise_direction_id: string }) => r.expertise_direction_id))
       );
+    supabase.from("palata_expert_regions")
+      .select("region_id")
+      .eq("expert_id", userId)
+      .then(async ({ data }) => {
+        const ids = (data ?? []).map((r: { region_id: string }) => r.region_id);
+        setRegs(ids);
+        if (ids.length > 0) {
+          const { data: rd } = await supabase.from("palata_regions").select("id, name").in("id", ids);
+          const nm = Object.fromEntries((rd ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
+          setRegionNames(ids.map(id => nm[id] ?? id));
+        }
+      });
   }, [userId]);
   const [tripReady, setTripReady]     = useState(p.business_trip_ready);
   const [accepts, setAccepts]         = useState(p.accepts_requests);
@@ -664,7 +666,6 @@ function ProfileView({
     setBio(p.bio ?? "");
     setExpYears(p.experience_years?.toString() ?? "");
     setEducation(p.education ?? "");
-    setRegs([...p.regions]);
     setTripReady(p.business_trip_ready);
     setAccepts(p.accepts_requests);
     setPalataOk(p.palata_registry_verified);
@@ -677,7 +678,6 @@ function ProfileView({
   }
 
   function toggleSpec(v: string) { setDirIds(s => s.includes(v) ? s.filter(x => x !== v) : [...s, v]); }
-  function toggleReg(v: string)  { setRegs(s => s.includes(v) ? s.filter(x => x !== v) : [...s, v]); }
 
   async function handleSave() {
     setSaving(true);
@@ -693,7 +693,6 @@ function ProfileView({
           experience_years:                 expYears ? parseInt(expYears) : null,
           education:                        education.trim() || null,
           specializations:                  [],
-          regions:                          regs,
           business_trip_ready:              tripReady,
           accepts_requests:                 accepts,
           palata_registry_verified:         palataOk,
@@ -712,6 +711,17 @@ function ProfileView({
       await supabase.from("palata_expert_directions").insert(
         dirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
       );
+    }
+    await supabase.from("palata_expert_regions").delete().eq("expert_id", userId);
+    if (regs.length > 0) {
+      await supabase.from("palata_expert_regions").insert(
+        regs.map(rid => ({ expert_id: userId, region_id: rid }))
+      );
+      const { data: rd } = await supabase.from("palata_regions").select("id, name").in("id", regs);
+      const nm = Object.fromEntries((rd ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
+      setRegionNames(regs.map(id => nm[id] ?? id));
+    } else {
+      setRegionNames([]);
     }
     setSaving(false);
     setEditing(false);
@@ -785,18 +795,11 @@ function ProfileView({
 
         <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Регионы работы</p>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(REGION_LABEL).map(([v, l]) => (
-              <button key={v} type="button" onClick={() => toggleReg(v)}
-                className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-                  regs.includes(v)
-                    ? "bg-[#002B5C] text-white border-[#002B5C]"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-[#D0D0D0] hover:text-[#002B5C]"
-                }`}>
-                {l}
-              </button>
-            ))}
-          </div>
+          <RegionMultiSelect
+            selectedIds={regs}
+            onChange={setRegs}
+            placeholder="Выберите регионы работы…"
+          />
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-4">
@@ -970,11 +973,11 @@ function ProfileView({
             <MapPin className="w-4 h-4 text-slate-400" />
             <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Регионы работы</p>
           </div>
-          {p.regions.length > 0 ? (
+          {regionNames.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {p.regions.map((r) => (
-                <span key={r} className="text-xs font-medium text-slate-700 bg-slate-100 rounded-lg px-2.5 py-1">
-                  {REGION_LABEL[r] ?? r}
+              {regionNames.map((name) => (
+                <span key={name} className="text-xs font-medium text-slate-700 bg-slate-100 rounded-lg px-2.5 py-1">
+                  {name}
                 </span>
               ))}
             </div>
@@ -1209,7 +1212,7 @@ function ExpertCard({ match: m, needsRating, directionsMap = {} }: { match: Matc
             </p>
           )}
           {req?.region && (
-            <p className="text-[11px] text-slate-400 truncate">{REGION_LABEL[req.region] ?? req.region}</p>
+            <p className="text-[11px] text-slate-400 truncate">{req.region}</p>
           )}
           {m.decline_reason && (
             <span className="inline-block text-[10px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
@@ -1664,13 +1667,15 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
           m.status === "declined" || m.status === "withdrawn",
         );
 
-      if (allDeclined && req?.region) {
+      if (allDeclined) {
         const custId2 = item.customer_id ?? req?.customer_id ?? undefined;
+        const { data: reqRegions } = await supabase
+          .from("palata_request_regions").select("region_id").eq("request_id", item.request_id);
         await runMatching({
           requestId:           item.request_id,
-          expertiseDirectionId: req.expertise_direction_id ?? "",
-          region:              req.region,
-          requiresTravel:      req.requires_travel ?? false,
+          expertiseDirectionId: req?.expertise_direction_id ?? "",
+          regionIds:           (reqRegions ?? []).map((rr: { region_id: string }) => rr.region_id),
+          requiresTravel:      req?.requires_travel ?? false,
           customerId:          custId2 ?? undefined,
         });
       }
@@ -2055,13 +2060,15 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
           m.status === "declined" || m.status === "withdrawn",
         );
 
-      if (allDeclined && req?.region) {
+      if (allDeclined) {
         const custId2 = custIdFromPayload ?? req?.customer_id ?? undefined;
+        const { data: reqRegions2 } = await supabase
+          .from("palata_request_regions").select("region_id").eq("request_id", item.request_id);
         await runMatching({
           requestId:           item.request_id,
-          expertiseDirectionId: req.expertise_direction_id ?? "",
-          region:              req.region,
-          requiresTravel:      req.requires_travel ?? false,
+          expertiseDirectionId: req?.expertise_direction_id ?? "",
+          regionIds:           (reqRegions2 ?? []).map((rr: { region_id: string }) => rr.region_id),
+          requiresTravel:      req?.requires_travel ?? false,
           customerId:          custId2 ?? undefined,
         });
       }

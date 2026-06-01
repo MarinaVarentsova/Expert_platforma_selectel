@@ -1474,7 +1474,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                             number={profile.palata_registry_number}
                           />
                           <RegistryField
-                            label="СРО «ЦСЭ»"
+                            label="Центр судебных экспертиз"
                             verified={profile.centrsudexpert_verified}
                             number={profile.centrsudexpert_registry_number}
                           />

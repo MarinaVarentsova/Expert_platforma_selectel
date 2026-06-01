@@ -439,7 +439,7 @@ export default function Register() {
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" checked={palataOk} onChange={e => setPalataOk(e.target.checked)}
                       className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
-                    <p className="text-sm font-medium text-slate-800">Зарегистрирован в Палате судебных экспертов</p>
+                    <p className="text-sm font-medium text-slate-800">Сертифицирован Палатой судебных экспертов</p>
                   </label>
                   {palataOk && (
                     <input type="text" value={palataNum} onChange={e => setPalataNum(e.target.value)}
@@ -451,7 +451,7 @@ export default function Register() {
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" checked={centrsudOk} onChange={e => setCentrsudOk(e.target.checked)}
                       className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
-                    <p className="text-sm font-medium text-slate-800">Зарегистрирован в Центр судебных экспертиз</p>
+                    <p className="text-sm font-medium text-slate-800">Являюсь участником СРО «ЦСЭ»</p>
                   </label>
                   {centrsudOk && (
                     <input type="text" value={centrsudNum} onChange={e => setCentrsudNum(e.target.value)}

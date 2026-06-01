@@ -890,7 +890,7 @@ function ProfileView({
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={palataOk} onChange={e => setPalataOk(e.target.checked)}
                 className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
-              <p className="text-sm font-medium text-slate-800">Зарегистрирован в Палате судебных экспертов</p>
+              <p className="text-sm font-medium text-slate-800">Сертифицирован Палатой судебных экспертов</p>
             </label>
             {palataOk && (
               <input type="text" value={palataNum} onChange={e => setPalataNum(e.target.value)}
@@ -902,7 +902,7 @@ function ProfileView({
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={centrsudOk} onChange={e => setCentrsudOk(e.target.checked)}
                 className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
-              <p className="text-sm font-medium text-slate-800">Зарегистрирован в Центр судебных экспертиз</p>
+              <p className="text-sm font-medium text-slate-800">Являюсь участником СРО «ЦСЭ»</p>
             </label>
             {centrsudOk && (
               <input type="text" value={centrsudNum} onChange={e => setCentrsudNum(e.target.value)}
@@ -1003,7 +1003,7 @@ function ProfileView({
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Регистрация</p>
           <div className="space-y-3">
             <RegistryRow verified={p.palata_registry_verified} label="Палата судебных экспертов РФ" number={p.palata_registry_number} />
-            <RegistryRow verified={p.centrsudexpert_verified} label="Центр судебных экспертиз" number={p.centrsudexpert_registry_number} />
+            <RegistryRow verified={p.centrsudexpert_verified} label="СРО «ЦСЭ»" number={p.centrsudexpert_registry_number} />
           </div>
         </div>
       </div>

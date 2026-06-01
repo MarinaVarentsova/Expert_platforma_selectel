@@ -125,8 +125,6 @@ export default function Register() {
         palata_registry_number:           palataOk ? palataNum.trim() || null : null,
         centrsudexpert_verified:          centrsudOk,
         centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
-        specializations: [],
-        regions: [],
       });
     }
 
@@ -175,8 +173,6 @@ export default function Register() {
           palata_registry_number:           palataOk ? palataNum.trim() || null : null,
           centrsudexpert_verified:          centrsudOk,
           centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
-          specializations: [],
-          regions: [],
         }, { onConflict: "user_id" });
 
         if (selectedDirIds.length > 0) {

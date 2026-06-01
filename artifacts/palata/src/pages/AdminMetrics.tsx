@@ -18,36 +18,11 @@ const S_DONE     = new Set(["completed"]);
 const S_INACTIVE = new Set(["not_actual", "cancelled", "archived", "failed", "declined"]);
 const S_INACTIVE_TRACK = S_INACTIVE;
 
-const LABEL_MAP: Record<string, string> = {
-  avtotechnicheskaya:          "Автотехническая",
-  zemleustroitelnaya:          "Землеустроительная",
-  pocherkovedcheskaya:         "Почерковедческая",
-  "finansovo-ekonomicheskaya": "Финансово-экономическая",
-  "kompyuterno-tehnicheskaya": "Компьютерно-техническая",
-  "stroitelno-tehnicheskaya":  "Строительно-техническая",
-  "pozharno-tehnicheskaya":    "Пожарно-техническая",
-  tovaroved:                   "Товароведческая",
-  psihologicheskaya:           "Психологическая",
-  lingvisticheskaya:           "Лингвистическая",
-  Moskva:                      "Москва",
-  "Sankt-Peterburg":           "Санкт-Петербург",
-  Krasnodar:                   "Краснодар",
-  "Nizhny Novgorod":           "Нижний Новгород",
-  Ekaterinburg:                "Екатеринбург",
-  Kazan:                       "Казань",
-  "Rostov-na-Donu":            "Ростов-на-Дону",
-  Novosibirsk:                 "Новосибирск",
-  Samara:                      "Самара",
-  Voronezh:                    "Воронеж",
-};
-function humanLabel(s: string) { return LABEL_MAP[s] ?? s; }
-
 // ─── Raw data types ────────────────────────────────────────────────────────────
 
 type ReqRow = {
   id: string;
   status: string;
-  region: string;
   expertise_type: string;
   expertise_direction_id: string | null;
   created_at: string;
@@ -58,8 +33,6 @@ type ExpertRow = {
   user_id: string;
   palata_registry_verified: boolean;
   centrsudexpert_verified: boolean;
-  regions: string[];
-  specializations: string[];
 };
 
 type MatchRow = { request_id: string; expert_id: string; status: string };
@@ -121,6 +94,8 @@ function computeMetrics(
   statusEvents: EventRow[],
   directionMap: Record<string, string> = {},
   expertDirMap: Record<string, string[]> = {},
+  reqRegionNamesMap: Record<string, string[]> = {},
+  expertRegionNamesMap: Record<string, string[]> = {},
 ): Metrics {
   const total = requests.length;
 
@@ -219,7 +194,7 @@ function computeMetrics(
       map[key] = (map[key] ?? 0) + 1;
     }
     return Object.entries(map)
-      .map(([label, count]) => ({ label: humanLabel(label), count }))
+      .map(([label, count]) => ({ label, count }))
       .sort((a, b) => b.count - a.count);
   }
 
@@ -259,7 +234,12 @@ function computeMetrics(
     cancelled:   inactive,
 
     // Zone 4 — each row uses explicit fallback so the sum == total
-    reqByRegion:    groupCount(requests.map(r => r.region), "Без региона"),
+    reqByRegion: groupCount(
+      requests.flatMap(r =>
+        (reqRegionNamesMap[r.id]?.length ? reqRegionNamesMap[r.id] : ["Без региона"])
+      ),
+      "Без региона"
+    ),
     reqBySpec: groupCount(
       requests.map(r =>
         (r.expertise_direction_id && directionMap[r.expertise_direction_id])
@@ -268,15 +248,17 @@ function computeMetrics(
       ),
       "Без направления"
     ),
-    // For experts: experts with empty arrays count as "Не указано" (so sum == totalExperts)
+    // For experts: experts with empty junction rows count as "Не указано" (so sum == totalExperts)
     expertByRegion: groupCount(
-      experts.flatMap(e => (e.regions?.length ? e.regions : ["Не указано"])),
+      experts.flatMap(e =>
+        (expertRegionNamesMap[e.user_id]?.length ? expertRegionNamesMap[e.user_id] : ["Не указано"])
+      ),
       "Не указано"
     ),
     expertBySpec: groupCount(
       experts.flatMap(e => {
         const dirs = expertDirMap[e.user_id];
-        return dirs?.length ? dirs : (e.specializations?.length ? e.specializations : ["Не указано"]);
+        return dirs?.length ? dirs : ["Не указано"];
       }),
       "Не указано"
     ),
@@ -300,12 +282,12 @@ export default function AdminMetrics() {
     if (guard.status !== "ok") return;
 
     async function load() {
-      const [reqRes, expRes, matchRes, expRatRes, custRatRes, custProfRes, eventsRes, dirRes, expDirRes] =
+      const [reqRes, expRes, matchRes, expRatRes, custRatRes, custProfRes, eventsRes, dirRes, expDirRes, reqRegRes, expRegRes] =
         await Promise.all([
           supabase.from("palata_requests")
-            .select("id, status, region, expertise_type, expertise_direction_id, created_at, customer_id"),
+            .select("id, status, expertise_type, expertise_direction_id, created_at, customer_id"),
           supabase.from("palata_expert_profiles")
-            .select("user_id, palata_registry_verified, centrsudexpert_verified, regions, specializations"),
+            .select("user_id, palata_registry_verified, centrsudexpert_verified"),
           supabase.from("palata_request_matches")
             .select("request_id, expert_id, status"),
           supabase.from("palata_expert_ratings").select("score"),
@@ -317,6 +299,8 @@ export default function AdminMetrics() {
             .eq("new_status", "completed"),
           supabase.from("palata_expertise_directions").select("id, name"),
           supabase.from("palata_expert_directions").select("expert_id, expertise_direction_id"),
+          supabase.from("palata_request_regions").select("request_id, palata_regions(name)"),
+          supabase.from("palata_expert_regions").select("expert_id, palata_regions(name)"),
         ]);
 
       if (reqRes.error) { setState({ kind: "error", message: reqRes.error.message }); return; }
@@ -332,6 +316,22 @@ export default function AdminMetrics() {
         if (name) (expertDirMap[row.expert_id] ??= []).push(name);
       }
 
+      type RRRow = { request_id: string; palata_regions: { name: string } | { name: string }[] | null };
+      const reqRegionNamesMap: Record<string, string[]> = {};
+      for (const row of (reqRegRes.data ?? []) as unknown as RRRow[]) {
+        const rg = row.palata_regions;
+        const name = Array.isArray(rg) ? rg[0]?.name : rg?.name;
+        if (name) (reqRegionNamesMap[row.request_id] ??= []).push(name);
+      }
+
+      type ERRow = { expert_id: string; palata_regions: { name: string } | { name: string }[] | null };
+      const expertRegionNamesMap: Record<string, string[]> = {};
+      for (const row of (expRegRes.data ?? []) as unknown as ERRow[]) {
+        const rg = row.palata_regions;
+        const name = Array.isArray(rg) ? rg[0]?.name : rg?.name;
+        if (name) (expertRegionNamesMap[row.expert_id] ??= []).push(name);
+      }
+
       setState({
         kind: "ok",
         m: computeMetrics(
@@ -344,6 +344,8 @@ export default function AdminMetrics() {
           (eventsRes.data ?? []) as EventRow[],
           directionMap,
           expertDirMap,
+          reqRegionNamesMap,
+          expertRegionNamesMap,
         ),
       });
     }
@@ -499,7 +501,7 @@ function MetricsBody({ m }: { m: Metrics }) {
                   title="По регионам"
                   rows={m.reqByRegion}
                   total={m.total}
-                  subtitle="palata_requests.region"
+                  subtitle="palata_request_regions · palata_regions"
                 />
                 <DistTable
                   title="По направлениям"
@@ -516,13 +518,13 @@ function MetricsBody({ m }: { m: Metrics }) {
                   title="По регионам"
                   rows={m.expertByRegion}
                   total={m.totalExperts}
-                  subtitle="palata_expert_profiles.regions[]"
+                  subtitle="palata_expert_regions · palata_regions"
                 />
                 <DistTable
                   title="По направлениям"
                   rows={m.expertBySpec}
                   total={m.totalExperts}
-                  subtitle="palata_expert_profiles.specializations[]"
+                  subtitle="palata_expert_directions · palata_expertise_directions"
                 />
               </div>
             )}

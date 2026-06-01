@@ -23,7 +23,6 @@ type Request = {
   status: string;
   expertise_type: string;
   expertise_direction_id: string | null;
-  region: string;
   matching_round: number;
   urgency: string | null;
   created_at: string;
@@ -33,7 +32,6 @@ type CustomerProfile = {
   company_name: string | null;
   inn: string | null;
   contact_name: string | null;
-  region: string | null;
   notes: string | null;
 };
 
@@ -73,7 +71,6 @@ type MatchedExpert = {
   expert_id: string;
   expert_name: string | null;
   expert_email: string | null;
-  specializations: string[];
   direction_names: string[];
   regions: string[];
   experience_years: number | null;
@@ -203,7 +200,7 @@ export default function CustomerDashboard() {
 
     supabase
       .from("palata_requests")
-      .select("id, title, status, expertise_type, expertise_direction_id, region, matching_round, urgency, created_at")
+      .select("id, title, status, expertise_type, expertise_direction_id, matching_round, urgency, created_at")
       .eq("customer_id", userId)
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
@@ -213,7 +210,7 @@ export default function CustomerDashboard() {
 
     supabase
       .from("palata_customer_profiles")
-      .select("company_name, inn, contact_name, region, notes")
+      .select("company_name, inn, contact_name, notes")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -254,7 +251,7 @@ export default function CustomerDashboard() {
     supabase.from("palata_users").select("phone").eq("id", uid).single()
       .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
     supabase.from("palata_customer_profiles")
-      .select("company_name, inn, contact_name, region, notes")
+      .select("company_name, inn, contact_name, notes")
       .eq("user_id", uid).maybeSingle()
       .then(({ data, error }) => {
         if (!error) setProfileState({ kind: "ok", profile: data as CustomerProfile | null });
@@ -840,11 +837,6 @@ function CustomerCard({ request: r, needsRating, directionMap = {} }: { request:
               {directionMap[r.expertise_direction_id ?? ""] ?? r.expertise_type}
             </p>
           )}
-          {r.region && (
-            <p className="text-[11px] text-slate-400 truncate">
-              {r.region}
-            </p>
-          )}
           {r.urgency && r.urgency !== "normal" && (
             <span className="inline-block text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
               {urgencyLabel[r.urgency] ?? r.urgency}
@@ -1019,18 +1011,21 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
 
       const expertIds = matches.map((m: { expert_id: string }) => m.expert_id);
 
-      const [{ data: profiles }, { data: users }, { data: expertDirs }] = await Promise.all([
+      const [{ data: profiles }, { data: users }, { data: expertDirs }, { data: expertRegs }] = await Promise.all([
         supabase.from("palata_expert_profiles").select(
-          "user_id, specializations, regions, experience_years, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count, bio"
+          "user_id, experience_years, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count, bio"
         ).in("user_id", expertIds),
         supabase.from("palata_users").select("id, full_name, email").in("id", expertIds),
         supabase.from("palata_expert_directions")
           .select("expert_id, palata_expertise_directions(name)")
           .in("expert_id", expertIds),
+        supabase.from("palata_expert_regions")
+          .select("expert_id, palata_regions(name)")
+          .in("expert_id", expertIds),
       ]);
 
       type PRow = {
-        user_id: string; specializations: string[]; regions: string[];
+        user_id: string;
         experience_years: number | null; business_trip_ready: boolean;
         palata_registry_verified: boolean; palata_registry_number: string | null;
         centrsudexpert_verified: boolean; centrsudexpert_registry_number: string | null;
@@ -1039,6 +1034,7 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
       type URow = { id: string; full_name: string | null; email: string };
       type MRow = { id: string; expert_id: string; status: string; decline_reason: string | null };
       type EDRow = { expert_id: string; palata_expertise_directions: { name: string }[] };
+      type ERRow = { expert_id: string; palata_regions: { name: string } | { name: string }[] | null };
 
       const pm = Object.fromEntries(((profiles ?? []) as PRow[]).map(p => [p.user_id, p]));
       const um = Object.fromEntries(((users ?? []) as URow[]).map(u => [u.id, u]));
@@ -1050,6 +1046,13 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
         }
       }
 
+      const regNamesMap: Record<string, string[]> = {};
+      for (const row of (expertRegs ?? []) as unknown as ERRow[]) {
+        const rg = row.palata_regions;
+        const name = Array.isArray(rg) ? rg[0]?.name : rg?.name;
+        if (name) (regNamesMap[row.expert_id] ??= []).push(name);
+      }
+
       setExperts(((matches ?? []) as MRow[]).map(m => {
         const p = pm[m.expert_id] as PRow | undefined;
         const u = um[m.expert_id] as URow | undefined;
@@ -1059,9 +1062,8 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
           expert_id: m.expert_id,
           expert_name: u?.full_name ?? null,
           expert_email: u?.email ?? null,
-          specializations: p?.specializations ?? [],
           direction_names: dirNamesMap[m.expert_id] ?? [],
-          regions: p?.regions ?? [],
+          regions: regNamesMap[m.expert_id] ?? [],
           experience_years: p?.experience_years ?? null,
           business_trip_ready: p?.business_trip_ready ?? false,
           palata_registry_verified: p?.palata_registry_verified ?? false,

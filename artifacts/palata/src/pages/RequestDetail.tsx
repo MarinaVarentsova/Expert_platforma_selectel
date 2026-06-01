@@ -22,7 +22,6 @@ type Request = {
   status: string;
   expertise_type: string;
   expertise_direction_id: string | null;
-  region: string;
   matching_round: number;
   budget_min: number | null;
   budget_max: number | null;
@@ -75,8 +74,6 @@ type ContactRecord = {
 
 type ExpertProfile = {
   user_id: string;
-  specializations: string[];
-  regions: string[];
   experience_years: number | null;
   bio: string | null;
   business_trip_ready: boolean;
@@ -146,6 +143,9 @@ type LoadedData = {
   expertRatings: ExpertRating[];
   customerRatings: CustomerRating[];
   usersMap: Record<string, User>;
+  requestRegionNames: string[];
+  expertRegionNamesMap: Record<string, string[]>;
+  expertDirectionNamesMap: Record<string, string[]>;
 };
 
 type PageState =
@@ -370,10 +370,10 @@ export default function RequestDetail() {
         [request.customer_id, ...expertIds, ...actorIds].filter((id): id is string => id != null)
       )];
 
-      const [profilesRes, usersRes, expRatRes, custRatRes] = await Promise.all([
+      const [profilesRes, usersRes, expRatRes, custRatRes, reqRegionsRes, expRegionsRes, expDirsRes] = await Promise.all([
         expertIds.length > 0
           ? supabase.from("palata_expert_profiles")
-              .select("user_id, specializations, regions, experience_years, bio, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count")
+              .select("user_id, experience_years, bio, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count")
               .in("user_id", expertIds)
           : Promise.resolve({ data: [] as ExpertProfile[], error: null }),
         userIds.length > 0
@@ -381,6 +381,19 @@ export default function RequestDetail() {
           : Promise.resolve({ data: [] as User[], error: null }),
         supabase.from("palata_expert_ratings").select("*").eq("request_id", id!),
         supabase.from("palata_customer_ratings").select("*").eq("request_id", id!),
+        supabase.from("palata_request_regions")
+          .select("palata_regions(name)")
+          .eq("request_id", id!),
+        expertIds.length > 0
+          ? supabase.from("palata_expert_regions")
+              .select("expert_id, palata_regions(name)")
+              .in("expert_id", expertIds)
+          : Promise.resolve({ data: [], error: null }),
+        expertIds.length > 0
+          ? supabase.from("palata_expert_directions")
+              .select("expert_id, palata_expertise_directions(name)")
+              .in("expert_id", expertIds)
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
       const expertProfiles = (profilesRes.data as ExpertProfile[]) ?? [];
@@ -389,9 +402,33 @@ export default function RequestDetail() {
       const expertRatings = (expRatRes.data as ExpertRating[]) ?? [];
       const customerRatings = (custRatRes.data as CustomerRating[]) ?? [];
 
+      type RRItem = { palata_regions: { name: string } | { name: string }[] | null };
+      const requestRegionNames = ((reqRegionsRes.data ?? []) as unknown as RRItem[])
+        .map(r => {
+          const rg = r.palata_regions;
+          return Array.isArray(rg) ? rg[0]?.name ?? "" : rg?.name ?? "";
+        }).filter(Boolean);
+
+      type ERItem = { expert_id: string; palata_regions: { name: string } | { name: string }[] | null };
+      const expertRegionNamesMap: Record<string, string[]> = {};
+      for (const row of (expRegionsRes.data ?? []) as unknown as ERItem[]) {
+        const rg = row.palata_regions;
+        const name = Array.isArray(rg) ? rg[0]?.name : rg?.name;
+        if (name) (expertRegionNamesMap[row.expert_id] ??= []).push(name);
+      }
+
+      type EDItem = { expert_id: string; palata_expertise_directions: { name: string } | { name: string }[] | null };
+      const expertDirectionNamesMap: Record<string, string[]> = {};
+      for (const row of (expDirsRes.data ?? []) as unknown as EDItem[]) {
+        const ed = row.palata_expertise_directions;
+        const name = Array.isArray(ed) ? ed[0]?.name : ed?.name;
+        if (name) (expertDirectionNamesMap[row.expert_id] ??= []).push(name);
+      }
+
       setState({ kind: "ok", data: {
         request, files, matches, contacts, expertProfiles,
         events, emailEvents, expertRatings, customerRatings, usersMap,
+        requestRegionNames, expertRegionNamesMap, expertDirectionNamesMap,
       }});
     }
 
@@ -430,7 +467,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   const userId = currentUser?.id ?? null;
 
   const { request: r, files, matches, contacts, expertProfiles,
-          events, emailEvents, expertRatings, customerRatings, usersMap } = data;
+          events, emailEvents, expertRatings, customerRatings, usersMap,
+          requestRegionNames, expertRegionNamesMap, expertDirectionNamesMap } = data;
 
   const contactsMap = Object.fromEntries(contacts.map(c => [c.expert_id, c]));
   const profileMap = Object.fromEntries(expertProfiles.map(p => [p.user_id, p]));
@@ -463,7 +501,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       requestShortId,
       requestTitle:  r.title,
       expertiseType: directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—",
-      region:        r.region,
+      region:        requestRegionNames.join(", ") || "—",
       currentStatus: r.status,
       ...override,
     };
@@ -912,7 +950,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           <Field label="Направление экспертизы">
             {directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—"}
           </Field>
-          <Field label="Регион">{r.region}</Field>
+          {requestRegionNames.length > 0 && (
+            <Field label="Регион">{requestRegionNames.join(", ")}</Field>
+          )}
           <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
           <Field label="Выезд эксперта">{r.requires_travel ? "Требуется" : "Не требуется"}</Field>
           <Field label="Дата создания">{fmtDate(r.created_at)}</Field>
@@ -1013,7 +1053,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                       <Field label="Направление">
                         {directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—"}
                       </Field>
-                      <Field label="Регион">{r.region}</Field>
+                      {requestRegionNames.length > 0 && (
+                        <Field label="Регион">{requestRegionNames.join(", ")}</Field>
+                      )}
                       <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
                       <Field label="Предложено">{fmtDate(m.proposed_at)}</Field>
                       {m.can_start_from_date && <Field label="Могу взять с">{fmtDate(m.can_start_from_date)}</Field>}
@@ -1398,11 +1440,11 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                     {profile ? (
                       <div className="px-4 py-3 space-y-3">
                         <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
-                          {profile.specializations.length > 0 && (
-                            <Field label="Направления экспертиз">{profile.specializations.join(", ")}</Field>
+                          {(expertDirectionNamesMap[profile.user_id]?.length ?? 0) > 0 && (
+                            <Field label="Направления экспертиз">{(expertDirectionNamesMap[profile.user_id] ?? []).join(", ")}</Field>
                           )}
-                          {profile.regions.length > 0 && (
-                            <Field label="Регионы работы">{profile.regions.join(", ")}</Field>
+                          {(expertRegionNamesMap[profile.user_id]?.length ?? 0) > 0 && (
+                            <Field label="Регионы работы">{(expertRegionNamesMap[profile.user_id] ?? []).join(", ")}</Field>
                           )}
                           {profile.experience_years != null && (
                             <Field label="Опыт">{profile.experience_years} лет</Field>

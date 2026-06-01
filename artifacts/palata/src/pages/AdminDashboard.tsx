@@ -12,7 +12,6 @@ type Request = {
   status: string;
   expertise_type: string;
   expertise_direction_id: string | null;
-  region: string;
   matching_round: number;
   budget_min: number | null;
   budget_max: number | null;
@@ -101,7 +100,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     supabase
       .from("palata_requests")
-      .select("id, title, status, expertise_type, expertise_direction_id, region, matching_round, budget_min, budget_max, created_at")
+      .select("id, title, status, expertise_type, expertise_direction_id, matching_round, budget_min, budget_max, created_at")
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (error) { setState({ kind: "error", message: error.message }); return; }
@@ -264,9 +263,6 @@ function AdminCard({ request: r, directionMap }: { request: Request; directionMa
               <span className="inline-block h-1 w-1 rounded-full bg-[#666666] flex-shrink-0" />
               {dirName}
             </p>
-          )}
-          {r.region && (
-            <p className="text-[11px] text-slate-400 truncate">{r.region}</p>
           )}
           {(r.budget_min != null || r.budget_max != null) && (
             <p className="text-[11px] text-slate-400">

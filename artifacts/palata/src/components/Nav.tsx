@@ -56,12 +56,12 @@ export default function Nav() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center h-14 gap-2">
 
           {/* Brand */}
-          <Link href="/">
+          <a href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/" target="_blank" rel="noopener noreferrer">
             <div className="flex items-center gap-2 mr-4 sm:mr-8 cursor-pointer select-none">
               <img src="/logo.jpg" alt="Палата судебных экспертов" className="h-8 w-auto" />
-              <span className="text-sm font-bold text-[#111111] tracking-tight">Главная</span>
+              <span className="text-sm font-bold text-[#111111] tracking-tight">ПалатаЭкспертов</span>
             </div>
-          </Link>
+          </a>
 
           {/* Desktop nav links */}
           <div className="hidden sm:flex items-center gap-1 flex-1">

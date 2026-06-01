@@ -30,7 +30,9 @@ export function RegionMultiSelect({
     supabase
       .from("palata_regions")
       .select("id, name")
+      .eq("is_active", true)
       .order("sort_order")
+      .order("name")
       .then(({ data }) => setRegions(data ?? []));
   }, []);
 

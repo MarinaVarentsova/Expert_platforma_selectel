@@ -362,32 +362,30 @@ export default function CustomerDashboard() {
       </div>
 
       {/* Tabs */}
-      {tab !== "profile" && (
-        <div className="flex gap-1 mb-6 border-b border-slate-200 overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 scrollbar-none">
-          <TabButton active={tab === "requests"} onClick={() => setTab("requests")}>
-            <ClipboardList className="w-3.5 h-3.5" />
-            Мои заказы
-          </TabButton>
-          <TabButton active={tab === "actions"} onClick={() => setTab("actions")}>
-            <Zap className="w-3.5 h-3.5" />
-            Требуют действия
-            {actionItems.length > 0 && (
-              <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-rose-500 text-white rounded-full">
-                {actionItems.length}
-              </span>
-            )}
-          </TabButton>
-          <TabButton active={tab === "rate"} onClick={() => setTab("rate")}>
-            <Star className="w-3.5 h-3.5" />
-            Оценить эксперта
-            {pendingCount != null && pendingCount > 0 && (
-              <span className="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-amber-500 text-white rounded-full">
-                {pendingCount}
-              </span>
-            )}
-          </TabButton>
-        </div>
-      )}
+      <div className="flex gap-1 mb-6 border-b border-slate-200 overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 scrollbar-none">
+        <TabButton active={tab === "requests"} onClick={() => setTab("requests")}>
+          <ClipboardList className="w-3.5 h-3.5" />
+          Мои заказы
+        </TabButton>
+        <TabButton active={tab === "actions"} onClick={() => setTab("actions")}>
+          <Zap className="w-3.5 h-3.5" />
+          Требуют действия
+          {actionItems.length > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-rose-500 text-white rounded-full">
+              {actionItems.length}
+            </span>
+          )}
+        </TabButton>
+        <TabButton active={tab === "rate"} onClick={() => setTab("rate")}>
+          <Star className="w-3.5 h-3.5" />
+          Оценить эксперта
+          {pendingCount != null && pendingCount > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-amber-500 text-white rounded-full">
+              {pendingCount}
+            </span>
+          )}
+        </TabButton>
+      </div>
 
       {/* Tab: Requests */}
       {tab === "requests" && (

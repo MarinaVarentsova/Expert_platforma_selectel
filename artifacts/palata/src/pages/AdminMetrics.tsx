@@ -268,9 +268,17 @@ function computeMetrics(
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
+type DebugInfo = {
+  regionsCount: number;
+  expertRegionsCount: number;
+  expertRegionsError: string | null;
+  expertRegionsSample: string;
+  expertMapSample: string;
+};
+
 type PageState =
   | { kind: "loading" }
-  | { kind: "ok"; m: Metrics }
+  | { kind: "ok"; m: Metrics; dbg: DebugInfo }
   | { kind: "error"; message: string };
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -301,7 +309,7 @@ export default function AdminMetrics() {
           supabase.from("palata_expertise_directions").select("id, name"),
           supabase.from("palata_expert_directions").select("expert_id, expertise_direction_id"),
           supabase.from("palata_regions").select("id, name"),
-          supabase.from("palata_expert_regions").select("expert_id, region_id"),
+          supabase.from("palata_expert_regions").select("expert_id, region_id, palata_regions!region_id(name)"),
         ]);
 
       if (reqRes.error) { setState({ kind: "error", message: reqRes.error.message }); return; }
@@ -317,6 +325,9 @@ export default function AdminMetrics() {
         if (name) (expertDirMap[row.expert_id] ??= []).push(name);
       }
 
+      console.log("[metrics] palata_regions:", reqRegRes.error?.message ?? reqRegRes.data?.length, "rows", reqRegRes.data?.slice(0,3));
+      console.log("[metrics] palata_expert_regions:", expRegRes.error?.message ?? expRegRes.data?.length, "rows", expRegRes.data?.slice(0,3));
+
       const regionNameById: Record<string, string> = {};
       for (const rg of (reqRegRes.data ?? []) as { id: string; name: string }[]) {
         regionNameById[rg.id] = rg.name;
@@ -328,11 +339,13 @@ export default function AdminMetrics() {
         }
       }
 
+      type ERRow = { expert_id: string; region_id: string; palata_regions: { name: string } | null };
       const expertRegionNamesMap: Record<string, string[]> = {};
-      for (const row of (expRegRes.data ?? []) as { expert_id: string; region_id: string }[]) {
-        const name = regionNameById[row.region_id];
+      for (const row of (expRegRes.data ?? []) as unknown as ERRow[]) {
+        const name = row.palata_regions?.name ?? regionNameById[row.region_id];
         if (name) (expertRegionNamesMap[row.expert_id] ??= []).push(name);
       }
+      console.log("[metrics] expertRegionNamesMap:", expertRegionNamesMap);
 
       setState({
         kind: "ok",
@@ -349,6 +362,13 @@ export default function AdminMetrics() {
           reqRegionNamesMap,
           expertRegionNamesMap,
         ),
+        dbg: {
+          regionsCount: reqRegRes.data?.length ?? -1,
+          expertRegionsCount: expRegRes.data?.length ?? -1,
+          expertRegionsError: expRegRes.error?.message ?? null,
+          expertRegionsSample: JSON.stringify(expRegRes.data?.slice(0, 2) ?? []),
+          expertMapSample: JSON.stringify(Object.entries(expertRegionNamesMap).slice(0, 2)),
+        },
       });
     }
 
@@ -391,6 +411,17 @@ export default function AdminMetrics() {
           <div className="rounded-2xl border border-red-200 bg-red-50 p-6 max-w-xl">
             <p className="text-sm font-semibold text-red-700 mb-1">Ошибка загрузки</p>
             <p className="text-xs text-red-600 font-mono">{state.message}</p>
+          </div>
+        )}
+
+        {state.kind === "ok" && (
+          <div className="mb-6 rounded-xl border border-yellow-300 bg-yellow-50 p-4 text-xs font-mono text-yellow-900 space-y-1">
+            <p className="font-bold">🔍 DEBUG (временно)</p>
+            <p>palata_regions rows: {state.dbg.regionsCount}</p>
+            <p>palata_expert_regions rows: {state.dbg.expertRegionsCount}</p>
+            <p>palata_expert_regions error: {state.dbg.expertRegionsError ?? "none"}</p>
+            <p>expert_regions sample: {state.dbg.expertRegionsSample}</p>
+            <p>expertMap sample: {state.dbg.expertMapSample}</p>
           </div>
         )}
         {state.kind === "ok" && <MetricsBody m={state.m} />}

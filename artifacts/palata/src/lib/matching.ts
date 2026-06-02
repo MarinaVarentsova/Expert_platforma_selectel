@@ -94,41 +94,25 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   const rounds = (prevMatches ?? []).map(m => m.matching_round as number);
   const nextRound = rounds.length > 0 ? Math.max(...rounds) + 1 : 1;
 
-  // 2. Find experts qualified for this direction.
-  //
-  //    Primary path (requires migration 029 RLS policy to be applied in Supabase):
-  //      Query palata_expert_certificates with:
-  //        • status = 'verified'
-  //        • cert_valid_to IS NULL OR cert_valid_to >= today  (not expired)
-  //        • expertiseDirectionId ∈ cert_direction_ids        (covers this direction)
-  //
-  //    Fallback (migration 029 not yet applied → RLS blocks other experts' certs):
-  //      Query palata_expert_directions by direction only (no expiry check).
-  //      Matching still works; expiry validation is skipped until migration runs.
+  // 2. Find experts with a valid, non-expired verified certificate
+  //    that explicitly covers the requested expertise direction.
+  //      • status = 'verified'
+  //      • cert_valid_to >= today   (no expired certs; no cert = no access)
+  //      • cert_direction_ids ∋ expertiseDirectionId
+  //    RLS policy "Authenticated can read verified certs" (migration 029) must be
+  //    applied in Supabase for this query to return rows for other experts.
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
   const { data: certRows } = await supabase
     .from("palata_expert_certificates")
     .select("expert_id")
     .eq("status", "verified")
-    .or(`cert_valid_to.is.null,cert_valid_to.gte.${today}`)
+    .gte("cert_valid_to", today)
     .contains("cert_direction_ids", [expertiseDirectionId]);
 
-  let qualifiedExpertIds: Set<string>;
-
-  if (certRows && certRows.length > 0) {
-    // Migration 029 applied: full cert-based check (direction + expiry)
-    qualifiedExpertIds = new Set(certRows.map(r => r.expert_id as string));
-  } else {
-    // Fallback: direction-based check only (no expiry check)
-    // This path is used when migration 029 hasn't been applied yet
-    // and RLS blocks reading other experts' certificates.
-    const { data: expertDirs } = await supabase
-      .from("palata_expert_directions")
-      .select("expert_id")
-      .eq("expertise_direction_id", expertiseDirectionId);
-    qualifiedExpertIds = new Set((expertDirs ?? []).map(d => d.expert_id as string));
-  }
+  const qualifiedExpertIds = new Set(
+    (certRows ?? []).map(r => r.expert_id as string),
+  );
 
   const qualifiedIdList = [...qualifiedExpertIds].filter(
     id => !declinedIds.has(id) && !activelyProposedIds.has(id),

@@ -211,15 +211,9 @@ export default function Register() {
           inn:          inn.trim() || null,
           contact_name: contactName.trim() || null,
           notes:        notes.trim() || null,
+          region_id:    regionIds[0] ?? null,
         }, { onConflict: "user_id" });
         if (cpErr) console.error("[register] palata_customer_profiles upsert:", cpErr.message);
-
-        if (regionIds.length > 0) {
-          const { error: crErr } = await supabase.from("palata_customer_regions").insert(
-            regionIds.map(id => ({ customer_id: userId, region_id: id }))
-          );
-          if (crErr) console.error("[register] palata_customer_regions insert:", crErr.message);
-        }
       } else {
         const { error: epErr } = await supabase.from("palata_expert_profiles").upsert({
           user_id:                          userId,
@@ -476,11 +470,12 @@ export default function Register() {
                     placeholder="Иванов Иван Иванович" className={inputClass()} />
                 </div>
                 <div>
-                  <Label>Регионы</Label>
+                  <Label>Регион</Label>
                   <RegionMultiSelect
                     selectedIds={regionIds}
                     onChange={setRegionIds}
-                    placeholder="Выберите регионы присутствия…"
+                    max={1}
+                    placeholder="Выберите регион присутствия…"
                   />
                 </div>
                 <div>

@@ -33,6 +33,7 @@ type CustomerProfile = {
   inn: string | null;
   contact_name: string | null;
   notes: string | null;
+  region_id: string | null;
 };
 
 type PendingExpertRating = {
@@ -102,7 +103,6 @@ const COLUMNS = [
 
 export default function CustomerDashboard() {
   const guard = useRequireRole("customer");
-  const [customerRegionIds, setCustomerRegionIds] = useState<string[]>([]);
   const [allDirections, setAllDirections] = useState<Array<{ id: string; name: string; slug: string }>>([]);
 
   useEffect(() => {
@@ -210,7 +210,7 @@ export default function CustomerDashboard() {
 
     supabase
       .from("palata_customer_profiles")
-      .select("company_name, inn, contact_name, notes")
+      .select("company_name, inn, contact_name, notes, region_id")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -218,11 +218,6 @@ export default function CustomerDashboard() {
         setProfileState({ kind: "ok", profile: data as CustomerProfile | null });
       });
 
-    supabase
-      .from("palata_customer_regions")
-      .select("region_id")
-      .eq("customer_id", userId)
-      .then(({ data }) => setCustomerRegionIds((data ?? []).map((r: { region_id: string }) => r.region_id)));
 
     supabase
       .from("palata_users")
@@ -251,13 +246,11 @@ export default function CustomerDashboard() {
     supabase.from("palata_users").select("phone").eq("id", uid).single()
       .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
     supabase.from("palata_customer_profiles")
-      .select("company_name, inn, contact_name, notes")
+      .select("company_name, inn, contact_name, notes, region_id")
       .eq("user_id", uid).maybeSingle()
       .then(({ data, error }) => {
         if (!error) setProfileState({ kind: "ok", profile: data as CustomerProfile | null });
       });
-    supabase.from("palata_customer_regions").select("region_id").eq("customer_id", uid)
-      .then(({ data }) => setCustomerRegionIds((data ?? []).map((r: { region_id: string }) => r.region_id)));
   }
 
   if (guard.status === "loading" || guard.status === "redirecting") {
@@ -505,7 +498,7 @@ export default function CustomerDashboard() {
               user={{ ...user, phone: userPhone }}
               profile={profileState.profile}
               userId={user.id}
-              initialRegionIds={customerRegionIds}
+              initialRegionIds={profileState.profile?.region_id ? [profileState.profile.region_id] : []}
               onSave={reloadProfile}
             />
           )}
@@ -604,18 +597,13 @@ function ProfileView({
           inn:          inn.trim() || null,
           contact_name: contactName.trim() || null,
           notes:        notes.trim() || null,
+          region_id:    regionIds[0] ?? null,
         }, { onConflict: "user_id" }),
     ]);
     if (r1.error || r2.error) {
       setSaving(false);
       setSaveErr((r1.error ?? r2.error)!.message);
       return;
-    }
-    await supabase.from("palata_customer_regions").delete().eq("customer_id", userId);
-    if (regionIds.length > 0) {
-      await supabase.from("palata_customer_regions").insert(
-        regionIds.map(rid => ({ customer_id: userId, region_id: rid }))
-      );
     }
     setSaving(false);
     setEditing(false);
@@ -668,11 +656,12 @@ function ProfileView({
             <input type="text" value={contactName} onChange={e => setContactName(e.target.value)} className={ic} />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Регионы</label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Регион</label>
             <RegionMultiSelect
               selectedIds={regionIds}
               onChange={setRegionIds}
-              placeholder="Выберите регионы присутствия…"
+              max={1}
+              placeholder="Выберите регион…"
             />
           </div>
           <div>

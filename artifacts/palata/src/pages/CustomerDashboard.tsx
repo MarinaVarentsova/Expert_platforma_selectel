@@ -34,6 +34,7 @@ type CustomerProfile = {
   contact_name: string | null;
   notes: string | null;
   region_id: string | null;
+  palata_regions: { name: string } | null;
 };
 
 type PendingExpertRating = {
@@ -210,7 +211,7 @@ export default function CustomerDashboard() {
 
     supabase
       .from("palata_customer_profiles")
-      .select("company_name, inn, contact_name, notes, region_id")
+      .select("company_name, inn, contact_name, notes, region_id, palata_regions(name)")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -246,7 +247,7 @@ export default function CustomerDashboard() {
     supabase.from("palata_users").select("phone").eq("id", uid).single()
       .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
     supabase.from("palata_customer_profiles")
-      .select("company_name, inn, contact_name, notes, region_id")
+      .select("company_name, inn, contact_name, notes, region_id, palata_regions(name)")
       .eq("user_id", uid).maybeSingle()
       .then(({ data, error }) => {
         if (!error) setProfileState({ kind: "ok", profile: data as CustomerProfile | null });
@@ -555,21 +556,11 @@ function ProfileView({
   const [inn, setInn]                   = useState(profile?.inn ?? "");
   const [contactName, setContactName]   = useState(profile?.contact_name ?? "");
   const [regionIds, setRegionIds]       = useState<string[]>(initialRegionIds);
-  const [regionNames, setRegionNames]   = useState<string[]>([]);
   const [notes, setNotes]               = useState(profile?.notes ?? "");
 
   useEffect(() => {
     setRegionIds(initialRegionIds);
   }, [initialRegionIds.join(",")]);
-
-  useEffect(() => {
-    if (regionIds.length === 0) { setRegionNames([]); return; }
-    supabase.from("palata_regions").select("id, name").in("id", regionIds)
-      .then(({ data }) => {
-        const nm = Object.fromEntries((data ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
-        setRegionNames(regionIds.map(id => nm[id] ?? id));
-      });
-  }, [regionIds.join(",")]);
 
   function beginEdit() {
     setFullName(user.full_name ?? "");
@@ -747,8 +738,8 @@ function ProfileView({
                 <InfoRow icon={<User className="w-3.5 h-3.5" />} label="Контактное лицо" value={profile.contact_name} />
                 <InfoRow
                   icon={<MapPin className="w-3.5 h-3.5" />}
-                  label="Регионы"
-                  value={regionNames.length > 0 ? regionNames.join(", ") : null}
+                  label="Регион"
+                  value={profile.palata_regions?.name ?? "Регион не указан"}
                 />
               </div>
             </div>

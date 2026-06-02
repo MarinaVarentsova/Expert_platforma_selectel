@@ -27,6 +27,7 @@ type ReqRow = {
   expertise_direction_id: string | null;
   created_at: string;
   customer_id: string | null;
+  region_id: string | null;
 };
 
 type ExpertRow = {
@@ -285,7 +286,7 @@ export default function AdminMetrics() {
       const [reqRes, expRes, matchRes, expRatRes, custRatRes, custProfRes, eventsRes, dirRes, expDirRes, reqRegRes, expRegRes] =
         await Promise.all([
           supabase.from("palata_requests")
-            .select("id, status, expertise_type, expertise_direction_id, created_at, customer_id"),
+            .select("id, status, expertise_type, expertise_direction_id, created_at, customer_id, region_id"),
           supabase.from("palata_expert_profiles")
             .select("user_id, palata_registry_verified, centrsudexpert_verified"),
           supabase.from("palata_request_matches")
@@ -299,7 +300,7 @@ export default function AdminMetrics() {
             .eq("new_status", "completed"),
           supabase.from("palata_expertise_directions").select("id, name"),
           supabase.from("palata_expert_directions").select("expert_id, expertise_direction_id"),
-          supabase.from("palata_request_regions").select("request_id, palata_regions(name)"),
+          supabase.from("palata_regions").select("id, name"),
           supabase.from("palata_expert_regions").select("expert_id, palata_regions(name)"),
         ]);
 
@@ -316,12 +317,15 @@ export default function AdminMetrics() {
         if (name) (expertDirMap[row.expert_id] ??= []).push(name);
       }
 
-      type RRRow = { request_id: string; palata_regions: { name: string } | { name: string }[] | null };
+      const regionNameById: Record<string, string> = {};
+      for (const rg of (reqRegRes.data ?? []) as { id: string; name: string }[]) {
+        regionNameById[rg.id] = rg.name;
+      }
       const reqRegionNamesMap: Record<string, string[]> = {};
-      for (const row of (reqRegRes.data ?? []) as unknown as RRRow[]) {
-        const rg = row.palata_regions;
-        const name = Array.isArray(rg) ? rg[0]?.name : rg?.name;
-        if (name) (reqRegionNamesMap[row.request_id] ??= []).push(name);
+      for (const req of (reqRes.data ?? []) as ReqRow[]) {
+        if (req.region_id && regionNameById[req.region_id]) {
+          reqRegionNamesMap[req.id] = [regionNameById[req.region_id]];
+        }
       }
 
       type ERRow = { expert_id: string; palata_regions: { name: string } | { name: string }[] | null };
@@ -501,7 +505,7 @@ function MetricsBody({ m }: { m: Metrics }) {
                   title="По регионам"
                   rows={m.reqByRegion}
                   total={m.total}
-                  subtitle="palata_request_regions · palata_regions"
+                  subtitle="palata_requests.region_id · palata_regions"
                 />
                 <DistTable
                   title="По направлениям"

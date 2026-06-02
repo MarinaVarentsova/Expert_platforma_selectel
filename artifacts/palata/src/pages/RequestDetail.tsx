@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrentUser } from "@/lib/authContext";
-import { RegionMultiSelect } from "@/components/RegionMultiSelect";
+
 import { runMatching } from "@/lib/matching";
 import { notify, type NotifyItem } from "@/lib/notifyApi";
 import {
@@ -37,6 +37,7 @@ type Request = {
   customer_name: string | null;
   customer_phone: string | null;
   customer_email: string | null;
+  region_id: string | null;
 };
 
 type RequestFile = {
@@ -144,8 +145,7 @@ type LoadedData = {
   expertRatings: ExpertRating[];
   customerRatings: CustomerRating[];
   usersMap: Record<string, User>;
-  requestRegionNames: string[];
-  requestRegionIds: string[];
+  requestRegionName: string | null;
   expertRegionNamesMap: Record<string, string[]>;
   expertDirectionNamesMap: Record<string, string[]>;
 };
@@ -383,9 +383,9 @@ export default function RequestDetail() {
           : Promise.resolve({ data: [] as User[], error: null }),
         supabase.from("palata_expert_ratings").select("*").eq("request_id", id!),
         supabase.from("palata_customer_ratings").select("*").eq("request_id", id!),
-        supabase.from("palata_request_regions")
-          .select("region_id, palata_regions(name)")
-          .eq("request_id", id!),
+        request.region_id
+          ? supabase.from("palata_regions").select("name").eq("id", request.region_id).single()
+          : Promise.resolve({ data: null as { name: string } | null, error: null }),
         expertIds.length > 0
           ? supabase.from("palata_expert_regions")
               .select("expert_id, palata_regions(name)")
@@ -404,14 +404,7 @@ export default function RequestDetail() {
       const expertRatings = (expRatRes.data as ExpertRating[]) ?? [];
       const customerRatings = (custRatRes.data as CustomerRating[]) ?? [];
 
-      type RRItem = { region_id: string; palata_regions: { name: string } | { name: string }[] | null };
-      const requestRegionNames = ((reqRegionsRes.data ?? []) as unknown as RRItem[])
-        .map(r => {
-          const rg = r.palata_regions;
-          return Array.isArray(rg) ? rg[0]?.name ?? "" : rg?.name ?? "";
-        }).filter(Boolean);
-      const requestRegionIds = ((reqRegionsRes.data ?? []) as unknown as RRItem[])
-        .map(r => r.region_id).filter(Boolean);
+      const requestRegionName: string | null = (reqRegionsRes.data as { name: string } | null)?.name ?? null;
 
       type ERItem = { expert_id: string; palata_regions: { name: string } | { name: string }[] | null };
       const expertRegionNamesMap: Record<string, string[]> = {};
@@ -432,7 +425,7 @@ export default function RequestDetail() {
       setState({ kind: "ok", data: {
         request, files, matches, contacts, expertProfiles,
         events, emailEvents, expertRatings, customerRatings, usersMap,
-        requestRegionNames, requestRegionIds, expertRegionNamesMap, expertDirectionNamesMap,
+        requestRegionName, expertRegionNamesMap, expertDirectionNamesMap,
       }});
     }
 
@@ -472,7 +465,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   const { request: r, files, matches, contacts, expertProfiles,
           events, emailEvents, expertRatings, customerRatings, usersMap,
-          requestRegionNames, requestRegionIds, expertRegionNamesMap, expertDirectionNamesMap } = data;
+          requestRegionName, expertRegionNamesMap, expertDirectionNamesMap } = data;
 
   const contactsMap = Object.fromEntries(contacts.map(c => [c.expert_id, c]));
   const profileMap = Object.fromEntries(expertProfiles.map(p => [p.user_id, p]));
@@ -490,7 +483,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   const [editDescription, setEditDescription] = useState(r.description ?? "");
   const [editMaterials, setEditMaterials]   = useState(r.materials_available ?? "");
   const [editDirId, setEditDirId]           = useState(r.expertise_direction_id ?? "");
-  const [editRegionIds, setEditRegionIds]   = useState<string[]>(requestRegionIds);
+  const [editRegionId, setEditRegionId]     = useState<string>(r.region_id ?? "");
   const [editUrgency, setEditUrgency]       = useState(r.urgency ?? "normal");
   const [editTravel, setEditTravel]         = useState(r.requires_travel ?? false);
   const [editSaving, setEditSaving]         = useState(false);
@@ -498,10 +491,14 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   // Directions for edit dropdown
   const [editDirections, setEditDirections] = useState<Array<{ id: string; name: string }>>([]);
+  const [editRegions, setEditRegions]       = useState<Array<{ id: string; name: string }>>([]);
   useEffect(() => {
     supabase.from("palata_expertise_directions")
       .select("id, name").eq("is_active", true).order("sort_order")
       .then(({ data: d }) => setEditDirections(d ?? []));
+    supabase.from("palata_regions")
+      .select("id, name").order("sort_order").order("name")
+      .then(({ data: d }) => setEditRegions(d ?? []));
   }, []);
 
   function beginEdit() {
@@ -509,7 +506,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setEditDescription(r.description ?? "");
     setEditMaterials(r.materials_available ?? "");
     setEditDirId(r.expertise_direction_id ?? "");
-    setEditRegionIds(requestRegionIds);
+    setEditRegionId(r.region_id ?? "");
     setEditUrgency(r.urgency ?? "normal");
     setEditTravel(r.requires_travel ?? false);
     setEditError(null);
@@ -521,28 +518,17 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setEditSaving(true);
     setEditError(null);
     try {
-      const editRegionId = editRegionIds[0] ?? null;
       const { error: upErr } = await supabase.from("palata_requests").update({
         title: editTitle.trim(),
         description: editDescription.trim() || null,
         materials_available: editMaterials.trim() || null,
         expertise_direction_id: editDirId || null,
-        region_id: editRegionId,
+        region_id: editRegionId || null,
         urgency: editUrgency,
         requires_travel: editTravel,
         updated_at: new Date().toISOString(),
       }).eq("id", r.id);
       if (upErr) throw new Error(upErr.message);
-
-      const { error: delErr } = await supabase.from("palata_request_regions")
-        .delete().eq("request_id", r.id);
-      if (delErr) throw new Error(delErr.message);
-
-      if (editRegionIds.length > 0) {
-        const { error: insErr } = await supabase.from("palata_request_regions")
-          .insert(editRegionIds.map(rid => ({ request_id: r.id, region_id: rid })));
-        if (insErr) throw new Error(insErr.message);
-      }
 
       setEditingRequest(false);
       onReload();
@@ -578,7 +564,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       requestShortId,
       requestTitle:  r.title,
       expertiseType: directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—",
-      region:        requestRegionNames.join(", ") || "—",
+      region:        requestRegionName || "—",
       currentStatus: r.status,
       ...override,
     };
@@ -606,11 +592,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleRematch() {
     setMatchingRunning(true);
     try {
-      const { data: reqRegions } = await supabase
-        .from("palata_request_regions").select("region_id").eq("request_id", r.id);
       await runMatching({
         requestId: r.id, expertiseDirectionId: r.expertise_direction_id ?? "",
-        regionIds: (reqRegions ?? []).map((rr: { region_id: string }) => rr.region_id),
+        regionIds: r.region_id ? [r.region_id] : [],
         requiresTravel: r.requires_travel ?? false,
       });
     } catch (e) { console.error("Rematch error:", e); }
@@ -1072,11 +1056,16 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
             <div>
               <label className="block text-xs text-slate-400 mb-1">Регион</label>
-              <RegionMultiSelect
-                selectedIds={editRegionIds}
-                onChange={setEditRegionIds}
-                placeholder="Выберите регионы…"
-              />
+              <select
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F4C9A] bg-white"
+                value={editRegionId}
+                onChange={e => setEditRegionId(e.target.value)}
+              >
+                <option value="">— не указан —</option>
+                {editRegions.map(reg => (
+                  <option key={reg.id} value={reg.id}>{reg.name}</option>
+                ))}
+              </select>
             </div>
 
             <label className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer select-none">
@@ -1144,7 +1133,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                 {directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—"}
               </Field>
               <Field label="Регион">
-                {requestRegionNames.length > 0 ? requestRegionNames.join(", ") : <span className="text-slate-400 italic">Не указан</span>}
+                {requestRegionName ?? <span className="text-slate-400 italic">Не указан</span>}
               </Field>
               <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
               <Field label="Выезд эксперта">{r.requires_travel ? "Требуется" : "Не требуется"}</Field>
@@ -1248,8 +1237,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                       <Field label="Направление">
                         {directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—"}
                       </Field>
-                      {requestRegionNames.length > 0 && (
-                        <Field label="Регион">{requestRegionNames.join(", ")}</Field>
+                      {requestRegionName && (
+                        <Field label="Регион">{requestRegionName}</Field>
                       )}
                       <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
                       <Field label="Предложено">{fmtDate(m.proposed_at)}</Field>

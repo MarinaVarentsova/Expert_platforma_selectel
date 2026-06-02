@@ -1528,6 +1528,7 @@ type RequestDetails = {
   customer_id: string | null;
   requires_travel: boolean;
   status: string;
+  region_id: string | null;
 };
 
 type CustomerContact = {
@@ -1566,7 +1567,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
     async function load() {
       const { data: reqData } = await supabase
         .from("palata_requests")
-        .select("title, expertise_type, expertise_direction_id, description, customer_id, requires_travel, status")
+        .select("title, expertise_type, expertise_direction_id, description, customer_id, requires_travel, status, region_id")
         .eq("id", item.request_id)
         .maybeSingle();
       const r = reqData as RequestDetails | null;
@@ -1787,12 +1788,10 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
 
       if (allDeclined) {
         const custId2 = item.customer_id ?? req?.customer_id ?? undefined;
-        const { data: reqRegions } = await supabase
-          .from("palata_request_regions").select("region_id").eq("request_id", item.request_id);
         await runMatching({
           requestId:           item.request_id,
           expertiseDirectionId: req?.expertise_direction_id ?? "",
-          regionIds:           (reqRegions ?? []).map((rr: { region_id: string }) => rr.region_id),
+          regionIds:           req?.region_id ? [req.region_id] : [],
           requiresTravel:      req?.requires_travel ?? false,
           customerId:          custId2 ?? undefined,
         });
@@ -1983,7 +1982,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
     async function load() {
       const { data: reqData } = await supabase
         .from("palata_requests")
-        .select("title, expertise_type, expertise_direction_id, description, customer_id, requires_travel, status")
+        .select("title, expertise_type, expertise_direction_id, description, customer_id, requires_travel, status, region_id")
         .eq("id", item.request_id)
         .maybeSingle();
       const r = reqData as RequestDetails | null;
@@ -2175,12 +2174,10 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
 
       if (allDeclined) {
         const custId2 = custIdFromPayload ?? req?.customer_id ?? undefined;
-        const { data: reqRegions2 } = await supabase
-          .from("palata_request_regions").select("region_id").eq("request_id", item.request_id);
         await runMatching({
           requestId:           item.request_id,
           expertiseDirectionId: req?.expertise_direction_id ?? "",
-          regionIds:           (reqRegions2 ?? []).map((rr: { region_id: string }) => rr.region_id),
+          regionIds:           req?.region_id ? [req.region_id] : [],
           requiresTravel:      req?.requires_travel ?? false,
           customerId:          custId2 ?? undefined,
         });

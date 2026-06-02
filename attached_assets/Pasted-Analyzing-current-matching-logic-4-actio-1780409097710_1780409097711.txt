@@ -1,0 +1,99 @@
+Analyzing current matching logic
+Начинаю аудит — читаю все ключевые файлы параллельно:
+
+
+4 actions
+Читаю все места вызова runMatching и ключевые файлы параллельно:
+
+
+4 actions
+Продолжаю аудит — читаю остальные файлы параллельно:
+
+
+5 actions
+Нашёл критическую проблему. Читаю оставшиеся детали:
+
+
+4 actions
+Читаю schema expert_profiles из migration 001 и проверяю AdminDashboard:
+
+
+5 actions
+Аудит завершён. Вот ключевые находки:
+
+КРИТИЧЕСКОЕ: palata_expert_profiles имеет status (enum: draft/pending/active/suspended/rejected), причём все эксперты, зарегистрированные через текущий Register.tsx, получают status='draft' по умолчанию — поэтому .eq("status","active") возвращает 0 экспертов всегда.
+
+Пишу все исправления параллельно:
+
+
+2 actions
+Теперь фикшу все места вызова runMatching и убираю debug-панель из AdminMetrics параллельно:
+
+
+6 actions
+Фикшу все 4 вызова одновременно:
+
+
+8 actions
+Убираю debug-панель из AdminMetrics и делаю typecheck параллельно:
+
+
+3 actions
+Один TypeScript error в новом matching.ts. Фикшу и одновременно убираю debug-панель:
+
+
+3 actions
+Фикшу TypeScript ошибку и убираю debug-панель одновременно:
+
+
+3 actions
+Нужно убрать и остаток debug-кода из AdminMetrics. Читаю все затронутые участки:
+
+
+5 actions
+Финальный typecheck:
+
+
+2 actions
+0 ошибок TypeScript. Перезапускаю приложение:
+
+
+2 actions
+Готово. Вот полный отчёт аудита и исправлений.
+
+Отчёт аудита matching-логики
+1. Где находится основной matching-код
+artifacts/palata/src/lib/matching.ts
+
+2. Поле формата работы
+palata_requests.requires_travel: boolean — true = выезд, false = дистанционно
+
+3–6. Логика по сценариям (после исправления)
+Сценарий	Условие	Действие
+1	direction + region + выезд	Фильтр: регион совпадает + business_trip_ready = true; сортировка по рейтингу
+2	direction + region + дистанционно	Фильтр только по направлению; регион игнорируется полностью
+3	нет direction	Ранний выход → manual_matching_required для администратора
+4	нет region + direction + дистанционно	Фильтр только по направлению (как сценарий 2)
+5	нет region + выезд	Ранний выход → manual_matching_required для администратора
+7. Рейтинг
+Первичная сортировка: avg_customer_rating (null → 0), 10 очков за каждую единицу рейтинга. Тайбрейкеры — верификация и выполненные заказы. Чистый формульный score возвращается в MatchingResult.experts.
+
+8. Изменённые файлы
+Файл	Что исправлено
+src/lib/matching.ts	5 ключевых исправлений — см. ниже
+src/pages/NewRequest.tsx	form.expertise_direction_id || null вместо голой строки
+src/pages/RequestDetail.tsx	r.expertise_direction_id ?? null вместо ?? ""
+src/pages/ExpertDashboard.tsx	req?.expertise_direction_id ?? null (оба вызова)
+src/pages/AdminMetrics.tsx	Удалена debug-панель
+5 исправлений в matching.ts:
+
+КРИТИЧНО — убран .eq("status", "active") на palata_expert_profiles. Все эксперты, зарегистрированные через форму, получают status='draft' по умолчанию → matching возвращал 0 экспертов всегда.
+Добавлен guard Сценария 3 (нет direction → ранний выход до всех запросов к БД).
+Добавлен guard Сценария 5 (выезд + нет региона → ранний выход).
+Для дистанционной работы: регион теперь полностью игнорируется и не влияет на score.
+Добавлен фильтр верификации: .or("palata_registry_verified.eq.true,centrsudexpert_verified.eq.true") — участвуют только эксперты с подтверждённым сертификатом.
+9. SQL/RLS изменения
+Не требуются. Все данные доступны через существующие политики. Верификация проверяется через поля palata_registry_verified / centrsudexpert_verified в palata_expert_profiles (доступны для чтения всем аутентифицированным пользователям), что эквивалентно palata_expert_certificates.status = 'verified' — последняя таблица закрыта RLS политикой "только свои записи" и недоступна для кросс-пользовательских запросов без service role.
+
+10. palata_request_regions
+Не используется нигде в кодовой базе. Подтверждено полным grep.

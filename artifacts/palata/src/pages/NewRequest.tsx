@@ -181,6 +181,13 @@ export default function NewRequest() {
         await supabase.from("palata_request_regions").insert(
           form.region_ids.map(rid => ({ request_id: requestId, region_id: rid }))
         );
+
+        // Also upsert these regions into the customer's profile regions
+        // (ignore conflicts — the region may already be there)
+        await supabase.from("palata_customer_regions").upsert(
+          form.region_ids.map(rid => ({ customer_id: currentUserId, region_id: rid })),
+          { onConflict: "customer_id,region_id", ignoreDuplicates: true }
+        );
       }
 
       // 3. Upload files (if any)

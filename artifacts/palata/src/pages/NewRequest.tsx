@@ -155,28 +155,34 @@ export default function NewRequest() {
         : situation || (comment ? `─── Комментарий заказчика ───\n${comment}` : null);
 
       // 1. Insert request with status = new
+      console.log("[new-request] form.region_ids at submit:", form.region_ids);
       const selectedRegionId = form.region_ids[0] ?? null;
       console.log("[new-request] selectedRegionId:", selectedRegionId);
       console.log("[new-request] payload.region_id:", selectedRegionId);
 
+      const insertPayload = {
+        status: "new",
+        title: form.title.trim(),
+        description: fullDescription,
+        expertise_direction_id: form.expertise_direction_id,
+        region_id: selectedRegionId,
+        urgency: form.urgency,
+        requires_travel: form.requires_travel,
+        materials_available: form.materials_available.trim() || null,
+        customer_name: form.customer_name.trim(),
+        customer_phone: form.customer_phone.trim() || null,
+        customer_email: form.customer_email.trim() || null,
+        customer_id: currentUserId,
+      };
+      console.log("[new-request] full insert payload:", insertPayload);
+
       const { data: reqData, error: reqError } = await supabase
         .from("palata_requests")
-        .insert({
-          status: "new",
-          title: form.title.trim(),
-          description: fullDescription,
-          expertise_direction_id: form.expertise_direction_id,
-          region_id: selectedRegionId,
-          urgency: form.urgency,
-          requires_travel: form.requires_travel,
-          materials_available: form.materials_available.trim() || null,
-          customer_name: form.customer_name.trim(),
-          customer_phone: form.customer_phone.trim() || null,
-          customer_email: form.customer_email.trim() || null,
-          customer_id: currentUserId,
-        })
-        .select("id")
+        .insert(insertPayload)
+        .select("id, region_id")
         .single();
+
+      console.log("[new-request] insert result — data:", reqData, "error:", reqError);
 
       if (reqError) throw new Error(reqError.message);
       const requestId: string = reqData.id;

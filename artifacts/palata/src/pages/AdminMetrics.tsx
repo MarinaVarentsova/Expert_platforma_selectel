@@ -301,7 +301,7 @@ export default function AdminMetrics() {
           supabase.from("palata_expertise_directions").select("id, name"),
           supabase.from("palata_expert_directions").select("expert_id, expertise_direction_id"),
           supabase.from("palata_regions").select("id, name"),
-          supabase.from("palata_expert_regions").select("expert_id, palata_regions(name)"),
+          supabase.from("palata_expert_regions").select("expert_id, region_id"),
         ]);
 
       if (reqRes.error) { setState({ kind: "error", message: reqRes.error.message }); return; }
@@ -328,11 +328,9 @@ export default function AdminMetrics() {
         }
       }
 
-      type ERRow = { expert_id: string; palata_regions: { name: string } | { name: string }[] | null };
       const expertRegionNamesMap: Record<string, string[]> = {};
-      for (const row of (expRegRes.data ?? []) as unknown as ERRow[]) {
-        const rg = row.palata_regions;
-        const name = Array.isArray(rg) ? rg[0]?.name : rg?.name;
+      for (const row of (expRegRes.data ?? []) as { expert_id: string; region_id: string }[]) {
+        const name = regionNameById[row.region_id];
         if (name) (expertRegionNamesMap[row.expert_id] ??= []).push(name);
       }
 

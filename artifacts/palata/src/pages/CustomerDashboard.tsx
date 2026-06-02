@@ -586,20 +586,26 @@ function ProfileView({
   async function handleSave() {
     setSaving(true);
     setSaveErr(null);
+    const cpPayload = {
+      company_name: companyName.trim() || null,
+      inn:          inn.trim() || null,
+      contact_name: contactName.trim() || null,
+      notes:        notes.trim() || null,
+      region_id:    regionIds[0] ?? null,
+    };
+    console.log("[profile-save] regionIds:", regionIds);
+    console.log("[profile-save] regionIds[0]:", regionIds[0]);
+    console.log("[profile-save] palata_customer_profiles payload:", cpPayload);
     const [r1, r2] = await Promise.all([
       supabase.from("palata_users")
         .update({ full_name: fullName.trim() || null, phone: phone.trim() || null })
         .eq("id", userId),
       supabase.from("palata_customer_profiles")
-        .upsert({
-          user_id:      userId,
-          company_name: companyName.trim() || null,
-          inn:          inn.trim() || null,
-          contact_name: contactName.trim() || null,
-          notes:        notes.trim() || null,
-          region_id:    regionIds[0] ?? null,
-        }, { onConflict: "user_id" }),
+        .update(cpPayload)
+        .eq("user_id", userId)
+        .select(),
     ]);
+    console.log("[profile-save] palata_customer_profiles response → data:", (r2 as { data: unknown }).data, "error:", r2.error);
     if (r1.error || r2.error) {
       setSaving(false);
       setSaveErr((r1.error ?? r2.error)!.message);

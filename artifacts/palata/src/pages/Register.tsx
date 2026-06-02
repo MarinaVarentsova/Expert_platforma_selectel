@@ -171,6 +171,7 @@ export default function Register() {
         inn:          inn.trim() || null,
         contact_name: contactName.trim() || null,
         notes:        notes.trim() || null,
+        region_id:    regionIds[0] ?? null,
       });
     } else {
       Object.assign(meta, {
@@ -205,15 +206,20 @@ export default function Register() {
       const userId = data.user.id;
 
       if (role === "customer") {
-        const { error: cpErr } = await supabase.from("palata_customer_profiles").upsert({
+        const cpPayload = {
           user_id:      userId,
           company_name: companyName.trim() || null,
           inn:          inn.trim() || null,
           contact_name: contactName.trim() || null,
           notes:        notes.trim() || null,
           region_id:    regionIds[0] ?? null,
-        }, { onConflict: "user_id" });
-        if (cpErr) console.error("[register] palata_customer_profiles upsert:", cpErr.message);
+        };
+        console.log("[register] role:", role);
+        console.log("[register] regionIds:", regionIds);
+        console.log("[register] regionIds[0]:", regionIds[0]);
+        console.log("[register] palata_customer_profiles payload:", cpPayload);
+        const { data: cpData, error: cpErr } = await supabase.from("palata_customer_profiles").upsert(cpPayload, { onConflict: "user_id" }).select();
+        console.log("[register] palata_customer_profiles response → data:", cpData, "error:", cpErr);
       } else {
         const { error: epErr } = await supabase.from("palata_expert_profiles").upsert({
           user_id:                          userId,

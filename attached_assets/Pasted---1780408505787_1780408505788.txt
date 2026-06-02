@@ -1,0 +1,193 @@
+Нужно провести аудит и при необходимости исправить логику подбора экспертов.
+
+Сначала провести аудит текущего matching-кода, потом исправить несоответствия.
+
+Основные таблицы:
+
+Эксперт:
+
+* palata_users
+* palata_expert_profiles
+* palata_expert_regions
+* palata_expert_directions
+* palata_expert_ratings
+
+Заказ:
+
+* palata_requests
+* palata_request_matches
+
+Справочники:
+
+* palata_regions
+* palata_expertise_directions
+
+# Правильная бизнес-логика подбора
+
+## Сценарий 1
+
+Если в заказе указано:
+
+* region_id
+* expertise_direction_id
+* формат работы = выезд
+
+то подбираем экспертов:
+
+1. по совпадению региона:
+   palata_requests.region_id = palata_expert_regions.region_id
+
+2. только тех, кто готов к выезду:
+   palata_expert_profiles.business_trip_ready = true
+
+3. по совпадению направления:
+   palata_requests.expertise_direction_id = palata_expert_directions.expertise_direction_id
+
+4. сортировка:
+   сначала эксперты с более высоким рейтингом,
+   от высокого к низкому.
+
+---
+
+## Сценарий 2
+
+Если в заказе указано:
+
+* region_id
+* expertise_direction_id
+* формат работы = дистанционная работа
+
+то регион НЕ используется как фильтр.
+
+Подбираем экспертов:
+
+1. только по направлению:
+   palata_requests.expertise_direction_id = palata_expert_directions.expertise_direction_id
+
+2. сортировка:
+   рейтинг от высокого к низкому.
+
+---
+
+## Сценарий 3
+
+Если в заказе НЕ указано направление:
+
+* expertise_direction_id is null
+
+то экспертов НЕ подбирать.
+
+Нужно вернуть пустой список matches и/или action item для администратора:
+manual_matching_required.
+
+---
+
+## Сценарий 4
+
+Если в заказе НЕ указан регион, но указано направление и формат работы = дистанционная работа:
+
+то подбираем экспертов:
+
+1. по направлению:
+   palata_requests.expertise_direction_id = palata_expert_directions.expertise_direction_id
+
+2. сортировка:
+   рейтинг от высокого к низкому.
+
+Регион в этом сценарии НЕ нужен.
+
+---
+
+## Сценарий 5
+
+Если в заказе НЕ указан регион, но формат работы = выезд:
+
+то экспертов НЕ подбирать.
+
+Причина:
+для выезда нужен регион заказа.
+
+Нужно вернуть пустой список matches и/или action item для администратора:
+manual_matching_required.
+
+# Дополнительные обязательные условия
+
+Эксперт может участвовать в подборе только если:
+
+1. palata_expert_profiles.accepts_requests = true
+2. есть хотя бы один действующий/подтверждённый сертификат:
+   palata_expert_certificates.status = 'verified'
+3. есть хотя бы одно направление в:
+   palata_expert_directions
+4. если заказ с выездом:
+   business_trip_ready = true
+5. если заказ с выездом:
+   есть совпадение региона через palata_expert_regions
+
+# Что проверить в коде
+
+Проверь весь matching-код:
+
+* src/lib/matching.ts
+* NewRequest.tsx
+* RequestDetail.tsx
+* ExpertDashboard.tsx
+* AdminDashboard.tsx
+* все места, где вызывается runMatching()
+* все места, где создаются palata_request_matches
+
+Проверь, какие поля сейчас используются для формата работы.
+
+Нужно явно определить, какое поле в palata_requests означает:
+
+* выезд
+* дистанционная работа
+
+Если такого поля нет или оно называется иначе — сообщить, какое поле фактически используется.
+
+# Что исправить
+
+1. Убрать любые обращения к:
+
+   * palata_request_regions
+   * palata_requests.region
+   * palata_expert_profiles.regions
+   * palata_expert_profiles.specializations
+
+2. Использовать только:
+
+   * palata_requests.region_id
+   * palata_requests.expertise_direction_id
+   * palata_expert_regions.region_id
+   * palata_expert_directions.expertise_direction_id
+   * palata_expert_profiles.business_trip_ready
+   * palata_expert_profiles.accepts_requests
+   * palata_expert_certificates.status
+
+3. Не создавать matches, если:
+
+   * нет направления;
+   * формат выезд, но нет региона;
+   * нет подходящих экспертов.
+
+4. Не создавать дубли matches:
+   unique по request_id + expert_id.
+
+5. Рейтинг:
+   сортировать кандидатов по рейтингу от высокого к низкому.
+   Если рейтинга нет — считать рейтинг 0.
+
+# Что вернуть после аудита и исправления
+
+Вернуть отчёт:
+
+1. Где находится основной matching-код.
+2. Какое поле заказа определяет формат работы: выезд / дистанционно.
+3. Какие условия применяются для выездного заказа.
+4. Какие условия применяются для дистанционного заказа.
+5. Что происходит, если нет направления.
+6. Что происходит, если нет региона при выезде.
+7. Как рассчитывается и применяется рейтинг.
+8. Какие файлы изменены.
+9. Какие SQL/RLS изменения нужны, если нужны.
+10. Подтверждение, что palata_request_regions больше не используется.

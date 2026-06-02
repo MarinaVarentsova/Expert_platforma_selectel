@@ -268,17 +268,9 @@ function computeMetrics(
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-type DebugInfo = {
-  regionsCount: number;
-  expertRegionsCount: number;
-  expertRegionsError: string | null;
-  expertRegionsSample: string;
-  expertMapSample: string;
-};
-
 type PageState =
   | { kind: "loading" }
-  | { kind: "ok"; m: Metrics; dbg: DebugInfo }
+  | { kind: "ok"; m: Metrics }
   | { kind: "error"; message: string };
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -362,13 +354,6 @@ export default function AdminMetrics() {
           reqRegionNamesMap,
           expertRegionNamesMap,
         ),
-        dbg: {
-          regionsCount: reqRegRes.data?.length ?? -1,
-          expertRegionsCount: expRegRes.data?.length ?? -1,
-          expertRegionsError: expRegRes.error?.message ?? null,
-          expertRegionsSample: JSON.stringify(expRegRes.data?.slice(0, 2) ?? []),
-          expertMapSample: JSON.stringify(Object.entries(expertRegionNamesMap).slice(0, 2)),
-        },
       });
     }
 
@@ -414,16 +399,6 @@ export default function AdminMetrics() {
           </div>
         )}
 
-        {state.kind === "ok" && (
-          <div className="mb-6 rounded-xl border border-yellow-300 bg-yellow-50 p-4 text-xs font-mono text-yellow-900 space-y-1">
-            <p className="font-bold">🔍 DEBUG (временно)</p>
-            <p>palata_regions rows: {state.dbg.regionsCount}</p>
-            <p>palata_expert_regions rows: {state.dbg.expertRegionsCount}</p>
-            <p>palata_expert_regions error: {state.dbg.expertRegionsError ?? "none"}</p>
-            <p>expert_regions sample: {state.dbg.expertRegionsSample}</p>
-            <p>expertMap sample: {state.dbg.expertMapSample}</p>
-          </div>
-        )}
         {state.kind === "ok" && <MetricsBody m={state.m} />}
       </div>
     </AdminLayout>

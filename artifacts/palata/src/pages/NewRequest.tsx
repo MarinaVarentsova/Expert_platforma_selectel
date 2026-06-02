@@ -232,7 +232,7 @@ export default function NewRequest() {
       try {
         const result = await runMatching({
           requestId,
-          expertiseDirectionId: form.expertise_direction_id,
+          expertiseDirectionId: form.expertise_direction_id || null,
           regionIds: form.region_id ? [form.region_id] : [],
           requiresTravel: form.requires_travel,
           customerId: currentUserId ?? undefined,

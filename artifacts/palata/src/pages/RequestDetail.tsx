@@ -593,7 +593,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setMatchingRunning(true);
     try {
       await runMatching({
-        requestId: r.id, expertiseDirectionId: r.expertise_direction_id ?? "",
+        requestId: r.id, expertiseDirectionId: r.expertise_direction_id ?? null,
         regionIds: r.region_id ? [r.region_id] : [],
         requiresTravel: r.requires_travel ?? false,
       });

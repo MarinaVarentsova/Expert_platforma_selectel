@@ -1790,7 +1790,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
         const custId2 = item.customer_id ?? req?.customer_id ?? undefined;
         await runMatching({
           requestId:           item.request_id,
-          expertiseDirectionId: req?.expertise_direction_id ?? "",
+          expertiseDirectionId: req?.expertise_direction_id ?? null,
           regionIds:           req?.region_id ? [req.region_id] : [],
           requiresTravel:      req?.requires_travel ?? false,
           customerId:          custId2 ?? undefined,
@@ -2176,7 +2176,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
         const custId2 = custIdFromPayload ?? req?.customer_id ?? undefined;
         await runMatching({
           requestId:           item.request_id,
-          expertiseDirectionId: req?.expertise_direction_id ?? "",
+          expertiseDirectionId: req?.expertise_direction_id ?? null,
           regionIds:           req?.region_id ? [req.region_id] : [],
           requiresTravel:      req?.requires_travel ?? false,
           customerId:          custId2 ?? undefined,

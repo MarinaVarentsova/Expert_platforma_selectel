@@ -205,21 +205,23 @@ export default function Register() {
       const userId = data.user.id;
 
       if (role === "customer") {
-        await supabase.from("palata_customer_profiles").upsert({
+        const { error: cpErr } = await supabase.from("palata_customer_profiles").upsert({
           user_id:      userId,
           company_name: companyName.trim() || null,
           inn:          inn.trim() || null,
           contact_name: contactName.trim() || null,
           notes:        notes.trim() || null,
         }, { onConflict: "user_id" });
+        if (cpErr) console.error("[register] palata_customer_profiles upsert:", cpErr.message);
 
         if (regionIds.length > 0) {
-          await supabase.from("palata_customer_regions").insert(
+          const { error: crErr } = await supabase.from("palata_customer_regions").insert(
             regionIds.map(id => ({ customer_id: userId, region_id: id }))
           );
+          if (crErr) console.error("[register] palata_customer_regions insert:", crErr.message);
         }
       } else {
-        await supabase.from("palata_expert_profiles").upsert({
+        const { error: epErr } = await supabase.from("palata_expert_profiles").upsert({
           user_id:                          userId,
           bio:                              bio.trim() || null,
           business_trip_ready:              tripReady,
@@ -229,6 +231,7 @@ export default function Register() {
           centrsudexpert_verified:          centrsudOk,
           centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
         }, { onConflict: "user_id" });
+        if (epErr) console.error("[register] palata_expert_profiles upsert:", epErr.message);
 
         // Use pre-verified results (already verified above, before signUp)
         const dirIds   = mergeDirectionIds(verifiedCerts);
@@ -239,14 +242,15 @@ export default function Register() {
         // Delete + insert directions
         await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
         if (dirIds.length > 0) {
-          await supabase.from("palata_expert_directions").insert(
+          const { error: edErr } = await supabase.from("palata_expert_directions").insert(
             dirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
           );
+          if (edErr) console.error("[register] palata_expert_directions insert:", edErr.message);
         }
 
         // Save ONLY verified certs
         if (verifiedCerts.length > 0) {
-          await supabase.from("palata_expert_certificates").insert(
+          const { error: ecErr } = await supabase.from("palata_expert_certificates").insert(
             verifiedCerts.map(r => ({
               expert_id:          userId,
               certificate_number: r.number,
@@ -256,12 +260,14 @@ export default function Register() {
               cert_direction_ids: r.directionIds,
             }))
           );
+          if (ecErr) console.error("[register] palata_expert_certificates insert:", ecErr.message);
         }
 
         if (regionIds.length > 0) {
-          await supabase.from("palata_expert_regions").insert(
+          const { error: erErr } = await supabase.from("palata_expert_regions").insert(
             regionIds.map(id => ({ expert_id: userId, region_id: id }))
           );
+          if (erErr) console.error("[register] palata_expert_regions insert:", erErr.message);
         }
       }
       navigate(role === "customer" ? "/customer" : "/expert");

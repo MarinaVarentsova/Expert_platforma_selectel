@@ -875,22 +875,6 @@ function ProfileView({
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Сертификаты эксперта</p>
-          <p className="text-xs text-slate-400 mb-4">
-            Направления экспертизы определяются автоматически по сертификатам.
-          </p>
-          <CertificateInputList
-            numbers={certNumbers}
-            results={certResults}
-            verifying={certVerifying}
-            onChange={updateCert}
-            onVerify={verifyCert}
-            onAdd={addCert}
-            onRemove={removeCert}
-          />
-        </div>
-
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Регионы работы</p>
           <RegionMultiSelect
             selectedIds={regs}
@@ -920,18 +904,36 @@ function ProfileView({
             </div>
           </label>
 
-          <div className="space-y-2">
+          {/* Палата: checkbox + сертификаты */}
+          <div className="space-y-3">
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={palataOk} onChange={e => setPalataOk(e.target.checked)}
                 className="mt-0.5 w-4 h-4 accent-[#002B5C]" />
               <p className="text-sm font-medium text-slate-800">Сертифицирован Палатой судебных экспертов</p>
             </label>
-            {palataOk && (
-              <input type="text" value={palataNum} onChange={e => setPalataNum(e.target.value)}
-                placeholder="Номер регистрации" className={`${ic} font-mono ml-7`} />
+            {palataOk ? (
+              <div className="ml-7">
+                <p className="text-xs text-slate-400 mb-3">
+                  Введите номера сертификатов. Направления экспертизы определяются автоматически.
+                </p>
+                <CertificateInputList
+                  numbers={certNumbers}
+                  results={certResults}
+                  verifying={certVerifying}
+                  onChange={updateCert}
+                  onVerify={verifyCert}
+                  onAdd={addCert}
+                  onRemove={removeCert}
+                />
+              </div>
+            ) : (
+              <p className="ml-7 text-xs text-slate-400">
+                Принятие заказов возможно только при наличии действующего сертификата Палаты.
+              </p>
             )}
           </div>
 
+          {/* СРО ЦСЭ */}
           <div className="space-y-2">
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={centrsudOk} onChange={e => setCentrsudOk(e.target.checked)}
@@ -1032,12 +1034,23 @@ function ProfileView({
           </div>
         </div>
 
-        {/* Registry */}
+        {/* Реестры */}
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Регистрация</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Реестры</p>
           <div className="space-y-3">
-            <RegistryRow verified={p.palata_registry_verified} label="Палата судебных экспертов РФ" number={p.palata_registry_number} />
-            <RegistryRow verified={p.centrsudexpert_verified} label="СРО «ЦСЭ»" number={p.centrsudexpert_registry_number} />
+            <div className="space-y-1.5">
+              <RegistryRow verified={p.palata_registry_verified} label="Сертифицирован Палатой судебных экспертов" number={null} />
+              {p.palata_registry_verified && certNumbers.filter(n => n.trim()).length > 0 && (
+                <div className="ml-6 space-y-1">
+                  {certNumbers.filter(n => n.trim()).map((num, i) => (
+                    <p key={i} className="text-xs font-mono text-slate-500">{num}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <RegistryRow verified={p.centrsudexpert_verified} label="Являюсь участником СРО «ЦСЭ»" number={p.centrsudexpert_registry_number} />
+            </div>
           </div>
         </div>
       </div>
@@ -1060,37 +1073,6 @@ function ProfileView({
             <p className="text-sm text-amber-800 leading-relaxed">{msg}</p>
           </div>
         ))}
-
-        {/* Certificates */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <GraduationCap className="w-4 h-4 text-slate-400" />
-            <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Сертификаты</p>
-          </div>
-          {certNumbers.filter(n => n.trim()).length > 0 ? (
-            <div className="space-y-2">
-              {certNumbers.filter(n => n.trim()).map((num, i) => {
-                const r = certResults[i];
-                const statusLabel =
-                  r?.status === "verified" ? "✓ Подтверждён" :
-                  r?.status === "expired"  ? "⚠ Истёк" :
-                  r?.status === "not_found"? "✗ Не найден" : "Ожидает проверки";
-                const statusCls =
-                  r?.status === "verified" ? "text-emerald-700 bg-emerald-50" :
-                  r?.status === "expired"  ? "text-red-600 bg-red-50" :
-                  r?.status === "not_found"? "text-amber-700 bg-amber-50" : "text-slate-500 bg-slate-50";
-                return (
-                  <div key={i} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="font-mono text-slate-700">{num}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusCls}`}>{statusLabel}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-xs text-slate-400">Не добавлены</p>
-          )}
-        </div>
 
         {/* Specializations */}
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">

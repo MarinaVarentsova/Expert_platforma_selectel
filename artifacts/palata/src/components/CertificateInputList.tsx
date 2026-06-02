@@ -48,7 +48,7 @@ function StatusBadge({ result, verifying }: { result: CertResult | null; verifyi
     },
     name_mismatch: {
       icon: <XCircle className="w-3.5 h-3.5 flex-shrink-0" />,
-      text: `ФИО не совпадает с данными сертификата.${result.expertName ? ` Сертификат выдан: ${result.expertName}.` : ""}`,
+      text: "ФИО не совпадает с данными сертификата.",
       cls: "text-red-700 bg-red-50 border-red-200",
     },
     idle: { icon: null, text: "", cls: "" },

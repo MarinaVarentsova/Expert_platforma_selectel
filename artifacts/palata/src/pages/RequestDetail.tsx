@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrentUser } from "@/lib/authContext";
+import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { runMatching } from "@/lib/matching";
 import { notify, type NotifyItem } from "@/lib/notifyApi";
 import {
@@ -144,6 +145,7 @@ type LoadedData = {
   customerRatings: CustomerRating[];
   usersMap: Record<string, User>;
   requestRegionNames: string[];
+  requestRegionIds: string[];
   expertRegionNamesMap: Record<string, string[]>;
   expertDirectionNamesMap: Record<string, string[]>;
 };
@@ -382,7 +384,7 @@ export default function RequestDetail() {
         supabase.from("palata_expert_ratings").select("*").eq("request_id", id!),
         supabase.from("palata_customer_ratings").select("*").eq("request_id", id!),
         supabase.from("palata_request_regions")
-          .select("palata_regions(name)")
+          .select("region_id, palata_regions(name)")
           .eq("request_id", id!),
         expertIds.length > 0
           ? supabase.from("palata_expert_regions")
@@ -402,12 +404,14 @@ export default function RequestDetail() {
       const expertRatings = (expRatRes.data as ExpertRating[]) ?? [];
       const customerRatings = (custRatRes.data as CustomerRating[]) ?? [];
 
-      type RRItem = { palata_regions: { name: string } | { name: string }[] | null };
+      type RRItem = { region_id: string; palata_regions: { name: string } | { name: string }[] | null };
       const requestRegionNames = ((reqRegionsRes.data ?? []) as unknown as RRItem[])
         .map(r => {
           const rg = r.palata_regions;
           return Array.isArray(rg) ? rg[0]?.name ?? "" : rg?.name ?? "";
         }).filter(Boolean);
+      const requestRegionIds = ((reqRegionsRes.data ?? []) as unknown as RRItem[])
+        .map(r => r.region_id).filter(Boolean);
 
       type ERItem = { expert_id: string; palata_regions: { name: string } | { name: string }[] | null };
       const expertRegionNamesMap: Record<string, string[]> = {};
@@ -428,7 +432,7 @@ export default function RequestDetail() {
       setState({ kind: "ok", data: {
         request, files, matches, contacts, expertProfiles,
         events, emailEvents, expertRatings, customerRatings, usersMap,
-        requestRegionNames, expertRegionNamesMap, expertDirectionNamesMap,
+        requestRegionNames, requestRegionIds, expertRegionNamesMap, expertDirectionNamesMap,
       }});
     }
 
@@ -468,13 +472,84 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   const { request: r, files, matches, contacts, expertProfiles,
           events, emailEvents, expertRatings, customerRatings, usersMap,
-          requestRegionNames, expertRegionNamesMap, expertDirectionNamesMap } = data;
+          requestRegionNames, requestRegionIds, expertRegionNamesMap, expertDirectionNamesMap } = data;
 
   const contactsMap = Object.fromEntries(contacts.map(c => [c.expert_id, c]));
   const profileMap = Object.fromEntries(expertProfiles.map(p => [p.user_id, p]));
   const customer = r.customer_id ? usersMap[r.customer_id] : undefined;
   const orderStatus = ORDER_STATUS[r.status];
   const isOrderActive = !["completed", "cancelled", "failed"].includes(r.status);
+
+  // Statuses where customer may edit the order
+  const CUSTOMER_CAN_EDIT_STATUSES = new Set(["new", "pending", "matching", "failed"]);
+  const customerCanEdit = role === "customer" && CUSTOMER_CAN_EDIT_STATUSES.has(r.status);
+
+  // ── Edit-request state ──────────────────────────────────────────────────────
+  const [editingRequest, setEditingRequest] = useState(false);
+  const [editTitle, setEditTitle]           = useState(r.title);
+  const [editDescription, setEditDescription] = useState(r.description ?? "");
+  const [editMaterials, setEditMaterials]   = useState(r.materials_available ?? "");
+  const [editDirId, setEditDirId]           = useState(r.expertise_direction_id ?? "");
+  const [editRegionIds, setEditRegionIds]   = useState<string[]>(requestRegionIds);
+  const [editUrgency, setEditUrgency]       = useState(r.urgency ?? "normal");
+  const [editTravel, setEditTravel]         = useState(r.requires_travel ?? false);
+  const [editSaving, setEditSaving]         = useState(false);
+  const [editError, setEditError]           = useState<string | null>(null);
+
+  // Directions for edit dropdown
+  const [editDirections, setEditDirections] = useState<Array<{ id: string; name: string }>>([]);
+  useEffect(() => {
+    supabase.from("palata_expertise_directions")
+      .select("id, name").eq("is_active", true).order("sort_order")
+      .then(({ data: d }) => setEditDirections(d ?? []));
+  }, []);
+
+  function beginEdit() {
+    setEditTitle(r.title);
+    setEditDescription(r.description ?? "");
+    setEditMaterials(r.materials_available ?? "");
+    setEditDirId(r.expertise_direction_id ?? "");
+    setEditRegionIds(requestRegionIds);
+    setEditUrgency(r.urgency ?? "normal");
+    setEditTravel(r.requires_travel ?? false);
+    setEditError(null);
+    setEditingRequest(true);
+  }
+
+  async function handleSaveRequest() {
+    if (!editTitle.trim()) { setEditError("Введите название заказа"); return; }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const { error: upErr } = await supabase.from("palata_requests").update({
+        title: editTitle.trim(),
+        description: editDescription.trim() || null,
+        materials_available: editMaterials.trim() || null,
+        expertise_direction_id: editDirId || null,
+        urgency: editUrgency,
+        requires_travel: editTravel,
+        updated_at: new Date().toISOString(),
+      }).eq("id", r.id);
+      if (upErr) throw new Error(upErr.message);
+
+      const { error: delErr } = await supabase.from("palata_request_regions")
+        .delete().eq("request_id", r.id);
+      if (delErr) throw new Error(delErr.message);
+
+      if (editRegionIds.length > 0) {
+        const { error: insErr } = await supabase.from("palata_request_regions")
+          .insert(editRegionIds.map(rid => ({ request_id: r.id, region_id: rid })));
+        if (insErr) throw new Error(insErr.message);
+      }
+
+      setEditingRequest(false);
+      onReload();
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : "Неизвестная ошибка");
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   // Expert's own matches for this request
   const myMatches = userId ? matches.filter(m => m.expert_id === userId) : [];
@@ -910,70 +985,188 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             <p className="text-xs font-mono text-slate-400 mb-1">#{shortId(r.id)}</p>
             <h1 className="text-xl font-bold text-slate-800 leading-snug">{r.title}</h1>
           </div>
-          <span className={`shrink-0 inline-block rounded-full px-3 py-1 text-xs font-semibold ${orderStatus?.cls ?? "bg-slate-100 text-slate-500"}`}>
-            {orderStatus?.label ?? r.status}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {customerCanEdit && !editingRequest && (
+              <button
+                className="btn-primary-sm"
+                onClick={beginEdit}
+              >
+                Редактировать
+              </button>
+            )}
+            <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${orderStatus?.cls ?? "bg-slate-100 text-slate-500"}`}>
+              {orderStatus?.label ?? r.status}
+            </span>
+          </div>
         </div>
 
-        {r.description ? (
-          <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Описание ситуации</p>
-            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
+        {editingRequest ? (
+          /* ── Edit form ── */
+          <div className="space-y-4">
+            {editError && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600 flex items-start justify-between gap-2">
+                <span>{editError}</span>
+                <button className="underline shrink-0" onClick={() => setEditError(null)}>Закрыть</button>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Название</label>
+              <input
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F4C9A]"
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Описание ситуации</label>
+              <textarea
+                rows={4}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F4C9A] resize-none"
+                value={editDescription}
+                onChange={e => setEditDescription(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Имеющиеся материалы</label>
+              <textarea
+                rows={2}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F4C9A] resize-none"
+                value={editMaterials}
+                onChange={e => setEditMaterials(e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Направление экспертизы</label>
+                <select
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F4C9A] bg-white"
+                  value={editDirId}
+                  onChange={e => setEditDirId(e.target.value)}
+                >
+                  <option value="">— выберите —</option>
+                  {editDirections.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Срочность</label>
+                <select
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F4C9A] bg-white"
+                  value={editUrgency}
+                  onChange={e => setEditUrgency(e.target.value)}
+                >
+                  <option value="normal">Стандартная (14–30 дней)</option>
+                  <option value="urgent">Срочная (7–14 дней)</option>
+                  <option value="very_urgent">Очень срочная (до 7 дней)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Регион</label>
+              <RegionMultiSelect
+                selectedIds={editRegionIds}
+                onChange={setEditRegionIds}
+                placeholder="Выберите регионы…"
+              />
+            </div>
+
+            <label className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={editTravel}
+                onChange={e => setEditTravel(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-300 accent-[#002B5C]"
+              />
+              Требуется выезд эксперта
+            </label>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                className="btn-primary"
+                onClick={handleSaveRequest}
+                disabled={editSaving}
+              >
+                {editSaving ? "Сохранение…" : "Сохранить изменения"}
+              </button>
+              <button
+                className="btn-ghost"
+                onClick={() => setEditingRequest(false)}
+                disabled={editSaving}
+              >
+                Отмена
+              </button>
+            </div>
           </div>
         ) : (
-          <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-xs text-slate-400 italic">Описание не указано</p>
-          </div>
+          /* ── View mode ── */
+          <>
+            {r.description ? (
+              <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Описание ситуации</p>
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
+              </div>
+            ) : (
+              <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs text-slate-400 italic">Описание не указано</p>
+              </div>
+            )}
+
+            {r.materials_available && (
+              <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Имеющиеся материалы</p>
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
+              {role !== "expert" && (
+                <Field label="Заказчик">
+                  {customer
+                    ? (userName(customer) ?? <span className="font-mono text-xs">{customer.email}</span>)
+                    : r.customer_name
+                      ? r.customer_name
+                      : <span className="text-slate-400 italic">Нет данных</span>}
+                </Field>
+              )}
+              {role !== "expert" && r.customer_phone && <Field label="Телефон заказчика">{r.customer_phone}</Field>}
+              {role !== "expert" && r.customer_email && <Field label="Email заказчика">{r.customer_email}</Field>}
+
+              <Field label="Направление экспертизы">
+                {directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—"}
+              </Field>
+              <Field label="Регион">
+                {requestRegionNames.length > 0 ? requestRegionNames.join(", ") : <span className="text-slate-400 italic">Не указан</span>}
+              </Field>
+              <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
+              <Field label="Выезд эксперта">{r.requires_travel ? "Требуется" : "Не требуется"}</Field>
+              <Field label="Дата создания">{fmtDate(r.created_at)}</Field>
+              <Field label="Обновлён">{fmtDate(r.updated_at)}</Field>
+              <Field label="Раунд подбора">{r.matching_round}</Field>
+              {(r.budget_min != null || r.budget_max != null) && (
+                <Field label="Бюджет">
+                  {r.budget_min != null && r.budget_max != null
+                    ? `${r.budget_min.toLocaleString("ru-RU")} – ${r.budget_max.toLocaleString("ru-RU")} ₽`
+                    : r.budget_min != null ? `от ${r.budget_min.toLocaleString("ru-RU")} ₽`
+                    : `до ${r.budget_max!.toLocaleString("ru-RU")} ₽`}
+                </Field>
+              )}
+              {r.deadline && <Field label="Срок">{fmtDate(r.deadline)}</Field>}
+              {r.preferred_start && <Field label="Желаемый старт">{fmtDate(r.preferred_start)}</Field>}
+              {role === "admin" && r.assigned_expert_id && (
+                <Field label="Назначен эксперт">
+                  {userName(usersMap[r.assigned_expert_id]) ?? r.assigned_expert_id.slice(0, 8)}
+                </Field>
+              )}
+            </div>
+          </>
         )}
-
-        {r.materials_available && (
-          <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Имеющиеся материалы</p>
-            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-          {/* Customer contacts — visible to customer and admin, not expert */}
-          {role !== "expert" && (
-            <Field label="Заказчик">
-              {customer
-                ? (userName(customer) ?? <span className="font-mono text-xs">{customer.email}</span>)
-                : r.customer_name
-                  ? r.customer_name
-                  : <span className="text-slate-400 italic">Нет данных</span>}
-            </Field>
-          )}
-          {role !== "expert" && r.customer_phone && <Field label="Телефон заказчика">{r.customer_phone}</Field>}
-          {role !== "expert" && r.customer_email && <Field label="Email заказчика">{r.customer_email}</Field>}
-
-          <Field label="Направление экспертизы">
-            {directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—"}
-          </Field>
-          {requestRegionNames.length > 0 && (
-            <Field label="Регион">{requestRegionNames.join(", ")}</Field>
-          )}
-          <Field label="Срочность">{URGENCY_LABEL[r.urgency] ?? r.urgency ?? "Стандартная"}</Field>
-          <Field label="Выезд эксперта">{r.requires_travel ? "Требуется" : "Не требуется"}</Field>
-          <Field label="Дата создания">{fmtDate(r.created_at)}</Field>
-          <Field label="Обновлён">{fmtDate(r.updated_at)}</Field>
-          <Field label="Раунд подбора">{r.matching_round}</Field>
-          {(r.budget_min != null || r.budget_max != null) && (
-            <Field label="Бюджет">
-              {r.budget_min != null && r.budget_max != null
-                ? `${r.budget_min.toLocaleString("ru-RU")} – ${r.budget_max.toLocaleString("ru-RU")} ₽`
-                : r.budget_min != null ? `от ${r.budget_min.toLocaleString("ru-RU")} ₽`
-                : `до ${r.budget_max!.toLocaleString("ru-RU")} ₽`}
-            </Field>
-          )}
-          {r.deadline && <Field label="Срок">{fmtDate(r.deadline)}</Field>}
-          {r.preferred_start && <Field label="Желаемый старт">{fmtDate(r.preferred_start)}</Field>}
-          {role === "admin" && r.assigned_expert_id && (
-            <Field label="Назначен эксперт">
-              {userName(usersMap[r.assigned_expert_id]) ?? r.assigned_expert_id.slice(0, 8)}
-            </Field>
-          )}
-        </div>
       </Card>
 
       {/* ══ 2. ДЕЙСТВИЯ ЗАКАЗЧИКА ══════════════════════════════════════════ */}

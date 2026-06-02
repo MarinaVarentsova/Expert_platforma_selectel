@@ -155,6 +155,10 @@ export default function NewRequest() {
         : situation || (comment ? `─── Комментарий заказчика ───\n${comment}` : null);
 
       // 1. Insert request with status = new
+      const selectedRegionId = form.region_ids[0] ?? null;
+      console.log("[new-request] selectedRegionId:", selectedRegionId);
+      console.log("[new-request] payload.region_id:", selectedRegionId);
+
       const { data: reqData, error: reqError } = await supabase
         .from("palata_requests")
         .insert({
@@ -162,6 +166,7 @@ export default function NewRequest() {
           title: form.title.trim(),
           description: fullDescription,
           expertise_direction_id: form.expertise_direction_id,
+          region_id: selectedRegionId,
           urgency: form.urgency,
           requires_travel: form.requires_travel,
           materials_available: form.materials_available.trim() || null,

@@ -521,11 +521,13 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setEditSaving(true);
     setEditError(null);
     try {
+      const editRegionId = editRegionIds[0] ?? null;
       const { error: upErr } = await supabase.from("palata_requests").update({
         title: editTitle.trim(),
         description: editDescription.trim() || null,
         materials_available: editMaterials.trim() || null,
         expertise_direction_id: editDirId || null,
+        region_id: editRegionId,
         urgency: editUrgency,
         requires_travel: editTravel,
         updated_at: new Date().toISOString(),

@@ -808,15 +808,24 @@ function ProfileView({
     setCertVerifying(verifiedNums.length > 0 ? verifiedNums.map(() => false) : [false]);
 
     // 9. Save regions
-    await supabase.from("palata_expert_regions").delete().eq("expert_id", userId);
+    console.log("[expert-save] regs before save:", regs);
+    const { error: delRegErr } = await supabase.from("palata_expert_regions").delete().eq("expert_id", userId);
+    if (delRegErr) console.error("[expert-save] palata_expert_regions delete:", delRegErr.message);
     if (regs.length > 0) {
-      await supabase.from("palata_expert_regions").insert(
+      const { error: insRegErr } = await supabase.from("palata_expert_regions").insert(
         regs.map(rid => ({ expert_id: userId, region_id: rid }))
       );
+      console.log("[expert-save] palata_expert_regions insert error:", insRegErr);
+      if (insRegErr) {
+        setSaving(false);
+        setSaveErr("Ошибка сохранения регионов: " + insRegErr.message);
+        return;
+      }
       const { data: rd } = await supabase.from("palata_regions").select("id, name").in("id", regs);
       const nm = Object.fromEntries((rd ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
       setRegionNames(regs.map(id => nm[id] ?? id));
     } else {
+      console.log("[expert-save] regs is empty — skipping insert");
       setRegionNames([]);
     }
 

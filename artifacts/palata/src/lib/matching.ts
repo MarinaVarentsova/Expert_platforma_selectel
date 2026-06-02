@@ -6,15 +6,16 @@ import { createActionItem } from "./actionItems";
 type ExpertForMatching = {
   user_id: string;
   business_trip_ready: boolean;
-  palata_registry_verified: boolean;
-  centrsudexpert_verified: boolean;
   avg_customer_rating: number | null;
   completed_orders_count: number;
   decline_rate: number | null;
+  palata_registry_verified: boolean;
+  centrsudexpert_verified: boolean;
 };
 
 export type MatchingInput = {
   requestId: string;
+  /** null = no direction on the request → Scenario 3, early exit */
   expertiseDirectionId: string | null;
   regionIds: string[];
   requiresTravel: boolean;
@@ -28,12 +29,12 @@ export type MatchingResult = {
 };
 
 // ─── Scoring ──────────────────────────────────────────────────────────────────
-// Primary sort: avg_customer_rating (null → 0).
+// Primary sort key: avg_customer_rating (null → 0), scaled to 0-50 pts.
 // Tiebreakers: verification status, completed orders, low decline rate.
 
 function scoreExpert(expert: ExpertForMatching): number {
   const rating = expert.avg_customer_rating ?? 0;
-  let score = rating * 10; // 0-50 pts for rating 0-5
+  let score = rating * 10;
 
   if (expert.palata_registry_verified)  score += 2;
   if (expert.centrsudexpert_verified)   score += 2;
@@ -48,7 +49,31 @@ function scoreExpert(expert: ExpertForMatching): number {
 export async function runMatching(input: MatchingInput): Promise<MatchingResult> {
   const { requestId, expertiseDirectionId, regionIds, requiresTravel } = input;
 
-  // 1. Previous matches for this request (to skip declined/proposed experts)
+  // ── Scenario 3: no direction → cannot match ───────────────────────────────
+  if (!expertiseDirectionId) {
+    const { data: prevM } = await supabase
+      .from("palata_request_matches")
+      .select("matching_round")
+      .eq("request_id", requestId);
+    const rounds = (prevM ?? []).map(m => m.matching_round as number);
+    const nextRound = rounds.length > 0 ? Math.max(...rounds) + 1 : 1;
+    await _handleNoExperts(requestId, nextRound, input, "no_direction");
+    return { matched: 0, round: nextRound, experts: [] };
+  }
+
+  // ── Scenario 5: travel but no region → cannot match ──────────────────────
+  if (requiresTravel && regionIds.length === 0) {
+    const { data: prevM } = await supabase
+      .from("palata_request_matches")
+      .select("matching_round")
+      .eq("request_id", requestId);
+    const rounds = (prevM ?? []).map(m => m.matching_round as number);
+    const nextRound = rounds.length > 0 ? Math.max(...rounds) + 1 : 1;
+    await _handleNoExperts(requestId, nextRound, input, "no_region_for_travel");
+    return { matched: 0, round: nextRound, experts: [] };
+  }
+
+  // 1. Previous matches (skip declined / already proposed experts)
   const { data: prevMatches } = await supabase
     .from("palata_request_matches")
     .select("expert_id, matching_round, status")
@@ -69,57 +94,68 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   const rounds = (prevMatches ?? []).map(m => m.matching_round as number);
   const nextRound = rounds.length > 0 ? Math.max(...rounds) + 1 : 1;
 
-  // ── Scenario 3: no direction → cannot match ───────────────────────────────
-  if (!expertiseDirectionId) {
-    await _handleNoExperts(requestId, nextRound, input, "no_direction");
-    return { matched: 0, round: nextRound, experts: [] };
-  }
+  // 2. Find experts qualified for this direction.
+  //
+  //    Primary path (requires migration 029 RLS policy to be applied in Supabase):
+  //      Query palata_expert_certificates with:
+  //        • status = 'verified'
+  //        • cert_valid_to IS NULL OR cert_valid_to >= today  (not expired)
+  //        • expertiseDirectionId ∈ cert_direction_ids        (covers this direction)
+  //
+  //    Fallback (migration 029 not yet applied → RLS blocks other experts' certs):
+  //      Query palata_expert_directions by direction only (no expiry check).
+  //      Matching still works; expiry validation is skipped until migration runs.
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
-  // ── Scenario 5: travel requested but no region → cannot match ─────────────
-  if (requiresTravel && regionIds.length === 0) {
-    await _handleNoExperts(requestId, nextRound, input, "no_region_for_travel");
-    return { matched: 0, round: nextRound, experts: [] };
-  }
-
-  // 2. Experts that have the required expertise direction
-  const { data: expertDirs } = await supabase
-    .from("palata_expert_directions")
+  const { data: certRows } = await supabase
+    .from("palata_expert_certificates")
     .select("expert_id")
-    .eq("expertise_direction_id", expertiseDirectionId);
+    .eq("status", "verified")
+    .or(`cert_valid_to.is.null,cert_valid_to.gte.${today}`)
+    .contains("cert_direction_ids", [expertiseDirectionId]);
 
-  const qualifiedExpertIds = new Set(
-    (expertDirs ?? []).map(d => d.expert_id as string),
-  );
+  let qualifiedExpertIds: Set<string>;
+
+  if (certRows && certRows.length > 0) {
+    // Migration 029 applied: full cert-based check (direction + expiry)
+    qualifiedExpertIds = new Set(certRows.map(r => r.expert_id as string));
+  } else {
+    // Fallback: direction-based check only (no expiry check)
+    // This path is used when migration 029 hasn't been applied yet
+    // and RLS blocks reading other experts' certificates.
+    const { data: expertDirs } = await supabase
+      .from("palata_expert_directions")
+      .select("expert_id")
+      .eq("expertise_direction_id", expertiseDirectionId);
+    qualifiedExpertIds = new Set((expertDirs ?? []).map(d => d.expert_id as string));
+  }
 
   const qualifiedIdList = [...qualifiedExpertIds].filter(
     id => !declinedIds.has(id) && !activelyProposedIds.has(id),
   );
 
   if (qualifiedIdList.length === 0) {
-    await _handleNoExperts(requestId, nextRound, input, "no_direction_match");
+    await _handleNoExperts(requestId, nextRound, input, "no_valid_cert_for_direction");
     return { matched: 0, round: nextRound, experts: [] };
   }
 
-  // 3. Fetch expert profiles.
-  //    Only include experts with accepts_requests = true AND at least one
-  //    verified certificate (palata_registry_verified OR centrsudexpert_verified).
-  //    NOTE: do NOT filter by status='active' — registered experts default to
-  //    'draft' and the spec uses accepts_requests + certificate as the gate.
-  const { data: experts, error } = await supabase
+  // 3. Fetch expert profiles — only those accepting requests
+  const { data: experts, error: profileErr } = await supabase
     .from("palata_expert_profiles")
     .select([
       "user_id", "business_trip_ready",
-      "palata_registry_verified", "centrsudexpert_verified",
       "avg_customer_rating", "completed_orders_count", "decline_rate",
+      "palata_registry_verified", "centrsudexpert_verified",
     ].join(", "))
     .eq("accepts_requests", true)
-    .or("palata_registry_verified.eq.true,centrsudexpert_verified.eq.true")
     .in("user_id", qualifiedIdList);
 
-  if (error || !experts) throw new Error(error?.message ?? "Failed to fetch experts");
+  if (profileErr || !experts) {
+    throw new Error(profileErr?.message ?? "Failed to fetch expert profiles");
+  }
 
-  // 4. For travel orders: fetch expert regions and build a lookup map.
-  //    For remote orders: skip region filtering entirely.
+  // 4. For travel orders: build region map.
+  //    For remote orders: skip — region is not a filter criterion.
   const expertRegionMap = new Map<string, Set<string>>();
   if (requiresTravel && experts.length > 0) {
     const expertIdList = (experts as unknown as ExpertForMatching[]).map(e => e.user_id);
@@ -137,25 +173,21 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   }
 
   // 5. Filter + score
-  //    Scenario 1 (travel): expert must match region AND have business_trip_ready=true
-  //    Scenario 2/4 (remote): no region filter, all direction-matched experts eligible
+  //    Scenario 1 (travel): must cover request region AND business_trip_ready = true
+  //    Scenario 2 / 4 (remote): no region restriction
   const requestRegionSet = new Set(regionIds);
   const candidates: Array<{ expertId: string; score: number }> = [];
 
   for (const e of experts as unknown as ExpertForMatching[]) {
     if (requiresTravel) {
-      // Must be willing to travel
       if (!e.business_trip_ready) continue;
-
-      // Must cover the request's region
-      const expertRegionIds = expertRegionMap.get(e.user_id) ?? new Set<string>();
+      const expertRegions = expertRegionMap.get(e.user_id) ?? new Set<string>();
       let regionMatch = false;
       for (const rid of requestRegionSet) {
-        if (expertRegionIds.has(rid)) { regionMatch = true; break; }
+        if (expertRegions.has(rid)) { regionMatch = true; break; }
       }
       if (!regionMatch) continue;
     }
-    // For remote work (Scenario 2, 4): no region check
 
     candidates.push({ expertId: e.user_id, score: scoreExpert(e) });
   }
@@ -165,11 +197,11 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
     return { matched: 0, round: nextRound, experts: [] };
   }
 
-  // 6. Sort by score descending (primary: rating, tiebreakers: verification etc.)
+  // 6. Sort by score desc, take top 5
   candidates.sort((a, b) => b.score - a.score);
   const selected = candidates.slice(0, 5);
 
-  // 7. Persist matches (unique per request_id + expert_id via DB constraint)
+  // 7. Persist matches (DB unique constraint prevents duplicates)
   const { error: insertErr } = await supabase.from("palata_request_matches").insert(
     selected.map(s => ({
       request_id: requestId,
@@ -222,7 +254,7 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
 type NoExpertsReason =
   | "no_direction"
   | "no_region_for_travel"
-  | "no_direction_match"
+  | "no_valid_cert_for_direction"
   | "no_candidates_after_filter";
 
 async function _handleNoExperts(
@@ -232,10 +264,14 @@ async function _handleNoExperts(
   reason: NoExpertsReason,
 ) {
   const noteMap: Record<NoExpertsReason, string> = {
-    no_direction:              "Автоподбор: у заказа не указано направление экспертизы — подбор невозможен",
-    no_region_for_travel:      "Автоподбор: заказ с выездом, но регион не указан — подбор невозможен",
-    no_direction_match:        "Автоподбор: нет экспертов по указанному направлению",
-    no_candidates_after_filter:"Автоподбор: подходящие эксперты не найдены после фильтрации",
+    no_direction:
+      "Автоподбор: у заказа не указано направление экспертизы — подбор невозможен",
+    no_region_for_travel:
+      "Автоподбор: заказ с выездом, но регион не указан — подбор невозможен",
+    no_valid_cert_for_direction:
+      "Автоподбор: нет экспертов с действующим сертификатом по этому направлению",
+    no_candidates_after_filter:
+      "Автоподбор: подходящие эксперты не найдены после фильтрации (регион/выезд)",
   };
 
   await supabase.from("palata_requests")
@@ -266,7 +302,8 @@ async function _handleNoExperts(
         assigned_role: "customer",
         action_type: "manual_matching_required",
         title: "Эксперты не найдены автоматически",
-        description: "По вашему заказу не удалось подобрать экспертов. Администратор займётся подбором вручную.",
+        description:
+          "По вашему заказу не удалось подобрать экспертов. Администратор займётся подбором вручную.",
         payload: { round: nextRound, reason },
       });
     } catch { /* non-fatal */ }

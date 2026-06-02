@@ -97,10 +97,14 @@ export async function verifyCertificate(
   let directionIds: string[] = [];
 
   if (rawCodes.length > 0) {
-    const { data: scodes } = await supabase
+    const { data: scodes, error: scodesError } = await supabase
       .from("palata_specialty_codes")
       .select("code, expertise_direction_id")
       .in("code", rawCodes);
+
+    if (scodesError) {
+      console.warn("[certificates] palata_specialty_codes lookup failed:", scodesError.message, "codes:", rawCodes);
+    }
 
     directionIds = [
       ...new Set(

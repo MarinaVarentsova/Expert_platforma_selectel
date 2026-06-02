@@ -712,7 +712,7 @@ function ProfileView({
     const raw = certNumbers[idx];
     if (!raw.trim()) return;
     setCertVerifying(p => p.map((v, i) => i === idx ? true : v));
-    const result = await verifyCertificate(raw, allDirections);
+    const result = await verifyCertificate(raw, allDirections, fullName);
     setCertResultsS(p => p.map((v, i) => i === idx ? result : v));
     setCertVerifying(p => p.map((v, i) => i === idx ? false : v));
   }
@@ -726,7 +726,7 @@ function ProfileView({
     const finalResults = [...certResults];
     for (let i = 0; i < certNumbers.length; i++) {
       if (certNumbers[i].trim() && !certResults[i]) {
-        finalResults[i] = await verifyCertificate(certNumbers[i], allDirections);
+        finalResults[i] = await verifyCertificate(certNumbers[i], allDirections, fullName);
       }
     }
     setCertResultsS(finalResults);

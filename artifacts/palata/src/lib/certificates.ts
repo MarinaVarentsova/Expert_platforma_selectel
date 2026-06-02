@@ -1,6 +1,13 @@
 import { supabase } from "./supabaseClient";
 
-export type CertStatus = "idle" | "verifying" | "verified" | "not_found" | "expired";
+export type CertStatus =
+  | "idle"
+  | "verifying"
+  | "verified"
+  | "not_found"
+  | "expired"
+  | "no_name"
+  | "name_mismatch";
 
 export interface CertResult {
   number: string;
@@ -14,6 +21,10 @@ export interface CertResult {
 
 export function normalizeCertNumber(raw: string): string {
   return raw.replace(/^[№#]\s*/, "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -33,6 +44,7 @@ function extractNumericId(raw: string): string {
 export async function verifyCertificate(
   raw: string,
   allDirections: Array<{ id: string; name: string }>,
+  fullName?: string,
 ): Promise<CertResult> {
   const normalized = normalizeCertNumber(raw);
   const base: CertResult = {
@@ -46,6 +58,11 @@ export async function verifyCertificate(
   };
 
   if (!normalized) return base;
+
+  // If no name provided at all — ask user to fill in the name field first
+  if (!fullName || !fullName.trim()) {
+    return { ...base, status: "no_name" };
+  }
 
   const certId = extractNumericId(raw);
   if (!certId) return { ...base, status: "not_found" };
@@ -85,6 +102,18 @@ export async function verifyCertificate(
       ...base,
       status: "expired",
       validTo: cert.valid_to,
+      expertName: cert.expert_full_name,
+    };
+  }
+
+  // Check full name match
+  if (
+    cert.expert_full_name &&
+    normalizeName(fullName.trim()) !== normalizeName(cert.expert_full_name)
+  ) {
+    return {
+      ...base,
+      status: "name_mismatch",
       expertName: cert.expert_full_name,
     };
   }

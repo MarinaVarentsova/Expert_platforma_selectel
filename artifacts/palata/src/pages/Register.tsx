@@ -95,7 +95,7 @@ export default function Register() {
     const raw = certNumbers[idx];
     if (!raw.trim()) return;
     setCertVerifying(p => p.map((v, i) => i === idx ? true : v));
-    const result = await verifyCertificate(raw, allDirections);
+    const result = await verifyCertificate(raw, allDirections, fullName);
     setCertResults(p => p.map((v, i) => i === idx ? result : v));
     setCertVerifying(p => p.map((v, i) => i === idx ? false : v));
   }
@@ -130,7 +130,7 @@ export default function Register() {
 
       for (let i = 0; i < certNumbers.length; i++) {
         if (certNumbers[i].trim() && !preVerified[i]) {
-          preVerified[i] = await verifyCertificate(certNumbers[i], allDirections);
+          preVerified[i] = await verifyCertificate(certNumbers[i], allDirections, fullName);
         }
       }
       setCertResults(preVerified);
@@ -415,6 +415,11 @@ export default function Register() {
                 <Label required>ФИО</Label>
                 <input type="text" value={fullName} onChange={e => setFullName(e.target.value)}
                   required placeholder="Иванов Иван Иванович" className={inputClass()} />
+                {role === "expert" && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    Укажите полностью — ФИО используется для проверки сертификата Палаты.
+                  </p>
+                )}
               </div>
               <div>
                 <Label required>Email</Label>

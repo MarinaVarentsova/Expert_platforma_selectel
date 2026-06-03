@@ -110,9 +110,6 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
     .gte("cert_valid_to", today)
     .contains("cert_direction_ids", [expertiseDirectionId]);
 
-  console.log("[matching] DIAG step2 certRows:", certRows, "| certErr:", certErr?.message ?? "none",
-    "| today:", today, "| directionId:", expertiseDirectionId);
-
   const qualifiedExpertIds = new Set(
     (certRows ?? []).map(r => r.expert_id as string),
   );
@@ -121,10 +118,15 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
     id => !declinedIds.has(id) && !activelyProposedIds.has(id),
   );
 
-  console.log("[matching] DIAG qualifiedIdList:", qualifiedIdList,
-    "| declined:", [...declinedIds], "| proposed:", [...activelyProposedIds]);
-
   if (qualifiedIdList.length === 0) {
+    // Diagnostic: check if cert query itself returned nothing
+    const diagNote = `[DIAG] certErr=${certErr?.message ?? "none"} certRows=${certRows?.length ?? 0} today=${today} dirId=${expertiseDirectionId}`;
+    await supabase.from("palata_status_events").insert({
+      entity_type: "request", entity_id: requestId,
+      old_status: "matching", new_status: "matching",
+      actor_id: null,
+      note: diagNote,
+    });
     await _handleNoExperts(requestId, nextRound, input, "no_valid_cert_for_direction");
     return { matched: 0, round: nextRound, experts: [] };
   }
@@ -135,15 +137,10 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
     .select([
       "user_id", "business_trip_ready",
       "avg_customer_rating", "completed_orders_count", "decline_rate",
-      "palata_registry_verified", "centrsudexpert_verified", "accepts_requests",
+      "palata_registry_verified", "centrsudexpert_verified",
     ].join(", "))
     .eq("accepts_requests", true)
     .in("user_id", qualifiedIdList);
-
-  console.log("[matching] DIAG step3 profiles:", experts?.map(e => {
-    const p = e as unknown as ExpertForMatching & { accepts_requests: boolean };
-    return { id: p.user_id, trip: p.business_trip_ready, accepts: p.accepts_requests };
-  }), "| profileErr:", profileErr?.message ?? "none");
 
   if (profileErr || !experts) {
     throw new Error(profileErr?.message ?? "Failed to fetch expert profiles");
@@ -152,18 +149,18 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   // 4. For travel orders: build region map.
   //    For remote orders: skip — region is not a filter criterion.
   const expertRegionMap = new Map<string, Set<string>>();
+  let expertRegCount: number | null = null;
+  let regErrMsg: string | null = null;
   if (requiresTravel && experts.length > 0) {
     const expertIdList = (experts as unknown as ExpertForMatching[]).map(e => e.user_id);
-    const { data: expertRegRows, error: regErr } = await supabase
+    const { data: regData, error: regError } = await supabase
       .from("palata_expert_regions")
       .select("expert_id, region_id")
       .in("expert_id", expertIdList);
+    expertRegCount = regData?.length ?? 0;
+    regErrMsg = regError?.message ?? null;
 
-    console.log("[matching] DIAG step4 expertRegRows:", expertRegRows,
-      "| regErr:", regErr?.message ?? "none",
-      "| request regionIds:", regionIds);
-
-    for (const row of expertRegRows ?? []) {
+    for (const row of regData ?? []) {
       if (!expertRegionMap.has(row.expert_id)) {
         expertRegionMap.set(row.expert_id, new Set());
       }
@@ -176,11 +173,12 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   //    Scenario 2 / 4 (remote): no region restriction
   const requestRegionSet = new Set(regionIds);
   const candidates: Array<{ expertId: string; score: number }> = [];
+  const filterLog: string[] = [];
 
   for (const e of experts as unknown as ExpertForMatching[]) {
     if (requiresTravel) {
       if (!e.business_trip_ready) {
-        console.log("[matching] DIAG filter: skip", e.user_id, "— business_trip_ready=false");
+        filterLog.push(`${e.user_id.slice(0,8)}:no_trip`);
         continue;
       }
       const expertRegions = expertRegionMap.get(e.user_id) ?? new Set<string>();
@@ -188,8 +186,7 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
       for (const rid of requestRegionSet) {
         if (expertRegions.has(rid)) { regionMatch = true; break; }
       }
-      console.log("[matching] DIAG filter:", e.user_id,
-        "expertRegions:", [...expertRegions], "requestRegion:", [...requestRegionSet], "match:", regionMatch);
+      filterLog.push(`${e.user_id.slice(0,8)}:trip=ok,reg=[${[...expertRegions].map(r=>r.slice(0,8)).join(",")}],match=${regionMatch}`);
       if (!regionMatch) continue;
     }
 
@@ -197,6 +194,21 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   }
 
   if (candidates.length === 0) {
+    // Write detailed diagnostic as an event note visible in the deployed app
+    const diagNote = [
+      `[DIAG] certOk=${qualifiedIdList.length}`,
+      `profiles=${experts.length}`,
+      `regErr=${regErrMsg ?? "none"}`,
+      `regRows=${expertRegCount ?? "n/a"}`,
+      `reqRegion=[${regionIds.map(r=>r.slice(0,8)).join(",")}]`,
+      `filter: ${filterLog.join(" | ")}`,
+    ].join(" ");
+    await supabase.from("palata_status_events").insert({
+      entity_type: "request", entity_id: requestId,
+      old_status: "matching", new_status: "matching",
+      actor_id: null,
+      note: diagNote,
+    });
     await _handleNoExperts(requestId, nextRound, input, "no_candidates_after_filter");
     return { matched: 0, round: nextRound, experts: [] };
   }

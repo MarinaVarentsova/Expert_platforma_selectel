@@ -20,6 +20,16 @@ import {
   logStatusEvent, logEmailTestEvent, type ActionItem,
 } from "@/lib/actionItems";
 
+// ─── Action inbox filter ──────────────────────────────────────────────────────
+// "customer_selected_you" is informational — the expert's kanban shows the selection.
+// It should NOT appear as a task in "Требуют действия".
+
+const EXPERT_INBOX_EXCLUDED: string[] = ["customer_selected_you"];
+
+function filterExpertActionItems(items: ActionItem[]): ActionItem[] {
+  return items.filter(i => !EXPERT_INBOX_EXCLUDED.includes(i.action_type));
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type Match = {
@@ -299,14 +309,14 @@ export default function ExpertDashboard() {
 
     setAiLoading(true);
     loadOpenActionItems(userId).then(items => {
-      setActionItems(items);
+      setActionItems(filterExpertActionItems(items));
       setAiLoading(false);
     });
   }, [guard.status]);
 
   function reloadActionItems() {
     if (guard.status !== "ok") return;
-    loadOpenActionItems(guard.user.id).then(setActionItems);
+    loadOpenActionItems(guard.user.id).then(items => setActionItems(filterExpertActionItems(items)));
   }
 
   function reloadProfile() {

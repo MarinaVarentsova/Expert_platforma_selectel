@@ -339,11 +339,13 @@ function ExpertTopNav({ userId, userName, userEmail }: {
       });
 
     supabase.from("palata_action_items")
-      .select("id", { count: "exact", head: true })
+      .select("id, action_type")
       .eq("assigned_to_user_id", userId)
       .eq("status", "open")
       .eq("is_resolved", false)
-      .then(({ count }) => setActionCount(count ?? 0));
+      .then(({ data }) => {
+        setActionCount((data ?? []).filter((i: { action_type: string }) => i.action_type !== "customer_selected_you").length);
+      });
   }, [userId]);
 
   return (

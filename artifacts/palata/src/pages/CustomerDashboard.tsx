@@ -123,6 +123,7 @@ export default function CustomerDashboard() {
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [userPhone, setUserPhone] = useState<string | null>(null);
+  const [myRating, setMyRating] = useState<number | null>(null);
 
   const loadPendingRatings = async (userId: string) => {
     // Load open expert_completed_order action items assigned to this customer
@@ -227,6 +228,19 @@ export default function CustomerDashboard() {
       .single()
       .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
 
+    // Load avg rating that experts gave to this customer
+    supabase
+      .from("palata_customer_ratings")
+      .select("score")
+      .eq("customer_id", userId)
+      .then(({ data }) => {
+        const rows = (data ?? []) as { score: number }[];
+        if (rows.length > 0) {
+          const avg = rows.reduce((s, r) => s + r.score, 0) / rows.length;
+          setMyRating(avg);
+        }
+      });
+
     loadPendingRatings(userId);
 
     setAiLoading(true);
@@ -325,7 +339,15 @@ export default function CustomerDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет заказчика</p>
-            <h1 className="text-xl font-bold text-slate-900">{user.full_name ?? user.email}</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-bold text-slate-900">{user.full_name ?? user.email}</h1>
+              {myRating != null && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold">
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                  {myRating.toFixed(1)}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
             <button
               onClick={() => setTab(tab === "profile" ? "requests" : "profile")}

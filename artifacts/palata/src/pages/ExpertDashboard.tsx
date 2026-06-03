@@ -393,7 +393,15 @@ export default function ExpertDashboard() {
       {/* Header */}
       <div className="mb-6">
         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет эксперта</p>
-        <h1 className="text-xl font-bold text-slate-900">{user.full_name ?? user.email}</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-xl font-bold text-slate-900">{user.full_name ?? user.email}</h1>
+          {profileState.kind === "ok" && profileState.profile?.avg_customer_rating != null && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+              {Number(profileState.profile.avg_customer_rating).toFixed(1)}
+            </span>
+          )}
+        </div>
         <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
         <button
           onClick={() => setTab(tab === "profile" ? "requests" : "profile")}

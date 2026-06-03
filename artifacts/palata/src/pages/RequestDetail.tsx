@@ -192,7 +192,7 @@ const MATCH_STATUS: Record<string, { label: string; cls: string }> = {
   proposed:               { label: "Предложено",          cls: "bg-yellow-100 text-yellow-700" },
   can_start_from:         { label: "Может взять",          cls: "bg-[#F4F4F4] text-[#002B5C]" },
   selected_by_customer:   { label: "Выбран заказчиком",   cls: "bg-[#0F4C9A]/10 text-[#002B5C]" },
-  contacts_opened:        { label: "Контакты открыты",     cls: "bg-[#D0D0D0] text-[#002B5C]" },
+  contacts_opened:        { label: "Выбран заказчиком",    cls: "bg-[#0F4C9A]/10 text-[#002B5C]" },
   accepted:               { label: "Принято",              cls: "bg-emerald-100 text-emerald-700" },
   accepted_work:          { label: "Взял в работу",        cls: "bg-[#E9E9E9] text-[#002B5C]" },
   declined:                      { label: "Отказ",                    cls: "bg-red-100 text-red-600" },
@@ -230,7 +230,7 @@ const ACTIVE_MATCH_STATUSES = new Set(["proposed", "can_start_from", "selected_b
 const EXPERT_CAN_ACT = new Set(["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted", "accepted_work"]);
 const CONTACTS_REVEALED = new Set(["selected_by_customer", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"]);
 const CUSTOMER_CAN_SELECT = new Set([
-  "proposed", "can_start_from", "accepted", "selected_by_customer", "pending", "matched",
+  "proposed", "can_start_from", "accepted", "pending", "matched",
 ]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -608,10 +608,10 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       const now = new Date().toISOString();
       const expertUser = usersMap[match.expert_id];
 
-      // 1. Update match → selected_by_customer
+      // 1. Update match → contacts_opened (customer selected this expert)
       const { error: me } = await supabase
         .from("palata_request_matches")
-        .update({ status: "selected_by_customer", responded_at: now })
+        .update({ status: "contacts_opened", responded_at: now })
         .eq("id", match.id);
       if (me) throw me;
 

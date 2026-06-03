@@ -1093,9 +1093,9 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
     setSelecting(expert.expert_id);
     const now = new Date().toISOString();
 
-    // 1. Match → selected_by_customer
+    // 1. Match → contacts_opened (customer selected this expert)
     await supabase.from("palata_request_matches").update({
-      status: "selected_by_customer", responded_at: now,
+      status: "contacts_opened", responded_at: now,
     }).eq("id", expert.match_id);
 
     // 2. Request: keep expert_selection, set assigned_expert_id

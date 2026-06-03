@@ -181,13 +181,6 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   }
 
   if (candidates.length === 0) {
-    // ── DIAG3 — one-shot snapshot written before early exit ──────────────────
-    void supabase.from("palata_status_events").insert({
-      entity_type: "request", entity_id: requestId,
-      old_status: "matching", new_status: "matching", actor_id: null,
-      note: `[DIAG3] cert=${qualifiedIdList.length} prof=${(experts as unknown[]).length} reg=${[...expertRegionMap.entries()].map(([k,v])=>`${k.slice(0,8)}:[${[...v].map(r=>r.slice(0,8)).join(",")}]`).join("|")||"EMPTY"} reqReg=${regionIds.map(r=>r.slice(0,8)).join(",")|| "EMPTY"}`,
-    });
-    // ── /DIAG3 ───────────────────────────────────────────────────────────────
     await _handleNoExperts(requestId, nextRound, input, "no_candidates_after_filter");
     return { matched: 0, round: nextRound, experts: [] };
   }

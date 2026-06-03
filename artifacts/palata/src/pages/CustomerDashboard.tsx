@@ -1111,9 +1111,9 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
       .maybeSingle();
     const custU = custUserData as { email: string | null; phone: string | null } | null;
 
-    const contactPayload = {
-      contact_opened_at: now,
-      expert_status: "selected_by_customer",
+    // Use only base columns that exist in all schema versions
+    const baseContactPayload = {
+      revealed_at: now,
       customer_email: custU?.email ?? null,
       customer_phone: custU?.phone ?? null,
       expert_email: expert.expert_email ?? null,
@@ -1128,15 +1128,16 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
 
     if (existingContact) {
       await supabase.from("palata_request_contacts")
-        .update(contactPayload)
+        .update(baseContactPayload)
         .eq("id", (existingContact as { id: string }).id);
     } else {
       await supabase.from("palata_request_contacts").insert({
         request_id: item.request_id,
         expert_id: expert.expert_id,
         customer_id: userId,
-        ...contactPayload,
+        ...baseContactPayload,
       });
+      // Ignore insert errors — contacts are a convenience; match status is the source of truth
     }
 
     // 4. Action item for expert

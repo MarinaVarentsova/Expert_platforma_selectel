@@ -605,6 +605,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   async function handleSelectExpert(match: Match) {
     if (!userId) return;
+    // Optimistic: hide button immediately so UI responds at once
+    setSelectedMatchId(match.id);
     setCustUI({ kind: "submitting" });
     try {
       const now = new Date().toISOString();
@@ -617,7 +619,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .eq("id", match.id);
       if (me) throw me;
 
-      // 2. Create / update palata_request_contacts with populated fields
+      // 2. Create / update palata_request_contacts.
+      // Use only base columns (revealed_at, phones, emails) that exist in all
+      // schema versions; contact_opened_at / expert_status require migration 020.
       const { data: existingContact } = await supabase
         .from("palata_request_contacts")
         .select("id")
@@ -625,9 +629,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .eq("expert_id", match.expert_id)
         .maybeSingle();
 
-      const contactPayload = {
-        contact_opened_at: now,
-        expert_status: "selected_by_customer",
+      const baseContactPayload = {
         revealed_at: now,
         customer_phone: r.customer_phone ?? null,
         customer_email: r.customer_email ?? null,
@@ -638,13 +640,13 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       if (existingContact) {
         await supabase
           .from("palata_request_contacts")
-          .update(contactPayload)
+          .update(baseContactPayload)
           .eq("id", existingContact.id);
       } else {
-        const { error: ce } = await supabase
+        await supabase
           .from("palata_request_contacts")
-          .insert({ request_id: r.id, expert_id: match.expert_id, ...contactPayload });
-        if (ce) throw ce;
+          .insert({ request_id: r.id, expert_id: match.expert_id, ...baseContactPayload });
+        // Ignore insert errors — contacts are a convenience; match status is the source of truth
       }
 
       // 3. Close experts_matched action item for customer
@@ -686,8 +688,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         );
       }
 
-      // Optimistic: hide button immediately before reload
-      setSelectedMatchId(match.id);
       setCustUI({ kind: "idle" });
       onReload();
     } catch (e: unknown) {

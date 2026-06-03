@@ -547,7 +547,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   // For expert role: if this expert lost the job (closed/declined/withdrawn), show their
   // personal match status in the header badge, not the request's "В работе" / "Выполнено"
-  const EXPERT_LOSING_STATUSES = new Set(["closed_by_other_expert", "declined", "withdrawn"]);
+  const EXPERT_LOSING_STATUSES = new Set(["closed_by_other_expert", "declined", "withdrawn", "customer_declined_start_date"]);
   const myLosingMatch = role === "expert"
     ? myMatches.find(m => EXPERT_LOSING_STATUSES.has(m.status))
     : undefined;

@@ -1329,7 +1329,20 @@ function ExpertCanStartCard({ item, userId, onDone }: {
       payload:             { request_id: item.request_id, excluded_expert_id: expertId },
     });
 
-    // 4. Events
+    // 4. Action item for expert: customer declined the proposed date
+    await createActionItem({
+      request_id:          item.request_id,
+      expert_id:           expertId,
+      customer_id:         userId,
+      assigned_to_user_id: expertId,
+      assigned_role:       "expert",
+      action_type:         "customer_declined_start_date",
+      title:               "Заказчик отклонил предложенную дату",
+      description:         `Заказчик не согласился с предложенной вами датой начала по заказу ${shortId}. Ваша заявка отклонена.`,
+      payload:             { request_id: item.request_id },
+    });
+
+    // 5. Events
     await logStatusEvent(item.request_id, "expert_selection", "expert_selection", "customer_declined_start_date");
     if (expertId && expertEmail) {
       await logEmailTestEvent(expertId, expertEmail, "customer_declined_start_date",

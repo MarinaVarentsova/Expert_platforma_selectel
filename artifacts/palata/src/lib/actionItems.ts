@@ -10,6 +10,7 @@ export type ActionType =
   | "expert_started_work"
   | "customer_selected_you"
   | "customer_approved_start_date"
+  | "customer_declined_start_date"
   | "choose_another_expert"
   | "you_are_approved_for_work"
   | "manual_matching_required";

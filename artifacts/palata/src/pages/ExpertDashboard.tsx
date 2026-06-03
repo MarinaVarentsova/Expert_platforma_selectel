@@ -124,7 +124,7 @@ const COLUMNS = [
   { id: "cantake",   label: "Могу взять",        accent: "", dotColor: "bg-[#0F4C9A]",   bgColor: "bg-[#F4F4F4] border-[#D0D0D0]",     statuses: ["can_start_from"] },
   { id: "accepted",  label: "В работе",          accent: "", dotColor: "bg-[#002B5C]",   bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]",  statuses: ["accepted", "accepted_work"] },
   { id: "completed", label: "Завершено",         accent: "", dotColor: "bg-emerald-400", bgColor: "bg-emerald-50/60 border-emerald-200", statuses: ["completed"] },
-  { id: "declined",  label: "Отказ / не взял",    accent: "", dotColor: "bg-slate-300",   bgColor: "bg-slate-50 border-slate-200",      statuses: ["declined", "withdrawn"] },
+  { id: "declined",  label: "Отказ / не взял",    accent: "", dotColor: "bg-slate-300",   bgColor: "bg-slate-50 border-slate-200",      statuses: ["declined", "withdrawn", "customer_declined_start_date"] },
   { id: "missed",    label: "Не успел",           accent: "", dotColor: "bg-orange-300",  bgColor: "bg-orange-50/50 border-orange-200",  statuses: ["closed_by_other_expert"] },
 ];
 
@@ -1450,13 +1450,14 @@ function ErrorCard({ message }: { message: string }) {
 // ─── Expert Action Inbox ───────────────────────────────────────────────────────
 
 const ACTION_LABEL_EX: Record<string, { label: string; color: string }> = {
-  customer_selected_you:        { label: "Вас выбрали",          color: "text-[#002B5C] bg-[#F4F4F4]" },
-  customer_approved_start_date: { label: "Дата согласована",     color: "text-emerald-700 bg-emerald-50" },
-  you_are_approved_for_work:    { label: "Вы назначены на заказ",color: "text-[#002B5C] bg-[#D0D0D0]" },
-  experts_matched:              { label: "Подобраны эксперты",   color: "text-[#002B5C] bg-[#F4F4F4]" },
-  expert_declined:              { label: "Эксперт отказался",    color: "text-red-700 bg-red-50" },
-  expert_can_start_from:        { label: "Предложена дата",      color: "text-amber-700 bg-amber-50" },
-  expert_completed_order:       { label: "Заказ завершён",       color: "text-emerald-700 bg-emerald-50" },
+  customer_selected_you:        { label: "Вас выбрали",              color: "text-[#002B5C] bg-[#F4F4F4]" },
+  customer_approved_start_date: { label: "Дата согласована",         color: "text-emerald-700 bg-emerald-50" },
+  you_are_approved_for_work:    { label: "Заказчик подтвердил дату", color: "text-[#002B5C] bg-[#D0D0D0]" },
+  customer_declined_start_date: { label: "Заказчик отклонил дату",   color: "text-red-700 bg-red-50" },
+  experts_matched:              { label: "Подобраны эксперты",       color: "text-[#002B5C] bg-[#F4F4F4]" },
+  expert_declined:              { label: "Эксперт отказался",        color: "text-red-700 bg-red-50" },
+  expert_can_start_from:        { label: "Предложена дата",          color: "text-amber-700 bg-amber-50" },
+  expert_completed_order:       { label: "Заказ завершён",           color: "text-emerald-700 bg-emerald-50" },
 };
 
 function ExpertActionItemHeader({ item }: { item: ActionItem }) {
@@ -1523,6 +1524,9 @@ function ExpertActionCard({ item, userId, userEmail, onDone }: {
   }
   if (item.action_type === "customer_approved_start_date") {
     return <CustomerApprovedCard item={item} onDone={onDone} />;
+  }
+  if (item.action_type === "customer_declined_start_date") {
+    return <CustomerDeclinedDateCard item={item} onDone={onDone} />;
   }
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
@@ -2308,6 +2312,40 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── customer_declined_start_date ─────────────────────────────────────────────
+
+function CustomerDeclinedDateCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
+  const [done, setDone] = useState(false);
+
+  async function handleAck() {
+    await resolveActionItem(item.id);
+    setDone(true);
+    onDone();
+  }
+
+  if (done) return null;
+
+  return (
+    <div className="bg-white border border-red-200 rounded-xl p-5 shadow-sm">
+      <ExpertActionItemHeader item={item} />
+      <div className="mt-3 bg-red-50 rounded-xl px-4 py-3 space-y-1">
+        <p className="text-xs text-red-700 font-medium">
+          Заказчик не согласился с предложенной вами датой начала. Заявка отклонена.
+        </p>
+        <p className="text-xs text-slate-500">{item.description}</p>
+      </div>
+      <div className="mt-4">
+        <button
+          onClick={handleAck}
+          className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-800 transition-colors"
+        >
+          Понятно
+        </button>
       </div>
     </div>
   );

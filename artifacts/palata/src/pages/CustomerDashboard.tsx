@@ -995,6 +995,7 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [selecting, setSelecting] = useState<string | null>(null);
+  const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [slugMap, setSlugMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -1090,6 +1091,8 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
   }, [item.request_id]);
 
   async function handleSelect(expert: MatchedExpert) {
+    // Optimistic: immediately mark as selected so button deactivates before any network call
+    setSelectedExpertId(expert.expert_id);
     setSelecting(expert.expert_id);
     const now = new Date().toISOString();
 
@@ -1165,7 +1168,6 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
         "customer_selected_you", "Заказчик выбрал вас для работы",
         { request_id: item.request_id });
     }
-    setSelecting(null);
     onDone();
   }
 
@@ -1201,6 +1203,8 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
               expert={expert}
               slugMap={slugMap}
               busy={selecting === expert.expert_id}
+              selected={selectedExpertId === expert.expert_id}
+              anySelected={selectedExpertId !== null}
               onSelect={() => handleSelect(expert)}
             />
           ))}
@@ -1504,17 +1508,19 @@ function ExpertCompletedCard({ item, onDone }: { item: ActionItem; onDone: () =>
 
 // ─── Expert profile card (for "Выбрать эксперта" list) ───────────────────────
 
-function ExpertProfileCard({ expert: e, slugMap, busy, onSelect }: {
+function ExpertProfileCard({ expert: e, slugMap, busy, selected, anySelected, onSelect }: {
   expert: MatchedExpert;
   slugMap: Record<string, string>;
   busy: boolean;
+  selected: boolean;
+  anySelected: boolean;
   onSelect: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rating = e.avg_customer_rating ? Number(e.avg_customer_rating).toFixed(1) : null;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <div className={`bg-white border rounded-xl overflow-hidden transition-colors ${selected ? "border-emerald-300" : "border-slate-200"}`}>
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -1533,13 +1539,20 @@ function ExpertProfileCard({ expert: e, slugMap, busy, onSelect }: {
               )}
             </div>
           </div>
-          <button
-            disabled={busy}
-            onClick={onSelect}
-            className="shrink-0 btn-primary text-xs py-1.5 px-3"
-          >
-            {busy ? "…" : "Выбрать"}
-          </button>
+          {selected ? (
+            <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              Выбран
+            </span>
+          ) : (
+            <button
+              disabled={busy || anySelected}
+              onClick={onSelect}
+              className="shrink-0 btn-primary text-xs py-1.5 px-3 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {busy ? "…" : "Выбрать"}
+            </button>
+          )}
         </div>
 
         {(e.direction_names.length > 0 || e.regions.length > 0) && (

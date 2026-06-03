@@ -531,10 +531,10 @@ function TabButton({ active, onClick, children }: {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold transition-colors border-b-2 -mb-px
+      className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all rounded-full border-b-2 -mb-px
         ${active
-          ? "border-[#0F4C9A] text-[#002B5C]"
-          : "border-transparent text-slate-500 hover:text-[#002B5C] hover:border-[#D0D0D0]"
+          ? "bg-[#0F4C9A] text-white border-transparent shadow-sm"
+          : "border-transparent text-slate-500 hover:text-[#0F4C9A] hover:bg-blue-50"
         }`}
     >
       {children}

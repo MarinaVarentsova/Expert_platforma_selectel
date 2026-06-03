@@ -1931,8 +1931,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         </Card>
       )}
 
-      {/* ══ 9. ИСТОРИЯ СОБЫТИЙ ═══════════════════════════════════════════════ */}
-      <Card title="История событий" count={events.length}>
+      {/* ══ 9. ИСТОРИЯ СОБЫТИЙ (customer + admin only) ══════════════════════ */}
+      {role !== "expert" && <Card title="История событий" count={events.length}>
         {events.length === 0 ? <Empty text="Событий пока не зафиксировано" /> : (
           <div className="relative -mx-6 -mb-6">
             <div className="absolute left-9 top-0 bottom-0 w-px bg-slate-100" />
@@ -1965,7 +1965,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             })}
           </div>
         )}
-      </Card>
+      </Card>}
 
       {/* ══ 10. EMAIL-СОБЫТИЯ (admin) ════════════════════════════════════════ */}
       {role === "admin" && (

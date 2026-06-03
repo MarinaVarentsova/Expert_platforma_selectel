@@ -1012,6 +1012,7 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
   const [selecting, setSelecting] = useState<string | null>(null);
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [slugMap, setSlugMap] = useState<Record<string, string>>({});
+  const [dismissing, setDismissing] = useState(false);
 
   useEffect(() => {
     supabase.from("palata_expertise_directions").select("slug, name").eq("is_active", true)
@@ -1188,22 +1189,38 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
 
   const isDecline = item.action_type === "expert_declined";
 
+  async function handleDismiss() {
+    setDismissing(true);
+    await resolveActionItem(item.id);
+    onDone();
+  }
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
       <div className="p-5">
         <ActionItemHeader item={item} />
         <p className="text-sm text-slate-600 mt-2">{item.description}</p>
 
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#002B5C] hover:text-[#0a1a0f] transition-colors"
-        >
-          {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          {isDecline ? "Выбрать другого эксперта" : "Посмотреть экспертов"}
-          {!loading && experts.length > 0 && (
-            <span className="ml-1 text-[#666666] font-normal">({experts.length})</span>
-          )}
-        </button>
+        <div className="mt-4 flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#002B5C] hover:text-[#0a1a0f] transition-colors"
+          >
+            {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            {isDecline ? "Выбрать другого эксперта" : "Посмотреть экспертов"}
+            {!loading && experts.length > 0 && (
+              <span className="ml-1 text-[#666666] font-normal">({experts.length})</span>
+            )}
+          </button>
+
+          <button
+            onClick={handleDismiss}
+            disabled={dismissing}
+            className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 border border-slate-200 hover:border-slate-300 px-3 py-1 rounded-full transition-colors disabled:opacity-50"
+          >
+            {dismissing ? "…" : "Понятно"}
+          </button>
+        </div>
       </div>
 
       {expanded && (

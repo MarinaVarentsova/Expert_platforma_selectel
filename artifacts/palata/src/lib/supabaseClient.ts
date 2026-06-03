@@ -21,3 +21,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storageKey: 'palata_auth',
   },
 });
+
+// Anon client — no user session, role=anon in PostgREST.
+// Used for public-readable tables where the authenticated client is
+// blocked by a "manage own" FOR ALL policy (e.g. palata_expert_regions).
+export const anonSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+    storageKey: 'palata_anon',
+  },
+});

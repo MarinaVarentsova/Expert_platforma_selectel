@@ -1,4 +1,4 @@
-import { supabase } from "./supabaseClient";
+import { supabase, anonSupabase } from "./supabaseClient";
 import { createActionItem } from "./actionItems";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -143,7 +143,11 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   const expertRegionMap = new Map<string, Set<string>>();
   if (requiresTravel && experts.length > 0) {
     const expertIdList = (experts as unknown as ExpertForMatching[]).map(e => e.user_id);
-    const { data: regData } = await supabase
+    // Use anonSupabase (no user JWT) so the "Anon read expert_regions"
+    // FOR SELECT TO anon USING (true) policy applies instead of
+    // "Expert manage own regions" FOR ALL, which would return 0 rows
+    // for a customer whose auth.uid() is not in palata_expert_regions.
+    const { data: regData } = await anonSupabase
       .from("palata_expert_regions")
       .select("expert_id, region_id")
       .in("expert_id", expertIdList);
@@ -177,6 +181,13 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   }
 
   if (candidates.length === 0) {
+    // ── DIAG3 — one-shot snapshot written before early exit ──────────────────
+    void supabase.from("palata_status_events").insert({
+      entity_type: "request", entity_id: requestId,
+      old_status: "matching", new_status: "matching", actor_id: null,
+      note: `[DIAG3] cert=${qualifiedIdList.length} prof=${(experts as unknown[]).length} reg=${[...expertRegionMap.entries()].map(([k,v])=>`${k.slice(0,8)}:[${[...v].map(r=>r.slice(0,8)).join(",")}]`).join("|")||"EMPTY"} reqReg=${regionIds.map(r=>r.slice(0,8)).join(",")|| "EMPTY"}`,
+    });
+    // ── /DIAG3 ───────────────────────────────────────────────────────────────
     await _handleNoExperts(requestId, nextRound, input, "no_candidates_after_filter");
     return { matched: 0, round: nextRound, experts: [] };
   }

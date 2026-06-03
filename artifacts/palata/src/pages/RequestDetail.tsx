@@ -655,15 +655,17 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   const myActiveMatch = myMatches.find(m => EXPERT_CAN_ACT.has(m.status));
   const myCompletedMatch = myMatches.find(m => m.status === "completed");
 
-  // For expert role: if this expert lost the job (closed/declined/withdrawn), show their
-  // personal match status in the header badge, not the request's "В работе" / "Выполнено"
+  // For expert role: if this expert lost the job (closed/declined/withdrawn) OR request is
+  // cancelled, override the header badge with the expert's personal context
   const EXPERT_LOSING_STATUSES = new Set(["closed_by_other_expert", "declined", "withdrawn", "customer_declined_start_date"]);
   const myLosingMatch = role === "expert"
     ? myMatches.find(m => EXPERT_LOSING_STATUSES.has(m.status))
     : undefined;
-  const displayedStatus = myLosingMatch
-    ? (MATCH_STATUS[myLosingMatch.status] ?? orderStatus)
-    : orderStatus;
+  const displayedStatus = r.status === "cancelled"
+    ? orderStatus  // always show "Неактуален" if request is cancelled
+    : myLosingMatch
+      ? (MATCH_STATUS[myLosingMatch.status] ?? orderStatus)
+      : orderStatus;
 
   // Rating checks
   const hasRatedExpert = userId
@@ -821,6 +823,20 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       const { error } = await supabase.from("palata_requests")
         .update({ status: newStatus }).eq("id", r.id);
       if (error) throw error;
+
+      // When cancelled: close all active matches as "customer_cancelled"
+      if (newStatus === "cancelled") {
+        const terminalStatuses = ["declined", "completed", "withdrawn", "closed_by_other_expert", "customer_declined_start_date"];
+        const activeMatchIds = matches
+          .filter(m => !terminalStatuses.includes(m.status))
+          .map(m => m.id);
+        if (activeMatchIds.length > 0) {
+          await supabase.from("palata_request_matches")
+            .update({ status: "closed_by_other_expert", decline_reason: "customer_cancelled" })
+            .in("id", activeMatchIds);
+        }
+      }
+
       await logEvent("request", r.id, r.status, newStatus);
       const emailType = newStatus === "completed" ? "request_completed" : "request_cancelled";
       const payloads: NotifyItem[] = [];

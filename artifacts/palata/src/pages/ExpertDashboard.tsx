@@ -115,6 +115,7 @@ const DECLINE_LABEL: Record<string, string> = {
   insufficient_docs: "Недостаточно документов",
   no_contact:        "Заказчик не выходит на связь",
   other:             "Другое",
+  customer_cancelled: "Не актуальный",
 };
 
 // ─── Kanban config ─────────────────────────────────────────────────────────────
@@ -125,7 +126,7 @@ const COLUMNS = [
   { id: "accepted",  label: "В работе",          accent: "", dotColor: "bg-[#002B5C]",   bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]",  statuses: ["accepted", "accepted_work"] },
   { id: "completed", label: "Завершено",         accent: "", dotColor: "bg-emerald-400", bgColor: "bg-emerald-50/60 border-emerald-200", statuses: ["completed"] },
   { id: "declined",  label: "Отказ / не взял",    accent: "", dotColor: "bg-slate-300",   bgColor: "bg-slate-50 border-slate-200",      statuses: ["declined", "withdrawn", "customer_declined_start_date"] },
-  { id: "missed",    label: "Закрыт другим",      accent: "", dotColor: "bg-orange-300",  bgColor: "bg-orange-50/50 border-orange-200",  statuses: ["closed_by_other_expert"] },
+  { id: "missed",    label: "Не актуальный",      accent: "", dotColor: "bg-orange-300",  bgColor: "bg-orange-50/50 border-orange-200",  statuses: ["closed_by_other_expert"] },
 ];
 
 // ─── Main component ──────────────────────────────────────────────────────────
@@ -1366,7 +1367,17 @@ function ExpertCard({ match: m, needsRating, directionsMap = {} }: { match: Matc
               {directionsMap[req.expertise_direction_id] ?? "—"}
             </p>
           )}
-          {m.decline_reason && (
+          {m.status === "closed_by_other_expert" && !m.decline_reason && (
+            <span className="inline-block text-[10px] font-semibold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
+              Взят другим
+            </span>
+          )}
+          {m.decline_reason === "customer_cancelled" && (
+            <span className="inline-block text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+              Не актуальный
+            </span>
+          )}
+          {m.decline_reason && m.decline_reason !== "customer_cancelled" && (
             <span className="inline-block text-[10px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
               {DECLINE_LABEL[m.decline_reason] ?? m.decline_reason}
             </span>

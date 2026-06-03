@@ -181,6 +181,10 @@ export default function Register() {
         palata_registry_number:           palataOk ? palataNum.trim() || null : null,
         centrsudexpert_verified:          centrsudOk,
         centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
+        // Persist region UUIDs in auth metadata so the DB trigger can write
+        // palata_expert_regions rows even when email confirmation is required
+        // and the React state is gone by the time the user clicks the link.
+        region_ids:                       regionIds,
       });
     }
 

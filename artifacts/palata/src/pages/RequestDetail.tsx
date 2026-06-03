@@ -545,6 +545,16 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   const myActiveMatch = myMatches.find(m => EXPERT_CAN_ACT.has(m.status));
   const myCompletedMatch = myMatches.find(m => m.status === "completed");
 
+  // For expert role: if this expert lost the job (closed/declined/withdrawn), show their
+  // personal match status in the header badge, not the request's "В работе" / "Выполнено"
+  const EXPERT_LOSING_STATUSES = new Set(["closed_by_other_expert", "declined", "withdrawn"]);
+  const myLosingMatch = role === "expert"
+    ? myMatches.find(m => EXPERT_LOSING_STATUSES.has(m.status))
+    : undefined;
+  const displayedStatus = myLosingMatch
+    ? (MATCH_STATUS[myLosingMatch.status] ?? orderStatus)
+    : orderStatus;
+
   // Rating checks
   const hasRatedExpert = userId
     ? expertRatings.some(er => er.customer_id === userId)
@@ -984,8 +994,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                 Редактировать
               </button>
             )}
-            <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${orderStatus?.cls ?? "bg-slate-100 text-slate-500"}`}>
-              {orderStatus?.label ?? r.status}
+            <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${displayedStatus?.cls ?? "bg-slate-100 text-slate-500"}`}>
+              {displayedStatus?.label ?? r.status}
             </span>
           </div>
         </div>

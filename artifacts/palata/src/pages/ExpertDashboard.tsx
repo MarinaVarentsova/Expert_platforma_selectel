@@ -124,7 +124,8 @@ const COLUMNS = [
   { id: "cantake",   label: "Могу взять",        accent: "", dotColor: "bg-[#0F4C9A]",   bgColor: "bg-[#F4F4F4] border-[#D0D0D0]",     statuses: ["can_start_from"] },
   { id: "accepted",  label: "В работе",          accent: "", dotColor: "bg-[#002B5C]",   bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]",  statuses: ["accepted", "accepted_work"] },
   { id: "completed", label: "Завершено",         accent: "", dotColor: "bg-emerald-400", bgColor: "bg-emerald-50/60 border-emerald-200", statuses: ["completed"] },
-  { id: "declined",  label: "Отказ / не взял",   accent: "", dotColor: "bg-slate-300",   bgColor: "bg-slate-50 border-slate-200",      statuses: ["declined", "withdrawn", "closed_by_other_expert"] },
+  { id: "declined",  label: "Отказ / не взял",    accent: "", dotColor: "bg-slate-300",   bgColor: "bg-slate-50 border-slate-200",      statuses: ["declined", "withdrawn"] },
+  { id: "missed",    label: "Не успел",           accent: "", dotColor: "bg-orange-300",  bgColor: "bg-orange-50/50 border-orange-200",  statuses: ["closed_by_other_expert"] },
 ];
 
 // ─── Main component ──────────────────────────────────────────────────────────

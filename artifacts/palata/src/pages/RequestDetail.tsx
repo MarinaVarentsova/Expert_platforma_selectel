@@ -325,9 +325,8 @@ function ExpertTopNav({ userId, userName, userEmail }: {
   userName: string | null;
   userEmail: string;
 }) {
-  const [rating, setRating]         = useState<number | null>(null);
+  const [rating, setRating]           = useState<number | null>(null);
   const [actionCount, setActionCount] = useState(0);
-  const [rateCount, setRateCount]   = useState(0);
 
   useEffect(() => {
     supabase.from("palata_expert_profiles")
@@ -345,27 +344,6 @@ function ExpertTopNav({ userId, userName, userEmail }: {
       .eq("status", "open")
       .eq("is_resolved", false)
       .then(({ count }) => setActionCount(count ?? 0));
-
-    supabase.from("palata_request_matches")
-      .select("id", { count: "exact", head: true })
-      .eq("expert_id", userId)
-      .eq("status", "completed")
-      .then(async ({ data: matches }) => {
-        const { data: allMatches } = await supabase
-          .from("palata_request_matches")
-          .select("request_id")
-          .eq("expert_id", userId)
-          .eq("status", "completed");
-        const reqIds = (allMatches ?? []).map((m: { request_id: string }) => m.request_id);
-        if (reqIds.length === 0) { setRateCount(0); return; }
-        const { data: rated } = await supabase
-          .from("palata_customer_ratings")
-          .select("request_id")
-          .eq("expert_id", userId)
-          .in("request_id", reqIds);
-        const ratedSet = new Set((rated ?? []).map((r: { request_id: string }) => r.request_id));
-        setRateCount(reqIds.filter(id => !ratedSet.has(id)).length);
-      });
   }, [userId]);
 
   return (
@@ -397,11 +375,97 @@ function ExpertTopNav({ userId, userName, userEmail }: {
         {[
           { tab: "requests", icon: <ClipboardList className="w-3.5 h-3.5" />, label: "Мои заказы", badge: 0 },
           { tab: "actions",  icon: <Zap className="w-3.5 h-3.5" />,           label: "Требуют действия", badge: actionCount },
-          { tab: "rate",     icon: <Star className="w-3.5 h-3.5" />,           label: "Оценить заказчика", badge: rateCount },
         ].map(({ tab, icon, label, badge }) => (
           <Link
             key={tab}
             href={`/expert?tab=${tab}`}
+            className="inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-slate-500 hover:text-[#002B5C] whitespace-nowrap border-b-2 border-transparent hover:border-[#002B5C] transition-all -mb-px"
+          >
+            {icon}
+            {label}
+            {badge > 0 && (
+              <span className="ml-0.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-rose-500 text-white rounded-full">
+                {badge}
+              </span>
+            )}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Customer top navigation (profile + tabs) ─────────────────────────────────
+
+function CustomerTopNav({ userId, userName, userEmail }: {
+  userId: string;
+  userName: string | null;
+  userEmail: string;
+}) {
+  const [rating, setRating]           = useState<number | null>(null);
+  const [actionCount, setActionCount] = useState(0);
+  const [rateCount, setRateCount]     = useState(0);
+
+  useEffect(() => {
+    supabase.from("palata_customer_ratings")
+      .select("score")
+      .eq("customer_id", userId)
+      .then(({ data }) => {
+        const scores = (data ?? []).map((r: { score: number }) => r.score);
+        if (scores.length > 0) {
+          setRating(Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 10) / 10);
+        }
+      });
+
+    supabase.from("palata_action_items")
+      .select("id", { count: "exact", head: true })
+      .eq("assigned_to_user_id", userId)
+      .eq("status", "open")
+      .eq("is_resolved", false)
+      .then(({ count }) => setActionCount(count ?? 0));
+
+    supabase.from("palata_action_items")
+      .select("id", { count: "exact", head: true })
+      .eq("assigned_to_user_id", userId)
+      .eq("action_type", "expert_completed_order")
+      .eq("is_resolved", false)
+      .then(({ count }) => setRateCount(count ?? 0));
+  }, [userId]);
+
+  return (
+    <div className="mb-6">
+      {/* Profile block */}
+      <div className="mb-4">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Личный кабинет заказчика</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xl font-bold text-slate-900">{userName ?? userEmail}</span>
+          {rating != null && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+              {rating.toFixed(1)}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-slate-400 mt-0.5">{userEmail}</p>
+        <Link
+          href="/customer/dashboard?tab=profile"
+          className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-[#F4F4F4] hover:border-[#D0D0D0] hover:text-[#002B5C] transition-all"
+        >
+          <User className="w-3.5 h-3.5" />
+          Мой профиль
+        </Link>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-slate-200 overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 scrollbar-none">
+        {[
+          { tab: "requests", icon: <ClipboardList className="w-3.5 h-3.5" />, label: "Мои заказы",       badge: 0 },
+          { tab: "actions",  icon: <Zap className="w-3.5 h-3.5" />,           label: "Требуют действия", badge: actionCount },
+          { tab: "rate",     icon: <Star className="w-3.5 h-3.5" />,           label: "Оценить эксперта", badge: rateCount },
+        ].map(({ tab, icon, label, badge }) => (
+          <Link
+            key={tab}
+            href={`/customer/dashboard?tab=${tab}`}
             className="inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-slate-500 hover:text-[#002B5C] whitespace-nowrap border-b-2 border-transparent hover:border-[#002B5C] transition-all -mb-px"
           >
             {icon}
@@ -551,6 +615,8 @@ export default function RequestDetail() {
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       {role === "expert" && userId ? (
         <ExpertTopNav userId={userId} userName={currentUser?.full_name ?? null} userEmail={currentUser?.email ?? ""} />
+      ) : role === "customer" && userId ? (
+        <CustomerTopNav userId={userId} userName={currentUser?.full_name ?? null} userEmail={currentUser?.email ?? ""} />
       ) : (
         <button
           onClick={() => window.history.back()}

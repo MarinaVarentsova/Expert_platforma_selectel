@@ -947,8 +947,25 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .eq("id", match.id);
       if (error) throw error;
       await logEvent("match", match.id, match.status, "can_start_from", `Может взять с ${fmtDate(date)}`);
+
+      const expertUser = usersMap[match.expert_id];
+
+      // Create action item for customer so it appears in "Требуют действия"
+      if (r.customer_id) {
+        await createActionItem({
+          request_id:          r.id,
+          expert_id:           match.expert_id,
+          customer_id:         r.customer_id,
+          assigned_to_user_id: r.customer_id,
+          assigned_role:       "customer",
+          action_type:         "expert_can_start_from",
+          title:               "Эксперт предложил дату начала",
+          description:         `${expertUser?.full_name ?? "Эксперт"} может начать работу с ${fmtDate(date)}`,
+          payload:             { request_id: r.id, expert_id: match.expert_id, can_start_from: date, expert_name: expertUser?.full_name ?? null },
+        });
+      }
+
       if (customerEmail) {
-        const expertUser = usersMap[match.expert_id];
         notify(mkNotify({ type: "expert_can_take", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: expertUser?.full_name ?? undefined, canStartFrom: fmtDate(date) }));
       }
       setMS(match.id, { kind: "idle" });

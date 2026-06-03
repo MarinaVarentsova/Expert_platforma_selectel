@@ -149,6 +149,7 @@ type LoadedData = {
   requestRegionName: string | null;
   expertRegionNamesMap: Record<string, string[]>;
   expertDirectionNamesMap: Record<string, string[]>;
+  customerAvgRating: number | null;
 };
 
 type PageState =
@@ -478,7 +479,7 @@ export default function RequestDetail() {
         [request.customer_id, ...expertIds, ...actorIds].filter((id): id is string => id != null)
       )];
 
-      const [profilesRes, usersRes, expRatRes, custRatRes, reqRegionsRes, expRegionsRes, expDirsRes] = await Promise.all([
+      const [profilesRes, usersRes, expRatRes, custRatRes, custAllRatRes, reqRegionsRes, expRegionsRes, expDirsRes] = await Promise.all([
         expertIds.length > 0
           ? supabase.from("palata_expert_profiles")
               .select("user_id, experience_years, bio, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count")
@@ -489,6 +490,9 @@ export default function RequestDetail() {
           : Promise.resolve({ data: [] as User[], error: null }),
         supabase.from("palata_expert_ratings").select("*").eq("request_id", id!),
         supabase.from("palata_customer_ratings").select("*").eq("request_id", id!),
+        request.customer_id
+          ? supabase.from("palata_customer_ratings").select("score").eq("customer_id", request.customer_id)
+          : Promise.resolve({ data: [] as { score: number }[], error: null }),
         request.region_id
           ? supabase.from("palata_regions").select("name").eq("id", request.region_id).single()
           : Promise.resolve({ data: null as { name: string } | null, error: null }),
@@ -509,6 +513,10 @@ export default function RequestDetail() {
       const usersMap = Object.fromEntries(users.map(u => [u.id, u]));
       const expertRatings = (expRatRes.data as ExpertRating[]) ?? [];
       const customerRatings = (custRatRes.data as CustomerRating[]) ?? [];
+      const custAllScores = ((custAllRatRes.data ?? []) as { score: number }[]).map(r => r.score);
+      const customerAvgRating = custAllScores.length > 0
+        ? Math.round((custAllScores.reduce((a, b) => a + b, 0) / custAllScores.length) * 10) / 10
+        : null;
 
       const requestRegionName: string | null = (reqRegionsRes.data as { name: string } | null)?.name ?? null;
 
@@ -532,6 +540,7 @@ export default function RequestDetail() {
         request, files, matches, contacts, expertProfiles,
         events, emailEvents, expertRatings, customerRatings, usersMap,
         requestRegionName, expertRegionNamesMap, expertDirectionNamesMap,
+        customerAvgRating,
       }});
     }
 
@@ -575,7 +584,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   const { request: r, files, matches, contacts, expertProfiles,
           events, emailEvents, expertRatings, customerRatings, usersMap,
-          requestRegionName, expertRegionNamesMap, expertDirectionNamesMap } = data;
+          requestRegionName, expertRegionNamesMap, expertDirectionNamesMap,
+          customerAvgRating } = data;
 
   const contactsMap = Object.fromEntries(contacts.map(c => [c.expert_id, c]));
   const profileMap = Object.fromEntries(expertProfiles.map(p => [p.user_id, p]));
@@ -1385,6 +1395,35 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                       {m.can_start_from_date && <Field label="Могу взять с">{fmtDate(m.can_start_from_date)}</Field>}
                       {m.responded_at && <Field label="Ответ дан">{fmtDate(m.responded_at)}</Field>}
                     </div>
+
+                    {/* Customer profile — visible when customer has selected this expert */}
+                    {CONTACTS_REVEALED.has(m.status) && customer && (
+                      <div className="p-3 bg-[#EEF3FA] rounded-lg border border-[#C8D8EE] mb-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#0F4C9A] mb-2">
+                          Заказчик
+                        </p>
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-[#0F4C9A] flex items-center justify-center shrink-0">
+                            <span className="text-sm font-bold text-white">
+                              {(customer.full_name ?? customer.email ?? "?")[0].toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-[#002B5C] truncate">
+                              {customer.full_name ?? "—"}
+                            </p>
+                            {customerAvgRating != null ? (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-amber-400 text-xs">{"★".repeat(Math.round(customerAvgRating))}{"☆".repeat(5 - Math.round(customerAvgRating))}</span>
+                                <span className="text-xs text-slate-500">{customerAvgRating} / 5</span>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-slate-400 mt-0.5">Нет оценок</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Customer contacts — visible only when contacts are opened */}
                     {contactsOpen && myContact && (

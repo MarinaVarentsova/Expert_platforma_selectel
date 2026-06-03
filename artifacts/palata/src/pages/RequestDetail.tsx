@@ -588,6 +588,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   // ── Customer action state ──────────────────────────────────────────────────
   const [custUI, setCustUI] = useState<CustUIState>({ kind: "idle" });
   const [matchingRunning, setMatchingRunning] = useState(false);
+  // Optimistic: track locally selected match so button disappears immediately
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
   async function handleRematch() {
     setMatchingRunning(true);
@@ -684,6 +686,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         );
       }
 
+      // Optimistic: hide button immediately before reload
+      setSelectedMatchId(match.id);
       setCustUI({ kind: "idle" });
       onReload();
     } catch (e: unknown) {
@@ -1674,21 +1678,29 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                     )}
 
                     {/* Customer: Выбрать эксперта — shown when request is in expert_selection and match is selectable */}
-                    {role === "customer" && isOrderActive && r.status === "expert_selection" && CUSTOMER_CAN_SELECT.has(m.status) && (
+                    {role === "customer" && isOrderActive && r.status === "expert_selection" && CUSTOMER_CAN_SELECT.has(m.status) && selectedMatchId !== m.id && (
                       <div className="px-4 py-3 bg-[#F4F4F4] border-t border-[#D0D0D0]">
-                        {custUI.kind === "submitting" ? (
+                        {custUI.kind === "submitting" && selectedMatchId === null ? (
                           <div className="flex items-center gap-2 text-sm text-[#666666]">
                             <Spinner inline />
                             Обрабатывается…
                           </div>
                         ) : (
                           <button
-                            className="btn-primary"
+                            disabled={custUI.kind === "submitting"}
+                            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                             onClick={() => handleSelectExpert(m)}
                           >
                             Выбрать эксперта
                           </button>
                         )}
+                      </div>
+                    )}
+                    {/* Optimistic selected indicator */}
+                    {role === "customer" && selectedMatchId === m.id && (
+                      <div className="px-4 py-3 bg-emerald-50 border-t border-emerald-100 flex items-center gap-2 text-sm text-emerald-700">
+                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Выбран заказчиком
                       </div>
                     )}
 

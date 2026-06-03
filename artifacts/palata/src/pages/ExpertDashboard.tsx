@@ -104,7 +104,12 @@ type DocsState =
 
 
 const DECLINE_LABEL: Record<string, string> = {
+  busy:              "Занят",
   not_my_profile:    "Не мой профиль",
+  not_competent:     "Вне компетенции",
+  location:          "Регион не подходит",
+  conflict:          "Конфликт интересов",
+  conditions:        "Условия не подходят",
   timeline:          "Не подходит срок",
   no_travel:         "Нет возможности выезда",
   insufficient_docs: "Недостаточно документов",

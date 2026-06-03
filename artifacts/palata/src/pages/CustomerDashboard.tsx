@@ -15,6 +15,21 @@ import {
   logStatusEvent, logEmailTestEvent, type ActionItem,
 } from "@/lib/actionItems";
 
+// ─── Action inbox filter ──────────────────────────────────────────────────────
+// Only these action types should appear in the customer's "Требуют действия" tab.
+// "experts_matched" and "manual_matching_required" are informational only and
+// don't require action. "expert_completed_order" lives in the "Оценить эксперта" tab.
+
+const CUSTOMER_INBOX_EXCLUDED: string[] = [
+  "experts_matched",
+  "manual_matching_required",
+  "expert_completed_order",
+];
+
+function filterCustomerActionItems(items: ActionItem[]): ActionItem[] {
+  return items.filter(i => !CUSTOMER_INBOX_EXCLUDED.includes(i.action_type));
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Request = {
@@ -245,14 +260,14 @@ export default function CustomerDashboard() {
 
     setAiLoading(true);
     loadOpenActionItems(userId).then(items => {
-      setActionItems(items);
+      setActionItems(filterCustomerActionItems(items));
       setAiLoading(false);
     });
   }, [guard.status]);
 
   function reloadActionItems() {
     if (guard.status !== "ok") return;
-    loadOpenActionItems(guard.user.id).then(setActionItems);
+    loadOpenActionItems(guard.user.id).then(items => setActionItems(filterCustomerActionItems(items)));
   }
 
   function reloadProfile() {
@@ -1307,9 +1322,9 @@ function ExpertCanStartCard({ item, userId, onDone }: {
     if (!expertId) return;
     setBusy("decline");
 
-    // 1. Match → customer_declined_start_date
+    // 1. Match → customer_declined_start_date + reason for ExpertCard badge
     await supabase.from("palata_request_matches")
-      .update({ status: "customer_declined_start_date" })
+      .update({ status: "customer_declined_start_date", decline_reason: "customer_declined_date" })
       .eq("request_id", item.request_id)
       .eq("expert_id", expertId);
 

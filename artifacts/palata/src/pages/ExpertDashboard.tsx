@@ -115,7 +115,8 @@ const DECLINE_LABEL: Record<string, string> = {
   insufficient_docs: "Недостаточно документов",
   no_contact:        "Заказчик не выходит на связь",
   other:             "Другое",
-  customer_cancelled: "Не актуальный",
+  customer_cancelled:       "Не актуальный",
+  customer_declined_date:   "Не устроил срок заказчика",
 };
 
 // ─── Kanban config ─────────────────────────────────────────────────────────────

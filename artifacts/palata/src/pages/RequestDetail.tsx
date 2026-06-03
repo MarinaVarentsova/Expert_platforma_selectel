@@ -418,11 +418,14 @@ function CustomerTopNav({ userId, userName, userEmail }: {
       });
 
     supabase.from("palata_action_items")
-      .select("id", { count: "exact", head: true })
+      .select("id, action_type")
       .eq("assigned_to_user_id", userId)
       .eq("status", "open")
       .eq("is_resolved", false)
-      .then(({ count }) => setActionCount(count ?? 0));
+      .then(({ data }) => {
+        const excluded = ["experts_matched", "manual_matching_required", "expert_completed_order"];
+        setActionCount((data ?? []).filter((i: { action_type: string }) => !excluded.includes(i.action_type)).length);
+      });
 
     supabase.from("palata_action_items")
       .select("id", { count: "exact", head: true })

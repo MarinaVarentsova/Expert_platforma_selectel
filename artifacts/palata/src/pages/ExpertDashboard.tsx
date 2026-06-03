@@ -136,10 +136,10 @@ export default function ExpertDashboard() {
   const search = useSearch();
   const initialTab = (() => {
     const p = new URLSearchParams(search).get("tab");
-    if (p === "actions" || p === "rate" || p === "profile") return p;
+    if (p === "actions" || p === "profile") return p;
     return "requests";
   })();
-  const [tab, setTab] = useState<"requests" | "actions" | "rate" | "profile">(initialTab);
+  const [tab, setTab] = useState<"requests" | "actions" | "profile">(initialTab);
   const [matchState, setMatchState] = useState<MatchState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
   const [pendingRatingsState, setPendingRatingsState] = useState<PendingRatingsState>({ kind: "loading" });
@@ -444,15 +444,6 @@ export default function ExpertDashboard() {
             </span>
           )}
         </TabButton>
-        <TabButton active={tab === "rate"} onClick={() => setTab("rate")}>
-          <Star className="w-3.5 h-3.5" />
-          Оценить заказчика
-          {pendingCount != null && pendingCount > 0 && (
-            <span className="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-amber-500 text-white rounded-full">
-              {pendingCount}
-            </span>
-          )}
-        </TabButton>
       </div>
 
       {/* Tab: Requests */}
@@ -488,92 +479,6 @@ export default function ExpertDashboard() {
               onDone={reloadActionItems}
             />
           )}
-        </div>
-      )}
-
-      {/* Tab: Rate Customer */}
-      {tab === "rate" && (
-        <div className="max-w-2xl space-y-4">
-          {pendingRatingsState.kind === "loading" && <LoadingRows />}
-          {pendingRatingsState.kind === "error" && <ErrorCard message={pendingRatingsState.message} />}
-          {pendingRatingsState.kind === "ok" && pendingRatingsState.items.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-24 gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center">
-                <Star className="w-8 h-8 text-emerald-300" />
-              </div>
-              <div className="text-center">
-                <p className="text-base font-semibold text-slate-700 mb-1">Нет ожидающих оценок</p>
-                <p className="text-sm text-slate-400 max-w-xs">
-                  Все завершённые заказы уже оценены. Спасибо за обратную связь!
-                </p>
-              </div>
-            </div>
-          )}
-          {pendingRatingsState.kind === "ok" && pendingRatingsState.items.map(item => {
-            const form = getRatingForm(item.match_id);
-            return (
-              <div key={item.match_id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div>
-                    <p className="text-[10px] font-mono text-slate-400 mb-0.5">#{item.request_id.slice(0, 8).toUpperCase()}</p>
-                    <Link href={`/requests/${item.request_id}`}>
-                      <p className="text-sm font-semibold text-slate-800 hover:text-[#002B5C] transition-colors cursor-pointer">
-                        {item.title}
-                      </p>
-                    </Link>
-                    {(item.customer_name || item.customer_email) && (
-                      <p className="text-xs text-slate-500 mt-1">
-                        Заказчик: <span className="font-medium text-slate-700">{item.customer_name ?? item.customer_email}</span>
-                      </p>
-                    )}
-                  </div>
-                  {item.responded_at && (
-                    <span className="shrink-0 text-[10px] text-slate-400">
-                      {new Date(item.responded_at).toLocaleDateString("ru-RU")}
-                    </span>
-                  )}
-                </div>
-
-                {form.kind === "done" ? (
-                  <p className="text-sm font-medium text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">
-                    ✓ Оценка сохранена. Спасибо!
-                  </p>
-                ) : (
-                  <div className="space-y-3 border-t border-slate-100 pt-3">
-                    <p className="text-xs text-slate-500 font-medium">Ваша оценка заказчика:</p>
-                    <div className="flex gap-1 items-center">
-                      {[1, 2, 3, 4, 5].map(s => (
-                        <button
-                          key={s}
-                          onClick={() => form.kind === "idle" && setRatingForm(item.match_id, { ...form, score: s })}
-                          disabled={form.kind !== "idle"}
-                          className={`text-2xl transition-colors ${form.kind === "idle" && form.score >= s ? "text-amber-400" : "text-slate-200"}`}
-                        >★</button>
-                      ))}
-                      <span className="ml-2 text-sm text-slate-500">
-                        {form.kind === "idle" ? `${form.score} / 5` : ""}
-                      </span>
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="Комментарий (необязательно)"
-                      className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      disabled={form.kind !== "idle"}
-                      value={form.kind === "idle" ? form.comment : ""}
-                      onChange={e => form.kind === "idle" && setRatingForm(item.match_id, { ...form, comment: e.target.value })}
-                    />
-                    <button
-                      className="btn-primary"
-                      disabled={form.kind !== "idle"}
-                      onClick={() => handleRateCustomer(item)}
-                    >
-                      {form.kind === "submitting" ? "Сохранение…" : "Отправить оценку"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
         </div>
       )}
 

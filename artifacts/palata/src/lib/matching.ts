@@ -143,10 +143,30 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   const expertRegionMap = new Map<string, Set<string>>();
   if (requiresTravel && experts.length > 0) {
     const expertIdList = (experts as unknown as ExpertForMatching[]).map(e => e.user_id);
-    const { data: regData } = await supabase
+    const { data: regData, error: regErr } = await supabase
       .from("palata_expert_regions")
       .select("expert_id, region_id")
       .in("expert_id", expertIdList);
+
+    // ── DIAG ─────────────────────────────────────────────────────────────────
+    void supabase.from("palata_status_events").insert({
+      entity_type: "request", entity_id: requestId,
+      old_status: "matching", new_status: "matching",
+      actor_id: null,
+      note: [
+        `[DIAG2] requestId=${requestId}`,
+        `reqRegion=[${regionIds.map(r => r.slice(0,8)).join(",")}]`,
+        `direction=${expertiseDirectionId?.slice(0,8) ?? "null"}`,
+        `travel=${requiresTravel}`,
+        `certOk=${qualifiedIdList.length}`,
+        `profiles=${(experts as unknown[]).length}`,
+        `expertIds=[${expertIdList.map(x => x.slice(0,8)).join(",")}]`,
+        `regErr=${regErr?.message ?? "none"}`,
+        `regRows=${(regData ?? []).length}`,
+        `regData=${JSON.stringify((regData ?? []).map(r => ({ e: (r.expert_id as string).slice(0,8), reg: (r.region_id as string).slice(0,8) })))}`,
+      ].join(" | "),
+    });
+    // ── /DIAG ────────────────────────────────────────────────────────────────
 
     for (const row of regData ?? []) {
       if (!expertRegionMap.has(row.expert_id)) {
@@ -170,6 +190,14 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
       for (const rid of requestRegionSet) {
         if (expertRegions.has(rid)) { regionMatch = true; break; }
       }
+      // ── DIAG per-expert ───────────────────────────────────────────────────
+      void supabase.from("palata_status_events").insert({
+        entity_type: "request", entity_id: requestId,
+        old_status: "matching", new_status: "matching",
+        actor_id: null,
+        note: `[DIAG2-expert] id=${e.user_id.slice(0,8)} trip=${e.business_trip_ready} expertRegs=[${[...expertRegions].map(r => r.slice(0,8)).join(",")}] reqRegs=[${regionIds.map(r => r.slice(0,8)).join(",")}] match=${regionMatch}`,
+      });
+      // ── /DIAG ─────────────────────────────────────────────────────────────
       if (!regionMatch) continue;
     }
 

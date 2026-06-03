@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -132,7 +132,13 @@ const COLUMNS = [
 
 export default function ExpertDashboard() {
   const guard = useRequireRole("expert");
-  const [tab, setTab] = useState<"requests" | "actions" | "rate" | "profile">("requests");
+  const search = useSearch();
+  const initialTab = (() => {
+    const p = new URLSearchParams(search).get("tab");
+    if (p === "actions" || p === "rate" || p === "profile") return p;
+    return "requests";
+  })();
+  const [tab, setTab] = useState<"requests" | "actions" | "rate" | "profile">(initialTab);
   const [matchState, setMatchState] = useState<MatchState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
   const [pendingRatingsState, setPendingRatingsState] = useState<PendingRatingsState>({ kind: "loading" });

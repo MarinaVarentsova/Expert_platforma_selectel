@@ -2031,19 +2031,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function RegistryField({ label, verified, number }: { label: string; verified: boolean; number: string | null }) {
+function RegistryField({ label, verified }: { label: string; verified: boolean; number?: string | null }) {
   return (
     <div>
       <p className="text-xs text-slate-400 mb-1">{label}</p>
-      <div className="mb-0.5">
-        {verified
-          ? <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">✓ Подтверждено</span>
-          : <span className="inline-flex items-center text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5">Не подтверждено</span>}
-      </div>
-      <p className="text-xs text-slate-500">
-        <span className="text-slate-400">№ </span>
-        {number ?? <span className="italic text-slate-300">Не указано</span>}
-      </p>
+      {verified
+        ? <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">✓ Подтверждено</span>
+        : <span className="inline-flex items-center text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5">Не подтверждено</span>}
     </div>
   );
 }

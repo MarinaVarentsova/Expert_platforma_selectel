@@ -125,7 +125,7 @@ const COLUMNS = [
   { id: "accepted",  label: "В работе",          accent: "", dotColor: "bg-[#002B5C]",   bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]",  statuses: ["accepted", "accepted_work"] },
   { id: "completed", label: "Завершено",         accent: "", dotColor: "bg-emerald-400", bgColor: "bg-emerald-50/60 border-emerald-200", statuses: ["completed"] },
   { id: "declined",  label: "Отказ / не взял",    accent: "", dotColor: "bg-slate-300",   bgColor: "bg-slate-50 border-slate-200",      statuses: ["declined", "withdrawn", "customer_declined_start_date"] },
-  { id: "missed",    label: "Не успел",           accent: "", dotColor: "bg-orange-300",  bgColor: "bg-orange-50/50 border-orange-200",  statuses: ["closed_by_other_expert"] },
+  { id: "missed",    label: "Закрыт другим",      accent: "", dotColor: "bg-orange-300",  bgColor: "bg-orange-50/50 border-orange-200",  statuses: ["closed_by_other_expert"] },
 ];
 
 // ─── Main component ──────────────────────────────────────────────────────────

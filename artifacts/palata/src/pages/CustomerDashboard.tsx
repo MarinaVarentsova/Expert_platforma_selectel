@@ -1254,6 +1254,7 @@ function ExpertCanStartCard({ item, userId, onDone }: {
   const [expertEmail, setExpertEmail] = useState<string | null>((payload.expert_email as string | null) ?? null);
   const [loading, setLoading]       = useState(true);
   const [busy, setBusy]             = useState<"approve" | "decline" | null>(null);
+  const [done, setDone]             = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -1315,6 +1316,7 @@ function ExpertCanStartCard({ item, userId, onDone }: {
     }
 
     setBusy(null);
+    setDone(true);
     onDone();
   }
 
@@ -1366,8 +1368,11 @@ function ExpertCanStartCard({ item, userId, onDone }: {
     }
 
     setBusy(null);
+    setDone(true);
     onDone();
   }
+
+  if (done) return null;
 
   return (
     <div className="bg-white border border-amber-200 rounded-xl shadow-sm overflow-hidden">

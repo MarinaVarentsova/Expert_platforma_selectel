@@ -360,7 +360,7 @@ export default function Home() {
           </p>
 
           {/* Benefits cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0] mb-16">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0] mb-12">
             {EXPERT_BENEFITS.map((b, i) => (
               <div
                 key={b.num}
@@ -373,13 +373,12 @@ export default function Home() {
             ))}
           </div>
 
-          {/* How to start */}
-          <h2 className="text-3xl sm:text-4xl font-black text-[#111111] leading-[1.1] tracking-tight mb-10">
-            Как устроен подбор
+          {/* How to start — tezises */}
+          <h2 className="text-3xl sm:text-4xl font-black text-[#111111] leading-[1.1] tracking-tight mb-8">
+            Как начать работу
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 border border-[#D0D0D0]">
-            {/* Step 1 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 border border-[#D0D0D0] mb-16">
             <div className="p-6 bg-white border-r border-[#D0D0D0]">
               <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">1</p>
               <p className="text-sm font-bold text-[#111111] leading-snug">
@@ -394,22 +393,37 @@ export default function Home() {
                 Перейти на сайт Палаты →
               </a>
             </div>
-
-            {/* Step 2 */}
             <div className="p-6 bg-white border-r border-[#D0D0D0]">
               <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">2</p>
               <p className="text-sm font-bold text-[#111111] leading-snug">
                 Зарегистрируйтесь на платформе и заполните профиль эксперта.
               </p>
             </div>
-
-            {/* Step 3 */}
             <div className="p-6 bg-white">
               <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">3</p>
               <p className="text-sm font-bold text-[#111111] leading-snug">
                 Начните получать интересные заказы для реализации профессиональных навыков.
               </p>
             </div>
+          </div>
+
+          {/* How matching works */}
+          <h2 className="text-3xl sm:text-4xl font-black text-[#111111] leading-[1.1] tracking-tight mb-8">
+            Как устроен подбор
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0]">
+            {[
+              { n: "1", text: "Заказчик описывает ситуацию своими словами." },
+              { n: "2", text: "Система определяет направление исследования и профиль специалиста." },
+              { n: "3", text: "Заказчик изучает специалистов и данные в профиле." },
+              { n: "4", text: "Заказчик выбирает специалиста и связывается с ним напрямую." },
+            ].map(({ n, text }, i, arr) => (
+              <div key={n} className={`p-6 bg-white ${i < arr.length - 1 ? "border-r border-r-[#D0D0D0]" : ""}`}>
+                <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">{n}</p>
+                <p className="text-sm font-bold text-[#111111] leading-snug">{text}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

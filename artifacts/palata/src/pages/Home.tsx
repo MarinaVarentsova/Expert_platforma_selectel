@@ -355,8 +355,49 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ══════════════════════════════════════════════════════════════
+          PALATA-ORG SECTION
+      ══════════════════════════════════════════════════════════════ */}
+      <section id="palata-org" className="scroll-mt-[72px] bg-[#002B5C]">
+        <div className="px-4 sm:px-8 lg:px-16 py-16 sm:py-20 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-start">
+
+            {/* Left */}
+            <div>
+              <a
+                href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 mb-6 cursor-pointer group"
+              >
+                <div className="w-1 h-5 bg-[#C0392B]" />
+                <span className="text-xs font-semibold text-white/70 uppercase tracking-widest group-hover:text-white transition-colors">
+                  Профессиональное сообщество
+                </span>
+              </a>
+              <h2 className="text-4xl sm:text-5xl font-black text-white leading-[1.05] tracking-tight">
+                Палата<br />судебных<br />экспертов<br />с 2014 года
+              </h2>
+            </div>
+
+            {/* Right */}
+            <div className="space-y-5 lg:pt-14">
+              <p className="text-sm text-white/80 leading-relaxed">
+                Палата судебных экспертов занимается сертификацией специалистов и развитием профессионального сообщества экспертов.
+              </p>
+              <p className="text-sm text-white/80 leading-relaxed">
+                Платформа позволяет заказчикам находить специалистов с подтверждённой квалификацией и актуальными документами.
+              </p>
+              <p className="text-sm text-white/80 leading-relaxed">
+                Акцент сделан на прозрачности информации о специалистах: документы, квалификация, сертификаты и профессиональные статусы отображаются в профиле.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Footer ──────────────────────────────────────────────────── */}
-      <div className="border-t border-[#D0D0D0] py-4 px-4 sm:px-6 bg-[#002B5C]">
+      <div className="border-t border-white/10 py-4 px-4 sm:px-6 bg-[#002B5C]">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-white/40">Статус системы</p>
           <div className="flex items-center gap-2">

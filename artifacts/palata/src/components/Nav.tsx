@@ -49,9 +49,10 @@ export default function Nav() {
   useEffect(() => { setMobileOpen(false); }, [location]);
 
   const publicLinks = [
-    { id: "platform",  label: "Платформа" },
-    { id: "customers", label: "Заказчикам" },
-    { id: "experts",   label: "Экспертам" },
+    { id: "platform",   label: "Платформа" },
+    { id: "customers",  label: "Заказчикам" },
+    { id: "experts",    label: "Экспертам" },
+    { id: "palata-org", label: "Палата судебных экспертов" },
   ];
 
   function handlePublicLink(id: string) {
@@ -110,14 +111,6 @@ export default function Nav() {
                     {label}
                   </button>
                 ))}
-                <a
-                  href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-full text-sm text-[#444444] hover:text-[#002B5C] hover:bg-[#002B5C]/8 transition-all cursor-pointer select-none"
-                >
-                  О Палате судебных экспертов
-                </a>
               </>
             ) : null}
           </div>
@@ -216,14 +209,6 @@ export default function Nav() {
                       {label}
                     </button>
                   ))}
-                  <a
-                    href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block px-4 py-3 rounded-xl text-sm font-medium text-[#111111] hover:bg-[#F4F4F4] transition-colors"
-                  >
-                    О Палате судебных экспертов
-                  </a>
                   <div className="flex gap-2 px-4 pt-2">
                     <Link href="/login">
                       <span className="inline-block px-5 py-2 rounded-full text-sm font-medium text-[#002B5C] border border-[#002B5C]/30 hover:border-[#002B5C] cursor-pointer">

@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "pbX6jWakJyc8KRHibmhSY"
+uri = "file://artifacts/palata-promo/public/audio/bg_music.mp3"
+type = "audio"
+title = "background music"

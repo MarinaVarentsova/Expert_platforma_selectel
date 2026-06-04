@@ -1,0 +1,31 @@
+kind = "video"
+previewPath = "/palata-promo/"
+title = "Как работает платформа — промо-ролик"
+version = "1.0.0"
+id = "artifacts/palata-promo"
+router = "path"
+
+[[integratedSkills]]
+name = "video-js"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/palata-promo/" ]
+localPort = 25769
+
+[services.development]
+run = "pnpm --filter @workspace/palata-promo run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/palata-promo", "run", "build" ]
+publicDir = "artifacts/palata-promo/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25769"
+BASE_PATH = "/palata-promo/"

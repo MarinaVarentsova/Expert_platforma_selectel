@@ -17,6 +17,13 @@ const ROLE_LINKS: Record<PalataRole, NavLink[]> = {
   ],
 };
 
+const PUBLIC_LINKS = [
+  { id: "platform",   label: "Платформа" },
+  { id: "customers",  label: "Заказчикам" },
+  { id: "experts",    label: "Экспертам" },
+  { id: "palata-org", label: "Палата судебных экспертов" },
+];
+
 function scrollTo(id: string) {
   const el = document.getElementById(id);
   if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -32,7 +39,7 @@ export default function Nav() {
   const isLoading       = state.kind === "loading";
   const isAuthenticated = state.kind === "authenticated";
   const user            = isAuthenticated ? state.user : null;
-  const links: NavLink[] = isAuthenticated ? (ROLE_LINKS[user!.role] ?? []) : [];
+  const roleLinks: NavLink[] = isAuthenticated ? (ROLE_LINKS[user!.role] ?? []) : [];
 
   function isActive(to: string) {
     return location === to || location.startsWith(to + "/");
@@ -48,13 +55,6 @@ export default function Nav() {
 
   useEffect(() => { setMobileOpen(false); }, [location]);
 
-  const publicLinks = [
-    { id: "platform",   label: "Платформа" },
-    { id: "customers",  label: "Заказчикам" },
-    { id: "experts",    label: "Экспертам" },
-    { id: "palata-org", label: "Палата судебных экспертов" },
-  ];
-
   function handlePublicLink(id: string) {
     setMobileOpen(false);
     if (location === "/") {
@@ -69,12 +69,12 @@ export default function Nav() {
       <nav className="sticky top-0 z-30 border-b border-[#D0D0D0] bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center h-[72px] gap-3">
 
-          {/* Brand — bigger logo */}
+          {/* Brand */}
           <a
             href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 mr-4 sm:mr-8 cursor-pointer select-none shrink-0"
+            className="flex items-center gap-3 mr-4 sm:mr-6 cursor-pointer select-none shrink-0"
           >
             <img src="/logo.jpg" alt="Палата судебных экспертов" className="h-12 w-auto" />
             <span className="hidden sm:block text-sm font-bold text-[#002B5C] leading-tight tracking-tight">
@@ -82,38 +82,36 @@ export default function Nav() {
             </span>
           </a>
 
-          {/* Desktop nav links */}
-          <div className="hidden md:flex items-center gap-1 flex-1">
-            {isAuthenticated ? (
-              links.map(({ to, label }) => {
+          {/* Desktop nav links — always public, plus role links when authenticated */}
+          {!isLoading && (
+            <div className="hidden md:flex items-center gap-1 flex-1 flex-wrap">
+              {PUBLIC_LINKS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => handlePublicLink(id)}
+                  className="px-3 py-1.5 rounded-full text-sm text-[#444444] hover:text-[#002B5C] hover:bg-[#002B5C]/8 transition-all cursor-pointer select-none whitespace-nowrap"
+                >
+                  {label}
+                </button>
+              ))}
+
+              {isAuthenticated && roleLinks.map(({ to, label }) => {
                 const active = isActive(to);
                 return (
                   <Link key={to} href={to}>
                     <span className={[
-                      "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
+                      "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none whitespace-nowrap font-semibold",
                       active
-                        ? "text-[#002B5C] font-semibold bg-[#002B5C]/10"
-                        : "text-[#666666] hover:text-[#002B5C] hover:bg-[#002B5C]/8",
+                        ? "text-white bg-[#0F4C9A]"
+                        : "text-[#0F4C9A] border border-[#0F4C9A]/40 hover:bg-[#0F4C9A]/8",
                     ].join(" ")}>
                       {label}
                     </span>
                   </Link>
                 );
-              })
-            ) : !isLoading ? (
-              <>
-                {publicLinks.map(({ id, label }) => (
-                  <button
-                    key={id}
-                    onClick={() => handlePublicLink(id)}
-                    className="px-3 py-1.5 rounded-full text-sm text-[#444444] hover:text-[#002B5C] hover:bg-[#002B5C]/8 transition-all cursor-pointer select-none"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </>
-            ) : null}
-          </div>
+              })}
+            </div>
+          )}
 
           {/* Spacer mobile */}
           <div className="flex-1 md:hidden" />
@@ -185,44 +183,46 @@ export default function Nav() {
         <div className="md:hidden fixed inset-0 z-20 bg-white top-[72px] overflow-y-auto">
           <div className="border-b border-[#D0D0D0]">
             <div className="px-4 py-3 space-y-1">
-              {isAuthenticated ? (
-                links.map(({ to, label }) => (
-                  <Link key={to} href={to}>
-                    <span className={[
-                      "block px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
-                      isActive(to)
-                        ? "bg-[#002B5C]/10 text-[#002B5C] font-semibold"
-                        : "text-[#111111] hover:bg-[#F4F4F4]",
-                    ].join(" ")}>
-                      {label}
+              {/* Always show public links */}
+              {PUBLIC_LINKS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => handlePublicLink(id)}
+                  className="block w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-[#111111] hover:bg-[#F4F4F4] transition-colors cursor-pointer"
+                >
+                  {label}
+                </button>
+              ))}
+
+              {/* Role links when authenticated */}
+              {isAuthenticated && roleLinks.map(({ to, label }) => (
+                <Link key={to} href={to}>
+                  <span className={[
+                    "block px-4 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer",
+                    isActive(to)
+                      ? "bg-[#0F4C9A] text-white"
+                      : "text-[#0F4C9A] border border-[#0F4C9A]/30 hover:bg-[#0F4C9A]/8",
+                  ].join(" ")}>
+                    {label}
+                  </span>
+                </Link>
+              ))}
+
+              {/* Auth buttons when not authenticated */}
+              {!isLoading && !isAuthenticated && (
+                <div className="flex gap-2 px-4 pt-2">
+                  <Link href="/login">
+                    <span className="inline-block px-5 py-2 rounded-full text-sm font-medium text-[#002B5C] border border-[#002B5C]/30 hover:border-[#002B5C] cursor-pointer">
+                      Войти
                     </span>
                   </Link>
-                ))
-              ) : !isLoading ? (
-                <>
-                  {publicLinks.map(({ id, label }) => (
-                    <button
-                      key={id}
-                      onClick={() => handlePublicLink(id)}
-                      className="block w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-[#111111] hover:bg-[#F4F4F4] transition-colors cursor-pointer"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  <div className="flex gap-2 px-4 pt-2">
-                    <Link href="/login">
-                      <span className="inline-block px-5 py-2 rounded-full text-sm font-medium text-[#002B5C] border border-[#002B5C]/30 hover:border-[#002B5C] cursor-pointer">
-                        Войти
-                      </span>
-                    </Link>
-                    <Link href="/register">
-                      <span className="inline-block px-5 py-2 rounded-full text-sm font-semibold text-white bg-[#0F4C9A] cursor-pointer">
-                        Регистрация
-                      </span>
-                    </Link>
-                  </div>
-                </>
-              ) : null}
+                  <Link href="/register">
+                    <span className="inline-block px-5 py-2 rounded-full text-sm font-semibold text-white bg-[#0F4C9A] cursor-pointer">
+                      Регистрация
+                    </span>
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
 

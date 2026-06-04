@@ -128,41 +128,14 @@ export default function Home() {
             </div>
 
             <div className="mb-8 lg:mb-0">
-              <div className="bg-[#111111] rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "4/3" }}>
-                <div className="flex items-center gap-2 px-5 py-3.5 border-b border-white/8">
-                  <span className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#666666]/70" />
-                  <span className="ml-3 text-[10px] font-mono text-white/25 tracking-widest uppercase">// PALATA MATCHING ENGINE</span>
-                </div>
-                <div className="p-4 sm:p-6 font-mono">
-                  <div className="text-[11px] text-white/40 mb-4 tracking-wider">ПОДБОР ЭКСПЕРТА · ЗАПРОС #2847</div>
-                  {[
-                    { name: "Иванов А.С.",  type: "Строительно-техническая", region: "Москва", score: 98, status: "✓ ПОДОБРАН" },
-                    { name: "Петрова Е.В.", type: "Строительно-техническая", region: "Москва", score: 91, status: "→ в очереди" },
-                    { name: "Сидоров П.Н.", type: "Строительно-техническая", region: "МО",     score: 87, status: "→ в очереди" },
-                  ].map((e, i) => (
-                    <div key={i} className={`mb-3 rounded-lg p-3 ${i === 0 ? "bg-[#0F4C9A]/20 border border-[#0F4C9A]/40" : "bg-white/4"}`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className={`text-xs font-semibold ${i === 0 ? "text-[#6BA3E8]" : "text-white/60"}`}>{e.name}</span>
-                        <span className={`text-[10px] font-bold ${i === 0 ? "text-[#6BA3E8]" : "text-white/30"}`}>{e.status}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-white/35">{e.type} · {e.region}</span>
-                        <div className="flex items-center gap-1.5">
-                          <div className="h-1 w-14 rounded-full bg-white/10 overflow-hidden">
-                            <div className={`h-full rounded-full ${i === 0 ? "bg-[#0F4C9A]" : "bg-white/25"}`} style={{ width: `${e.score}%` }} />
-                          </div>
-                          <span className={`text-[10px] font-mono ${i === 0 ? "text-[#6BA3E8]" : "text-white/40"}`}>{e.score}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="mt-4 pt-4 border-t border-white/8 flex items-center gap-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-[10px] text-white/30 font-mono">Система работает · 3 эксперта уведомлены</span>
-                  </div>
-                </div>
+              <div className="rounded-2xl overflow-hidden shadow-xl border border-[#D0D0D0]" style={{ aspectRatio: "16/9" }}>
+                <iframe
+                  src="/palata-promo/"
+                  className="w-full h-full"
+                  style={{ border: "none" }}
+                  allow="autoplay"
+                  title="Как работает платформа"
+                />
               </div>
             </div>
           </div>
@@ -180,49 +153,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* How it works */}
-        <div className="bg-white border-t border-[#D0D0D0] py-16 sm:py-20 px-4 sm:px-6">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-10 sm:mb-14">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0F4C9A] mb-2">Как работает сервис</p>
-              <h2 className="text-xl sm:text-2xl font-bold text-[#111111]">Три шага до результата</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {STEPS.map(({ Icon, step, title, desc }, i) => (
-                <div key={step} className="flex flex-col">
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="w-11 h-11 rounded-xl bg-[#F4F4F4] border border-[#D0D0D0] flex items-center justify-center flex-shrink-0">
-                      <Icon className="w-5 h-5 text-[#002B5C]" />
-                    </div>
-                    {i < STEPS.length - 1 && <div className="hidden md:block flex-1 h-px bg-[#D0D0D0]" />}
-                  </div>
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-[#0F4C9A] mb-1">{step}</div>
-                  <p className="text-base font-semibold text-[#111111] mb-2">{title}</p>
-                  <p className="text-sm text-[#666666] leading-relaxed">{desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Promo video */}
-        <div className="border-t border-[#D0D0D0] bg-[#F4F4F4]">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-            <div className="text-center mb-8">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0F4C9A] mb-2">Платформа в действии</p>
-              <h2 className="text-xl sm:text-2xl font-bold text-[#111111]">Как работает подбор эксперта</h2>
-            </div>
-            <div className="rounded-2xl overflow-hidden shadow-xl border border-[#D0D0D0]" style={{ aspectRatio: "16/9" }}>
-              <iframe
-                src="/palata-promo/"
-                className="w-full h-full"
-                style={{ border: "none" }}
-                allow="autoplay"
-                title="Как работает платформа"
-              />
-            </div>
-          </div>
-        </div>
       </section>
 
       {/* ══════════════════════════════════════════════════════════════

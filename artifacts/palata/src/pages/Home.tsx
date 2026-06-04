@@ -204,6 +204,25 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* Promo video */}
+        <div className="border-t border-[#D0D0D0] bg-[#F4F4F4]">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+            <div className="text-center mb-8">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0F4C9A] mb-2">Платформа в действии</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-[#111111]">Как работает подбор эксперта</h2>
+            </div>
+            <div className="rounded-2xl overflow-hidden shadow-xl border border-[#D0D0D0]" style={{ aspectRatio: "16/9" }}>
+              <iframe
+                src="/palata-promo/"
+                className="w-full h-full"
+                style={{ border: "none" }}
+                allow="autoplay"
+                title="Как работает платформа"
+              />
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* ══════════════════════════════════════════════════════════════

@@ -9,12 +9,12 @@ import { Scene5 } from './video_scenes/Scene5';
 import { Scene6 } from './video_scenes/Scene6';
 
 export const SCENE_DURATIONS: Record<string, number> = {
-  intro: 5000,
-  step1: 8000,
-  step2_3: 10000,
-  step4_5: 10000,
-  step6_7: 10000,
-  outro: 7000,
+  intro: 3400,
+  step1: 5400,
+  step2_3: 6700,
+  step4_5: 6700,
+  step6_7: 6700,
+  outro: 4700,
 };
 
 const SCENE_COMPONENTS: Record<string, React.ComponentType> = {

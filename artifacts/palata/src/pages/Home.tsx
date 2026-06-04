@@ -340,7 +340,8 @@ export default function Home() {
             вместе с профессиональным сообществом.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0]">
+          {/* Benefits cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0] mb-16">
             {EXPERT_BENEFITS.map((b, i) => (
               <div
                 key={b.num}
@@ -351,6 +352,45 @@ export default function Home() {
                 <p className="text-xs text-[#666666] leading-relaxed">{b.desc}</p>
               </div>
             ))}
+          </div>
+
+          {/* How to start */}
+          <h2 className="text-3xl sm:text-4xl font-black text-[#111111] leading-[1.1] tracking-tight mb-10">
+            Как устроен подбор
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 border border-[#D0D0D0]">
+            {/* Step 1 */}
+            <div className="p-6 bg-white border-r border-[#D0D0D0]">
+              <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">1</p>
+              <p className="text-sm font-bold text-[#111111] leading-snug">
+                Оформите сертификат Палаты судебных экспертов по своему направлению.
+              </p>
+              <a
+                href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-3 text-xs font-semibold text-[#0F4C9A] hover:text-[#002B5C] underline underline-offset-2 transition-colors"
+              >
+                Перейти на сайт Палаты →
+              </a>
+            </div>
+
+            {/* Step 2 */}
+            <div className="p-6 bg-white border-r border-[#D0D0D0]">
+              <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">2</p>
+              <p className="text-sm font-bold text-[#111111] leading-snug">
+                Зарегистрируйтесь на платформе и заполните профиль эксперта.
+              </p>
+            </div>
+
+            {/* Step 3 */}
+            <div className="p-6 bg-white">
+              <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">3</p>
+              <p className="text-sm font-bold text-[#111111] leading-snug">
+                Начните получать интересные заказы для реализации профессиональных навыков.
+              </p>
+            </div>
           </div>
         </div>
       </section>

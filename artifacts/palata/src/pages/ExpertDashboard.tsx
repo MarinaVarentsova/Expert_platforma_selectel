@@ -431,8 +431,8 @@ export default function ExpertDashboard() {
           onClick={() => setTab(tab === "profile" ? "requests" : "profile")}
           className={`mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-all ${
             tab === "profile"
-              ? "bg-[#F4F4F4] border-[#D0D0D0] text-[#002B5C]"
-              : "bg-white border-slate-200 text-slate-600 hover:bg-[#F4F4F4] hover:border-[#D0D0D0] hover:text-[#002B5C]"
+              ? "bg-[#002B5C] border-[#002B5C] text-white"
+              : "bg-[#0F4C9A] border-[#0F4C9A] text-white hover:bg-[#002B5C] hover:border-[#002B5C]"
           }`}
         >
           <User className="w-3.5 h-3.5" />
@@ -534,7 +534,7 @@ function TabButton({ active, onClick, children }: {
       className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all rounded-full border-b-2 -mb-px
         ${active
           ? "bg-[#0F4C9A] text-white border-transparent shadow-sm"
-          : "border-transparent text-slate-500 hover:text-[#0F4C9A] hover:bg-blue-50"
+          : "border-transparent text-[#002B5C] hover:bg-[#0F4C9A]/10 hover:text-[#0F4C9A]"
         }`}
     >
       {children}

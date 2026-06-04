@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Repeat, Volume2, VolumeX } from 'lucide-react';
+import { ChevronDown, ChevronUp, Maximize2, Play, Repeat, Volume2, VolumeX } from 'lucide-react';
 import VideoTemplate, { SCENE_DURATIONS } from './VideoTemplate';
 import { useSceneControls } from './useSceneControls';
 
@@ -18,6 +18,7 @@ interface ControlBarProps {
   onToggleMuted: () => void;
   onJumpTo: (index: number) => void;
   onToggleCollapsed: () => void;
+  onFullscreen: () => void;
 }
 
 function ProgressSegments({
@@ -50,7 +51,7 @@ function ProgressSegments({
     <div className="flex-1 flex items-center gap-1.5">
       {sceneKeys.map((key, i) => {
         const isActive = i === activeIndex;
-        const fill = isActive ? progress * 100 : 0;
+        const fill = isActive ? progress * 100 : i < activeIndex ? 100 : 0;
         return (
           <button
             key={key}
@@ -83,6 +84,7 @@ function ControlBar({
   onToggleMuted,
   onJumpTo,
   onToggleCollapsed,
+  onFullscreen,
 }: ControlBarProps) {
   return (
     <div
@@ -132,6 +134,15 @@ function ControlBar({
       </div>
 
       <button
+        onClick={onFullscreen}
+        className="w-14 h-14 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded-lg shrink-0"
+        title="Полный экран"
+        aria-label="Полный экран"
+      >
+        <Maximize2 className="w-7 h-7" />
+      </button>
+
+      <button
         onClick={onToggleCollapsed}
         className="w-14 h-14 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded-lg shrink-0"
         title={collapsed ? 'Show controls' : 'Hide controls'}
@@ -160,11 +171,26 @@ export default function VideoWithControls() {
     toggleLock,
   } = useSceneControls(SCENE_DURATIONS);
 
+  const [started, setStarted] = useState(false);
   const [muted, setMuted] = useState(true);
   const sensorRef = useRef<HTMLDivElement | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [tapPinned, setTapPinned] = useState(false);
+
+  const handlePlay = useCallback(() => {
+    jumpTo(0);
+    setStarted(true);
+  }, [jumpTo]);
+
+  const handleVideoEnd = useCallback(() => {
+    setStarted(false);
+  }, []);
+
+  const handleFullscreen = useCallback(() => {
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen();
+  }, []);
 
   const handlePointerEnter = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse') setHovering(true);
@@ -199,39 +225,63 @@ export default function VideoWithControls() {
   if (!isIframed) return <VideoTemplate />;
 
   return (
-    <div className="relative w-full h-screen">
-      <VideoTemplate
-        key={mountKey}
-        durations={durations}
-        loop
-        muted={muted}
-        onSceneChange={onSceneChange}
-      />
-
-      <div
-        ref={sensorRef}
-        className="absolute bottom-0 left-0 right-0 z-50 flex flex-col justify-end"
-        style={{ height: '25%' }}
-        onPointerEnter={handlePointerEnter}
-        onPointerLeave={handlePointerLeave}
-        onPointerDown={handlePointerDown}
-      >
-        <div className="flex-1 w-full" aria-hidden="true" />
-        <ControlBar
-          visible={barVisible}
-          collapsed={collapsed}
-          locked={locked}
+    <div className="relative w-full h-screen overflow-hidden">
+      {started ? (
+        <VideoTemplate
+          key={mountKey}
+          durations={durations}
+          loop={false}
           muted={muted}
-          sceneKeys={sceneKeys}
-          activeIndex={activeIndex}
-          activeDuration={activeDuration}
-          tick={tick}
-          onToggleLock={toggleLock}
-          onToggleMuted={() => setMuted(m => !m)}
-          onJumpTo={jumpTo}
-          onToggleCollapsed={handleToggleCollapsed}
+          onSceneChange={onSceneChange}
+          onVideoEnd={handleVideoEnd}
         />
-      </div>
+      ) : (
+        /* Poster / не запущено */
+        <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-light, #f5f6fa)' }}>
+          {/* subtle background gradient */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute w-[70vw] h-[70vw] rounded-full blur-[100px] opacity-20 -top-1/4 -left-1/4"
+              style={{ background: 'radial-gradient(circle, #4A90D9, transparent 70%)' }} />
+            <div className="absolute w-[50vw] h-[50vw] rounded-full blur-[80px] opacity-10 bottom-0 right-0"
+              style={{ background: 'radial-gradient(circle, #002B5C, transparent 70%)' }} />
+          </div>
+          <button
+            onClick={handlePlay}
+            className="relative z-10 flex items-center justify-center w-24 h-24 rounded-full bg-[#0F4C9A] hover:bg-[#002B5C] shadow-2xl transition-all duration-200 hover:scale-105 active:scale-95"
+            aria-label="Смотреть видео"
+          >
+            <Play className="w-10 h-10 text-white ml-1" fill="white" />
+          </button>
+        </div>
+      )}
+
+      {started && (
+        <div
+          ref={sensorRef}
+          className="absolute bottom-0 left-0 right-0 z-50 flex flex-col justify-end"
+          style={{ height: '25%' }}
+          onPointerEnter={handlePointerEnter}
+          onPointerLeave={handlePointerLeave}
+          onPointerDown={handlePointerDown}
+        >
+          <div className="flex-1 w-full" aria-hidden="true" />
+          <ControlBar
+            visible={barVisible}
+            collapsed={collapsed}
+            locked={locked}
+            muted={muted}
+            sceneKeys={sceneKeys}
+            activeIndex={activeIndex}
+            activeDuration={activeDuration}
+            tick={tick}
+            onToggleLock={toggleLock}
+            onToggleMuted={() => setMuted(m => !m)}
+            onJumpTo={jumpTo}
+            onToggleCollapsed={handleToggleCollapsed}
+            onFullscreen={handleFullscreen}
+          />
+        </div>
+      )}
     </div>
   );
 }

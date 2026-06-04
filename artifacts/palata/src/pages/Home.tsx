@@ -101,11 +101,6 @@ function CardGrid({ cols = 4, children }: { cols?: 2 | 3 | 4; children: React.Re
 import React from "react";
 
 export default function Home() {
-  function scrollTo(id: string) {
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   return (
     <div className="min-h-screen bg-white font-sans">
 
@@ -131,24 +126,9 @@ export default function Home() {
                 нужного эксперта
               </h1>
 
-              <p className="text-base sm:text-lg text-[#666666] leading-relaxed max-w-md mb-8">
+              <p className="text-base sm:text-lg text-[#666666] leading-relaxed max-w-md">
                 Автоматизированный подбор аккредитованных судебных экспертов по специализации, региону и репутации.
               </p>
-
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => scrollTo("customers")}
-                  className="px-5 py-2.5 rounded-full bg-[#0F4C9A] text-white text-sm font-semibold hover:bg-[#002B5C] transition-colors"
-                >
-                  Найти эксперта
-                </button>
-                <button
-                  onClick={() => scrollTo("experts")}
-                  className="px-5 py-2.5 rounded-full border border-[#002B5C]/30 text-[#002B5C] text-sm font-medium hover:border-[#002B5C] hover:bg-[#002B5C]/5 transition-colors"
-                >
-                  Для экспертов
-                </button>
-              </div>
             </div>
 
             {/* Right — video */}
@@ -158,7 +138,8 @@ export default function Home() {
                   src="/palata-promo/"
                   className="w-full h-full block"
                   style={{ border: "none" }}
-                  allow="autoplay"
+                  allow="autoplay; fullscreen"
+                  allowFullScreen
                   title="Как работает платформа"
                 />
               </div>

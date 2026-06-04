@@ -678,8 +678,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   const orderStatus = ORDER_STATUS[r.status];
   const isOrderActive = !["completed", "cancelled", "failed"].includes(r.status);
 
-  // Statuses where customer may edit the order
-  const CUSTOMER_CAN_EDIT_STATUSES = new Set(["new", "pending", "matching", "failed"]);
+  // Statuses where customer may edit the order (anything before someone takes it into work)
+  const CUSTOMER_CAN_EDIT_STATUSES = new Set(["new", "pending", "matching", "expert_selection", "failed"]);
   const customerCanEdit = role === "customer" && CUSTOMER_CAN_EDIT_STATUSES.has(r.status);
 
   // ── Edit-request state ──────────────────────────────────────────────────────
@@ -1428,9 +1428,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           )}
 
           <div className="flex flex-wrap gap-2 items-start">
-            {isOrderActive && (r.status === "new" || r.status === "pending" || r.status === "matching") && custUI.kind === "idle" && (
+            {isOrderActive && !["in_work", "in_progress", "completed", "cancelled"].includes(r.status) && custUI.kind === "idle" && (
               <button className="btn-primary" onClick={handleRematch} disabled={matchingRunning}>
-                {matchingRunning ? "Идёт подбор…" : "Запустить подбор экспертов"}
+                {matchingRunning ? "Идёт подбор…" : "Запустить автоподбор"}
               </button>
             )}
 

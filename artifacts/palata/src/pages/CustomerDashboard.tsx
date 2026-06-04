@@ -20,14 +20,10 @@ import {
 // "experts_matched" and "manual_matching_required" are informational only and
 // don't require action. "expert_completed_order" lives in the "Оценить эксперта" tab.
 
-const CUSTOMER_INBOX_EXCLUDED: string[] = [
-  "experts_matched",
-  "manual_matching_required",
-  "expert_completed_order",
-];
+const CUSTOMER_INBOX_ALLOWED = new Set(["expert_can_start_from", "expert_declined"]);
 
 function filterCustomerActionItems(items: ActionItem[]): ActionItem[] {
-  return items.filter(i => !CUSTOMER_INBOX_EXCLUDED.includes(i.action_type));
+  return items.filter(i => CUSTOMER_INBOX_ALLOWED.has(i.action_type));
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -973,33 +969,56 @@ function CustomerActionCard({ item, userId, onDone }: {
   userId: string;
   onDone: () => void;
 }) {
-  if (item.action_type === "experts_matched" || item.action_type === "expert_declined") {
-    return <ExpertsMatchedCard item={item} userId={userId} onDone={onDone} />;
-  }
   if (item.action_type === "expert_can_start_from") {
     return <ExpertCanStartCard item={item} userId={userId} onDone={onDone} />;
   }
-  if (item.action_type === "choose_another_expert") {
-    return <ExpertsMatchedCard item={item} userId={userId} onDone={onDone} />;
+  if (item.action_type === "expert_declined") {
+    return <ExpertDeclinedCard item={item} onDone={onDone} />;
   }
-  if (item.action_type === "expert_completed_order") {
-    return <ExpertCompletedCard item={item} onDone={onDone} />;
+  return null;
+}
+
+// ─── expert_declined ──────────────────────────────────────────────────────────
+
+function ExpertDeclinedCard({ item, onDone }: {
+  item: ActionItem;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleAck() {
+    setBusy(true);
+    await resolveActionItem(item.id);
+    onDone();
   }
-  if (item.action_type === "expert_started_work") {
-    return <ExpertStartedWorkCard item={item} onDone={onDone} />;
-  }
-  if (item.action_type === "manual_matching_required") {
-    return <ManualMatchingCard item={item} onDone={onDone} />;
-  }
+
+  const declineReason = (item.payload?.decline_reason as string | null) ?? null;
+  const expertName    = (item.payload?.expert_name as string | null) ?? null;
+
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
       <ActionItemHeader item={item} />
       <p className="text-sm text-slate-600 mt-2">{item.description}</p>
+      {expertName && (
+        <p className="text-xs text-slate-400 mt-1">Эксперт: {expertName}</p>
+      )}
+      {declineReason && (
+        <p className="text-xs text-slate-500 mt-1 italic">Причина: {declineReason}</p>
+      )}
+      <div className="mt-4">
+        <button
+          onClick={handleAck}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[#0F4C9A] text-white rounded-xl hover:bg-[#002B5C] transition-colors disabled:opacity-50"
+        >
+          {busy ? "…" : "Ознакомлен"}
+        </button>
+      </div>
     </div>
   );
 }
 
-// ─── experts_matched / expert_declined ────────────────────────────────────────
+// ─── experts_matched / choose_another_expert ──────────────────────────────────
 
 function ExpertsMatchedCard({ item, userId, onDone }: {
   item: ActionItem;

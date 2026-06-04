@@ -365,7 +365,7 @@ function ExpertTopNav({ userId, userName, userEmail }: {
         <p className="text-xs text-slate-400 mt-0.5">{userEmail}</p>
         <Link
           href="/expert?tab=profile"
-          className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-[#F4F4F4] hover:border-[#D0D0D0] hover:text-[#002B5C] transition-all"
+          className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border bg-[#0F4C9A] border-[#0F4C9A] text-white hover:bg-[#002B5C] hover:border-[#002B5C] transition-all"
         >
           <User className="w-3.5 h-3.5" />
           Мой профиль
@@ -377,11 +377,17 @@ function ExpertTopNav({ userId, userName, userEmail }: {
         {[
           { tab: "requests", icon: <ClipboardList className="w-3.5 h-3.5" />, label: "Мои заказы", badge: 0 },
           { tab: "actions",  icon: <Zap className="w-3.5 h-3.5" />,           label: "Требуют действия", badge: actionCount },
-        ].map(({ tab, icon, label, badge }) => (
+        ].map(({ tab, icon, label, badge }) => {
+          const isActive = tab === "requests";
+          return (
           <Link
             key={tab}
             href={`/expert?tab=${tab}`}
-            className="inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-slate-500 hover:text-[#002B5C] whitespace-nowrap border-b-2 border-transparent hover:border-[#002B5C] transition-all -mb-px"
+            className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all rounded-full border-b-2 -mb-px whitespace-nowrap ${
+              isActive
+                ? "bg-[#0F4C9A] text-white border-transparent shadow-sm"
+                : "border-transparent text-[#002B5C] hover:bg-[#0F4C9A]/10 hover:text-[#0F4C9A]"
+            }`}
           >
             {icon}
             {label}
@@ -391,7 +397,8 @@ function ExpertTopNav({ userId, userName, userEmail }: {
               </span>
             )}
           </Link>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -453,8 +460,8 @@ function CustomerTopNav({ userId, userName, userEmail }: {
         </div>
         <p className="text-xs text-slate-400 mt-0.5">{userEmail}</p>
         <Link
-          href="/customer/dashboard?tab=profile"
-          className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-[#F4F4F4] hover:border-[#D0D0D0] hover:text-[#002B5C] transition-all"
+          href="/customer?tab=profile"
+          className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border bg-[#0F4C9A] border-[#0F4C9A] text-white hover:bg-[#002B5C] hover:border-[#002B5C] transition-all"
         >
           <User className="w-3.5 h-3.5" />
           Мой профиль
@@ -467,11 +474,17 @@ function CustomerTopNav({ userId, userName, userEmail }: {
           { tab: "requests", icon: <ClipboardList className="w-3.5 h-3.5" />, label: "Мои заказы",       badge: 0 },
           { tab: "actions",  icon: <Zap className="w-3.5 h-3.5" />,           label: "Требуют действия", badge: actionCount },
           { tab: "rate",     icon: <Star className="w-3.5 h-3.5" />,           label: "Оценить эксперта", badge: rateCount },
-        ].map(({ tab, icon, label, badge }) => (
+        ].map(({ tab, icon, label, badge }) => {
+          const isActive = tab === "requests";
+          return (
           <Link
             key={tab}
-            href={`/customer/dashboard?tab=${tab}`}
-            className="inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-slate-500 hover:text-[#002B5C] whitespace-nowrap border-b-2 border-transparent hover:border-[#002B5C] transition-all -mb-px"
+            href={`/customer?tab=${tab}`}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all rounded-full border-b-2 -mb-px whitespace-nowrap ${
+              isActive
+                ? "bg-[#0F4C9A] text-white border-transparent shadow-sm"
+                : "border-transparent text-[#002B5C] hover:bg-[#0F4C9A]/10 hover:text-[#0F4C9A]"
+            }`}
           >
             {icon}
             {label}
@@ -481,7 +494,8 @@ function CustomerTopNav({ userId, userName, userEmail }: {
               </span>
             )}
           </Link>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

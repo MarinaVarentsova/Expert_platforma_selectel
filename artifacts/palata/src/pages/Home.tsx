@@ -341,7 +341,7 @@ export default function Home() {
         <div className="bg-[#F4F4F4] border-t border-[#D0D0D0] px-4 sm:px-8 lg:px-16 py-16 sm:py-20">
           <div className="max-w-5xl mx-auto">
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#111111] leading-[1.1] tracking-tight mb-10">
-              Почему заказчики выбирают платформу
+              Почему заказчики выбирают платформу?
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0]">
@@ -387,31 +387,13 @@ export default function Home() {
             </p>
           </div>
 
-          <h2 className="text-4xl sm:text-5xl font-black text-[#111111] leading-[1.05] tracking-tight mb-4">
-            Работайте на платформе
+          <h2 className="text-4xl sm:text-5xl font-black text-[#111111] leading-[1.05] tracking-tight mb-12">
+            Как начать работу на платформе?
           </h2>
-          <p className="text-base text-[#666666] mb-12 max-w-2xl">
-            Получайте заявки по своей специализации, управляйте репутацией и развивайте практику
-            вместе с профессиональным сообществом.
-          </p>
-
-          {/* Benefits cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0] mb-12">
-            {EXPERT_BENEFITS.map((b, i) => (
-              <div
-                key={b.num}
-                className={`p-6 bg-white border-t-2 border-t-[#002B5C] ${i < EXPERT_BENEFITS.length - 1 ? "border-r border-r-[#D0D0D0]" : ""}`}
-              >
-                <p className="text-xs font-bold text-[#002B5C] mb-3 tracking-wide">{b.num}</p>
-                <p className="text-sm font-bold text-[#111111] leading-snug mb-3">{b.title}</p>
-                <p className="text-xs text-[#666666] leading-relaxed">{b.desc}</p>
-              </div>
-            ))}
-          </div>
 
           {/* How to start — tezises */}
           <h2 className="text-3xl sm:text-4xl font-black text-[#111111] leading-[1.1] tracking-tight mb-8">
-            Как начать работу
+            Как начать работу?
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 border border-[#D0D0D0] mb-16">
@@ -445,7 +427,7 @@ export default function Home() {
 
           {/* How matching works */}
           <h2 className="text-3xl sm:text-4xl font-black text-[#111111] leading-[1.1] tracking-tight mb-8">
-            Как устроен подбор
+            Как устроен подбор?
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0]">

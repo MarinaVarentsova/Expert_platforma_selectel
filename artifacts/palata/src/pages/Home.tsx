@@ -1,6 +1,4 @@
-import { FileText, Search, UserCheck } from "lucide-react";
-
-// ─── Platform section data ─────────────────────────────────────────────────
+// ─── Data ───────────────────────────────────────────────────────────────────
 
 const STATS = [
   { value: "150+",   label: "Экспертов" },
@@ -8,29 +6,6 @@ const STATS = [
   { value: "1 000+", label: "Дел закрыто" },
   { value: "100%",   label: "Верифицированы" },
 ];
-
-const STEPS = [
-  {
-    Icon: FileText,
-    step: "01",
-    title: "Создайте заказ",
-    desc: "Опишите задачу, укажите специализацию и регион. Система зафиксирует требования.",
-  },
-  {
-    Icon: Search,
-    step: "02",
-    title: "Автоматический подбор",
-    desc: "Алгоритм ранжирует верифицированных экспертов по рейтингу, опыту и доступности.",
-  },
-  {
-    Icon: UserCheck,
-    step: "03",
-    title: "Эксперт принимает дело",
-    desc: "Вы получаете квалифицированного специалиста с подтверждёнными реестровыми данными.",
-  },
-];
-
-// ─── For-customers section data ────────────────────────────────────────────
 
 const CRITERIA = [
   "направление исследования и специализация;",
@@ -68,70 +43,120 @@ const SITUATIONS = [
   },
 ];
 
-// ─── For-experts section data ──────────────────────────────────────────────
-
-const EXPERT_BENEFITS = [
+const WHY_PLATFORM = [
   {
-    num: "01",
-    title: "Заказы по вашей специализации",
-    desc: "Платформа автоматически присылает заявки, которые соответствуют вашим направлениям и регионам работы.",
+    title: "Проверка документов",
+    desc: "Перед размещением специалисты проходят проверку документов и квалификации.",
   },
   {
-    num: "02",
-    title: "Верифицированный профиль",
-    desc: "Профиль с реестровым номером Палаты или ЦСЭ — сигнал доверия для заказчика.",
+    title: "Сертификация",
+    desc: "На платформе представлены специалисты, имеющие сертификаты Палаты судебных экспертов.",
   },
   {
-    num: "03",
-    title: "Управление репутацией",
-    desc: "Рейтинг, отзывы и завершённые дела формируют вашу репутацию на платформе.",
+    title: "СРО ЦСЭ",
+    desc: "Для членов СРО ЦСЭ статус отображается в профиле специалиста.",
   },
   {
-    num: "04",
-    title: "Удобный личный кабинет",
-    desc: "Все заявки, контакты с заказчиками и статусы дел — в одном месте.",
+    title: "Прямой контакт",
+    desc: "После подбора заказчик взаимодействует со специалистом напрямую.",
   },
 ];
 
-// ─── Component ─────────────────────────────────────────────────────────────
+const EXPERT_STEPS = [
+  {
+    n: "1",
+    text: "Оформите сертификат Палаты судебных экспертов по своему направлению.",
+    link: { href: "https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/", label: "Перейти на сайт Палаты →" },
+  },
+  { n: "2", text: "Зарегистрируйтесь на платформе и заполните профиль эксперта." },
+  { n: "3", text: "Начните получать интересные заказы для реализации профессиональных навыков." },
+];
+
+const MATCHING_STEPS = [
+  { n: "1", text: "Заказчик описывает ситуацию своими словами." },
+  { n: "2", text: "Система определяет направление исследования и профиль специалиста." },
+  { n: "3", text: "Заказчик изучает специалистов и данные в профиле." },
+  { n: "4", text: "Заказчик выбирает специалиста и связывается с ним напрямую." },
+];
+
+// ─── Shared primitives ───────────────────────────────────────────────────────
+
+const W = "max-w-6xl mx-auto px-4 sm:px-6 lg:px-8";
+
+/** Horizontal card grid that collapses to single-column on mobile */
+function CardGrid({ cols = 4, children }: { cols?: 2 | 3 | 4; children: React.ReactNode }) {
+  const colCls =
+    cols === 2 ? "grid-cols-1 sm:grid-cols-2" :
+    cols === 3 ? "grid-cols-1 sm:grid-cols-3" :
+                 "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4";
+  return (
+    <div className={`grid ${colCls} divide-y sm:divide-y-0 sm:divide-x divide-[#D0D0D0] border border-[#D0D0D0]`}>
+      {children}
+    </div>
+  );
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+import React from "react";
 
 export default function Home() {
+  function scrollTo(id: string) {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <div className="min-h-screen bg-white font-sans">
 
-      {/* ══════════════════════════════════════════════════════════════
-          PLATFORM SECTION — keep as is
-      ══════════════════════════════════════════════════════════════ */}
+      {/* ════════════════════════════════════════════════════
+          PLATFORM — Hero + Stats
+      ════════════════════════════════════════════════════ */}
       <section id="platform" className="scroll-mt-[72px]">
 
         {/* Hero */}
-        <div className="px-4 sm:px-6 pt-12 sm:pt-16 pb-0 max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10 items-center">
+        <div className={`${W} pt-10 pb-10 sm:pt-14 sm:pb-14`}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 xl:gap-14 items-center">
 
-            <div className="pb-8 lg:pb-16">
-              <div className="inline-flex items-center gap-2 border border-[#D0D0D0] text-[#666666] text-xs font-medium px-3 py-1.5 rounded-full mb-6 sm:mb-8">
+            {/* Left text */}
+            <div className="order-2 lg:order-1">
+              <div className="inline-flex items-center gap-2 border border-[#D0D0D0] text-[#666666] text-xs font-medium px-3 py-1.5 rounded-full mb-6">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Закрытая профессиональная платформа
               </div>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-[#111111] leading-[1.08] tracking-tight mb-4 sm:mb-5">
+              <h1 className="text-4xl sm:text-5xl xl:text-6xl font-bold text-[#111111] leading-[1.08] tracking-tight mb-4">
                 Платформа,<br />
-                которая{" "}
-                <span className="text-[#0F4C9A]">находит</span>
-                <br />
+                которая <span className="text-[#0F4C9A]">находит</span><br />
                 нужного эксперта
               </h1>
 
-              <p className="text-base sm:text-lg text-[#666666] leading-relaxed max-w-md">
+              <p className="text-base sm:text-lg text-[#666666] leading-relaxed max-w-md mb-8">
                 Автоматизированный подбор аккредитованных судебных экспертов по специализации, региону и репутации.
               </p>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => scrollTo("customers")}
+                  className="px-5 py-2.5 rounded-full bg-[#0F4C9A] text-white text-sm font-semibold hover:bg-[#002B5C] transition-colors"
+                >
+                  Найти эксперта
+                </button>
+                <button
+                  onClick={() => scrollTo("experts")}
+                  className="px-5 py-2.5 rounded-full border border-[#002B5C]/30 text-[#002B5C] text-sm font-medium hover:border-[#002B5C] hover:bg-[#002B5C]/5 transition-colors"
+                >
+                  Для экспертов
+                </button>
+              </div>
             </div>
 
-            <div className="mb-8 lg:mb-0">
+            {/* Right — video */}
+            <div className="order-1 lg:order-2">
               <div className="rounded-2xl overflow-hidden shadow-xl border border-[#D0D0D0]" style={{ aspectRatio: "16/9" }}>
                 <iframe
                   src="/palata-promo/"
-                  className="w-full h-full"
+                  className="w-full h-full block"
                   style={{ border: "none" }}
                   allow="autoplay"
                   title="Как работает платформа"
@@ -141,46 +166,46 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="border-t border-[#D0D0D0] py-10 sm:py-14 px-4 sm:px-6 bg-[#F4F4F4]">
-          <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8">
-            {STATS.map(({ value, label }) => (
-              <div key={label} className="text-center">
-                <p className="text-2xl sm:text-3xl font-bold text-[#002B5C] tabular-nums">{value}</p>
-                <p className="text-xs text-[#666666] mt-1 uppercase tracking-wide">{label}</p>
-              </div>
-            ))}
+        {/* Stats bar */}
+        <div className="border-t border-[#D0D0D0] bg-[#F4F4F4]">
+          <div className={`${W} py-8 sm:py-10`}>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8">
+              {STATS.map(({ value, label }) => (
+                <div key={label} className="text-center">
+                  <p className="text-2xl sm:text-3xl font-bold text-[#002B5C] tabular-nums">{value}</p>
+                  <p className="text-xs text-[#666666] mt-1 uppercase tracking-wide">{label}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
       </section>
 
-      {/* ══════════════════════════════════════════════════════════════
-          CUSTOMERS SECTION — Баннер 1 + 2 + 3
-      ══════════════════════════════════════════════════════════════ */}
+      {/* ════════════════════════════════════════════════════
+          CUSTOMERS — Нужен эксперт / Подбор / Ситуации / Почему
+      ════════════════════════════════════════════════════ */}
       <section id="customers" className="scroll-mt-[72px]">
 
-        {/* ── Баннер 1: Нужен эксперт? ── */}
-        <div className="bg-white border-t border-[#D0D0D0] px-4 sm:px-8 lg:px-16 py-16 sm:py-20">
-          <div className="max-w-5xl mx-auto">
-            {/* Overline */}
-            <div className="flex items-center gap-0 mb-6">
-              <div className="w-1 h-5 bg-[#C0392B] mr-3" />
+        {/* Баннер 1 — Нужен эксперт? */}
+        <div className="bg-white border-t border-[#D0D0D0]">
+          <div className={`${W} py-14 sm:py-20`}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-1 h-5 bg-[#C0392B] shrink-0" />
               <p className="text-xs font-semibold text-[#002B5C] uppercase tracking-widest">
                 Профессиональная платформа подбора экспертов
               </p>
             </div>
 
-            <h2 className="text-5xl sm:text-6xl lg:text-7xl font-black text-[#111111] leading-[1.05] tracking-tight mb-5">
+            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-[#111111] leading-[1.05] tracking-tight mb-5">
               Нужен эксперт?
             </h2>
 
-            <p className="text-xl sm:text-2xl font-bold text-[#111111] mb-5 leading-snug max-w-2xl">
-              Опишите ситуацию — система подберёт<br className="hidden sm:block" />
-              подходящего специалиста
+            <p className="text-lg sm:text-xl font-bold text-[#111111] mb-4 leading-snug max-w-2xl">
+              Опишите ситуацию — система подберёт подходящего специалиста
             </p>
 
-            <p className="text-base text-[#555555] leading-relaxed max-w-2xl">
+            <p className="text-sm sm:text-base text-[#555555] leading-relaxed max-w-2xl">
               Не важно, требуется ли независимое исследование, рецензия, заключение специалиста
               или судебная экспертиза. Система помогает определить подходящее направление и
               подобрать специалистов по профилю задачи.
@@ -188,202 +213,164 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── Баннер 2: Описание задачи ── */}
+        {/* Баннер 2 — Описание задачи / Критерии */}
         <div className="border-t border-[#D0D0D0]">
-          <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2">
+          <div className={`${W}`}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-[#D0D0D0]">
 
-            {/* Left — white */}
-            <div className="px-8 sm:px-12 py-12 sm:py-16 bg-white border-r border-[#D0D0D0]">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#002B5C] mb-1">
-                ОПИСАНИЕ ЗАДАЧИ
-              </p>
-              <p className="text-base font-bold text-[#111111] mb-6">
-                Подбор по содержанию обращения
-              </p>
-
-              {/* Mock text area */}
-              <div className="border border-[#C0C0C0] rounded p-4 mb-2 bg-white min-h-[120px]">
-                <p className="text-sm text-[#888888] leading-relaxed">
-                  Опишите обстоятельства, документы, объект
-                  исследования и цель обращения. Юридическую
-                  квалификацию запроса можно не указывать.
+              {/* Left — white */}
+              <div className="py-10 sm:py-14 lg:pr-10 xl:pr-16 bg-white">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#002B5C] mb-1">
+                  ОПИСАНИЕ ЗАДАЧИ
                 </p>
+                <p className="text-base font-bold text-[#111111] mb-6">
+                  Подбор по содержанию обращения
+                </p>
+
+                <div className="border border-[#C0C0C0] rounded-lg p-4 mb-2 bg-white min-h-[100px]">
+                  <p className="text-sm text-[#888888] leading-relaxed">
+                    Опишите обстоятельства, документы, объект исследования и цель обращения.
+                    Юридическую квалификацию запроса можно не указывать.
+                  </p>
+                </div>
+                <div className="h-0.5 bg-[#C0392B] mb-8" />
+
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#002B5C] mb-4">
+                  ПРИМЕРЫ ОПИСАНИЯ
+                </p>
+                <ol className="space-y-3">
+                  {EXAMPLES.map((ex, i) => (
+                    <li key={i} className="flex gap-3">
+                      <span className="text-sm font-bold text-[#111111] shrink-0">{i + 1}.</span>
+                      <p className="text-sm text-[#444444] leading-relaxed">{ex}</p>
+                    </li>
+                  ))}
+                </ol>
               </div>
-              <div className="h-0.5 bg-[#C0392B] mb-8" />
 
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#002B5C] mb-4">
-                ПРИМЕРЫ ОПИСАНИЯ
-              </p>
-              <ol className="space-y-4">
-                {EXAMPLES.map((ex, i) => (
-                  <li key={i} className="flex gap-3">
-                    <span className="text-sm font-bold text-[#111111] shrink-0">{i + 1}.</span>
-                    <p className="text-sm text-[#444444] leading-relaxed">{ex}</p>
-                  </li>
-                ))}
-              </ol>
-            </div>
+              {/* Right — dark navy */}
+              <div className="py-10 sm:py-14 lg:pl-10 xl:pl-16 bg-[#002B5C]">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-6">
+                  ЧТО УЧИТЫВАЕТСЯ ПРИ ПОДБОРЕ
+                </p>
+                <ul className="space-y-4">
+                  {CRITERIA.map((item, i) => (
+                    <li key={i} className="flex gap-3 items-start">
+                      <span className="mt-1.5 shrink-0 w-2 h-2 bg-[#C0392B] rounded-sm" />
+                      <p className="text-sm text-white/90 leading-relaxed">{item}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-            {/* Right — dark navy */}
-            <div className="px-8 sm:px-12 py-12 sm:py-16 bg-[#002B5C]">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-6">
-                ЧТО УЧИТЫВАЕТСЯ ПРИ ПОДБОРЕ
-              </p>
-              <ul className="space-y-4">
-                {CRITERIA.map((item, i) => (
-                  <li key={i} className="flex gap-3 items-start">
-                    <span className="mt-1.5 shrink-0 w-2 h-2 bg-[#C0392B] rounded-sm" />
-                    <p className="text-sm text-white/90 leading-relaxed">{item}</p>
-                  </li>
-                ))}
-              </ul>
             </div>
           </div>
         </div>
 
-        {/* ── Баннер 3: Не знаете какая экспертиза нужна? ── */}
-        <div className="bg-white border-t border-[#D0D0D0] px-4 sm:px-8 lg:px-16 py-16 sm:py-20">
-          <div className="max-w-5xl mx-auto">
+        {/* Баннер 3 — Не знаете какая экспертиза? */}
+        <div className="bg-white border-t border-[#D0D0D0]">
+          <div className={`${W} py-14 sm:py-20`}>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#111111] leading-[1.1] tracking-tight mb-4">
               Не знаете какая экспертиза нужна?<br />
               Это нормально.
             </h2>
-            <p className="text-base text-[#666666] mb-10">
+            <p className="text-sm sm:text-base text-[#666666] mb-10">
               Выберите ситуацию. Система поможет подобрать специалиста нужного профиля.
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0]">
-              {SITUATIONS.map((s, i) => (
-                <div
-                  key={s.num}
-                  className={`p-6 bg-white border-t-2 border-t-[#0F4C9A] ${i < SITUATIONS.length - 1 ? "border-r border-r-[#D0D0D0]" : ""}`}
-                >
+            <CardGrid cols={4}>
+              {SITUATIONS.map((s) => (
+                <div key={s.num} className="p-6 bg-white border-t-2 border-t-[#0F4C9A]">
                   <p className="text-xs font-bold text-[#0F4C9A] mb-3 tracking-wide">{s.num}</p>
-                  <p className="text-sm font-bold text-[#111111] leading-snug mb-3">{s.title}</p>
+                  <p className="text-sm font-bold text-[#111111] leading-snug mb-2">{s.title}</p>
                   <p className="text-xs text-[#666666] leading-relaxed">{s.desc}</p>
                 </div>
               ))}
-            </div>
+            </CardGrid>
           </div>
         </div>
 
-        {/* ── Почему заказчики выбирают платформу ── */}
-        <div className="bg-[#F4F4F4] border-t border-[#D0D0D0] px-4 sm:px-8 lg:px-16 py-16 sm:py-20">
-          <div className="max-w-5xl mx-auto">
+        {/* Почему заказчики выбирают платформу? */}
+        <div className="bg-[#F4F4F4] border-t border-[#D0D0D0]">
+          <div className={`${W} py-14 sm:py-20`}>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#111111] leading-[1.1] tracking-tight mb-10">
               Почему заказчики выбирают платформу?
             </h2>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0]">
-              {[
-                {
-                  title: "Проверка документов",
-                  desc: "Перед размещением специалисты проходят проверку документов и квалификации.",
-                },
-                {
-                  title: "Сертификация",
-                  desc: "На платформе представлены специалисты, имеющие сертификаты Палаты судебных экспертов.",
-                },
-                {
-                  title: "СРО ЦСЭ",
-                  desc: "Для членов СРО ЦСЭ статус отображается в профиле специалиста.",
-                },
-                {
-                  title: "Прямой контакт",
-                  desc: "После подбора заказчик взаимодействует со специалистом напрямую.",
-                },
-              ].map(({ title, desc }, i, arr) => (
-                <div key={title} className={`p-6 bg-white ${i < arr.length - 1 ? "border-r border-r-[#D0D0D0]" : ""}`}>
+            <CardGrid cols={4}>
+              {WHY_PLATFORM.map(({ title, desc }) => (
+                <div key={title} className="p-6 bg-white">
                   <div className="w-6 h-0.5 bg-[#C0392B] mb-5" />
                   <p className="text-sm font-bold text-[#111111] leading-snug mb-3">{title}</p>
                   <p className="text-xs text-[#666666] leading-relaxed">{desc}</p>
                 </div>
               ))}
-            </div>
+            </CardGrid>
           </div>
         </div>
+
       </section>
 
-      {/* ══════════════════════════════════════════════════════════════
-          EXPERTS SECTION
-      ══════════════════════════════════════════════════════════════ */}
+      {/* ════════════════════════════════════════════════════
+          EXPERTS — Как начать / Как устроен подбор
+      ════════════════════════════════════════════════════ */}
       <section id="experts" className="scroll-mt-[72px] bg-[#F4F4F4] border-t border-[#D0D0D0]">
-        <div className="px-4 sm:px-8 lg:px-16 py-16 sm:py-20 max-w-5xl mx-auto">
+        <div className={`${W} py-14 sm:py-20`}>
+
           {/* Overline */}
-          <div className="flex items-center gap-0 mb-6">
-            <div className="w-1 h-5 bg-[#C0392B] mr-3" />
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-1 h-5 bg-[#C0392B] shrink-0" />
             <p className="text-xs font-semibold text-[#002B5C] uppercase tracking-widest">
               Для экспертов
             </p>
           </div>
 
-          <h2 className="text-4xl sm:text-5xl font-black text-[#111111] leading-[1.05] tracking-tight mb-12">
+          <h2 className="text-4xl sm:text-5xl font-black text-[#111111] leading-[1.05] tracking-tight mb-10">
             Как начать работу на платформе?
           </h2>
 
-          {/* How to start — tezises */}
-          <h2 className="text-3xl sm:text-4xl font-black text-[#111111] leading-[1.1] tracking-tight mb-8">
-            Как начать работу?
-          </h2>
+          <CardGrid cols={3}>
+            {EXPERT_STEPS.map(({ n, text, link }) => (
+              <div key={n} className="p-6 bg-white">
+                <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">{n}</p>
+                <p className="text-sm font-bold text-[#111111] leading-snug">{text}</p>
+                {link && (
+                  <a
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block mt-3 text-xs font-semibold text-[#0F4C9A] hover:text-[#002B5C] underline underline-offset-2 transition-colors"
+                  >
+                    {link.label}
+                  </a>
+                )}
+              </div>
+            ))}
+          </CardGrid>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 border border-[#D0D0D0] mb-16">
-            <div className="p-6 bg-white border-r border-[#D0D0D0]">
-              <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">1</p>
-              <p className="text-sm font-bold text-[#111111] leading-snug">
-                Оформите сертификат Палаты судебных экспертов по своему направлению.
-              </p>
-              <a
-                href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block mt-3 text-xs font-semibold text-[#0F4C9A] hover:text-[#002B5C] underline underline-offset-2 transition-colors"
-              >
-                Перейти на сайт Палаты →
-              </a>
-            </div>
-            <div className="p-6 bg-white border-r border-[#D0D0D0]">
-              <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">2</p>
-              <p className="text-sm font-bold text-[#111111] leading-snug">
-                Зарегистрируйтесь на платформе и заполните профиль эксперта.
-              </p>
-            </div>
-            <div className="p-6 bg-white">
-              <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">3</p>
-              <p className="text-sm font-bold text-[#111111] leading-snug">
-                Начните получать интересные заказы для реализации профессиональных навыков.
-              </p>
-            </div>
-          </div>
-
-          {/* How matching works */}
-          <h2 className="text-3xl sm:text-4xl font-black text-[#111111] leading-[1.1] tracking-tight mb-8">
+          <h2 className="text-3xl sm:text-4xl font-black text-[#111111] leading-[1.1] tracking-tight mt-14 mb-8">
             Как устроен подбор?
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0]">
-            {[
-              { n: "1", text: "Заказчик описывает ситуацию своими словами." },
-              { n: "2", text: "Система определяет направление исследования и профиль специалиста." },
-              { n: "3", text: "Заказчик изучает специалистов и данные в профиле." },
-              { n: "4", text: "Заказчик выбирает специалиста и связывается с ним напрямую." },
-            ].map(({ n, text }, i, arr) => (
-              <div key={n} className={`p-6 bg-white ${i < arr.length - 1 ? "border-r border-r-[#D0D0D0]" : ""}`}>
+          <CardGrid cols={4}>
+            {MATCHING_STEPS.map(({ n, text }) => (
+              <div key={n} className="p-6 bg-white">
                 <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">{n}</p>
                 <p className="text-sm font-bold text-[#111111] leading-snug">{text}</p>
               </div>
             ))}
-          </div>
+          </CardGrid>
+
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════════════════════
-          PALATA-ORG SECTION
-      ══════════════════════════════════════════════════════════════ */}
+      {/* ════════════════════════════════════════════════════
+          PALATA-ORG
+      ════════════════════════════════════════════════════ */}
       <section id="palata-org" className="scroll-mt-[72px] bg-[#002B5C]">
-        <div className="px-4 sm:px-8 lg:px-16 py-16 sm:py-20 max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-start">
+        <div className={`${W} py-14 sm:py-20`}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 xl:gap-16 items-start">
 
-            {/* Left */}
             <div>
               <a
                 href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
@@ -401,25 +388,25 @@ export default function Home() {
               </h2>
             </div>
 
-            {/* Right */}
             <div className="space-y-5 lg:pt-14">
-              <p className="text-sm text-white/80 leading-relaxed">
+              <p className="text-sm sm:text-base text-white/80 leading-relaxed">
                 Палата судебных экспертов занимается сертификацией специалистов и развитием профессионального сообщества экспертов.
               </p>
-              <p className="text-sm text-white/80 leading-relaxed">
+              <p className="text-sm sm:text-base text-white/80 leading-relaxed">
                 Платформа позволяет заказчикам находить специалистов с подтверждённой квалификацией и актуальными документами.
               </p>
-              <p className="text-sm text-white/80 leading-relaxed">
+              <p className="text-sm sm:text-base text-white/80 leading-relaxed">
                 Акцент сделан на прозрачности информации о специалистах: документы, квалификация, сертификаты и профессиональные статусы отображаются в профиле.
               </p>
             </div>
+
           </div>
         </div>
       </section>
 
-      {/* ── Footer ──────────────────────────────────────────────────── */}
-      <div className="border-t border-white/10 py-4 px-4 sm:px-6 bg-[#002B5C]">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      {/* Footer */}
+      <div className="border-t border-white/10 py-4 bg-[#002B5C]">
+        <div className={`${W} flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2`}>
           <p className="text-[10px] font-semibold uppercase tracking-widest text-white/40">Статус системы</p>
           <div className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />

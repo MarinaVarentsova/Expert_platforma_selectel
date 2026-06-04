@@ -336,6 +336,42 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* ── Почему заказчики выбирают платформу ── */}
+        <div className="bg-[#F4F4F4] border-t border-[#D0D0D0] px-4 sm:px-8 lg:px-16 py-16 sm:py-20">
+          <div className="max-w-5xl mx-auto">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#111111] leading-[1.1] tracking-tight mb-10">
+              Почему заказчики выбирают платформу
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 border border-[#D0D0D0]">
+              {[
+                {
+                  title: "Проверка документов",
+                  desc: "Перед размещением специалисты проходят проверку документов и квалификации.",
+                },
+                {
+                  title: "Сертификация",
+                  desc: "На платформе представлены специалисты, имеющие сертификаты Палаты судебных экспертов.",
+                },
+                {
+                  title: "СРО ЦСЭ",
+                  desc: "Для членов СРО ЦСЭ статус отображается в профиле специалиста.",
+                },
+                {
+                  title: "Прямой контакт",
+                  desc: "После подбора заказчик взаимодействует со специалистом напрямую.",
+                },
+              ].map(({ title, desc }, i, arr) => (
+                <div key={title} className={`p-6 bg-white ${i < arr.length - 1 ? "border-r border-r-[#D0D0D0]" : ""}`}>
+                  <div className="w-6 h-0.5 bg-[#C0392B] mb-5" />
+                  <p className="text-sm font-bold text-[#111111] leading-snug mb-3">{title}</p>
+                  <p className="text-xs text-[#666666] leading-relaxed">{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* ══════════════════════════════════════════════════════════════

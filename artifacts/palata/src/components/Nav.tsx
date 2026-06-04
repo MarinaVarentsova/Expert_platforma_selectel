@@ -7,12 +7,8 @@ import { useState, useRef, useEffect } from "react";
 type NavLink = { to: string; label: string };
 
 const ROLE_LINKS: Record<PalataRole, NavLink[]> = {
-  customer: [
-    { to: "/customer", label: "ЛК заказчика" },
-  ],
-  expert: [
-    { to: "/expert", label: "ЛК эксперта" },
-  ],
+  customer: [{ to: "/customer", label: "ЛК заказчика" }],
+  expert:   [{ to: "/expert",   label: "ЛК эксперта" }],
   admin: [
     { to: "/admin",          label: "Панель" },
     { to: "/admin/metrics",  label: "Метрики" },
@@ -20,6 +16,11 @@ const ROLE_LINKS: Record<PalataRole, NavLink[]> = {
     { to: "/admin/settings", label: "Настройки" },
   ],
 };
+
+function scrollTo(id: string) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 export default function Nav() {
   const [location] = useLocation();
@@ -39,96 +40,100 @@ export default function Nav() {
 
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     }
     if (menuOpen) document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
-  /* Close mobile menu on route change */
   useEffect(() => { setMobileOpen(false); }, [location]);
+
+  const publicLinks = [
+    { id: "platform",  label: "Платформа" },
+    { id: "customers", label: "Заказчикам" },
+    { id: "experts",   label: "Экспертам" },
+  ];
+
+  function handlePublicLink(id: string) {
+    setMobileOpen(false);
+    if (location === "/") {
+      scrollTo(id);
+    } else {
+      window.location.href = `/#${id}`;
+    }
+  }
 
   return (
     <>
       <nav className="sticky top-0 z-30 border-b border-[#D0D0D0] bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center h-14 gap-2">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center h-[72px] gap-3">
 
-          {/* Brand */}
-          <a href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/" target="_blank" rel="noopener noreferrer">
-            <div className="flex items-center gap-2 mr-4 sm:mr-8 cursor-pointer select-none">
-              <img src="/logo.jpg" alt="Палата судебных экспертов" className="h-8 w-auto" />
-              <span className="text-sm font-bold text-[#111111] tracking-tight">ПалатаЭкспертов</span>
-            </div>
+          {/* Brand — bigger logo */}
+          <a
+            href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 mr-4 sm:mr-8 cursor-pointer select-none shrink-0"
+          >
+            <img src="/logo.jpg" alt="Палата судебных экспертов" className="h-12 w-auto" />
+            <span className="hidden sm:block text-sm font-bold text-[#002B5C] leading-tight tracking-tight">
+              Палата<br />Судебных<br />Экспертов
+            </span>
           </a>
 
           {/* Desktop nav links */}
-          <div className="hidden sm:flex items-center gap-1 flex-1">
-            {links.map(({ to, label }) => {
-              const active = isActive(to);
-              return (
-                <Link key={to} href={to}>
-                  <span className={[
-                    "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
-                    active
-                      ? "text-[#002B5C] font-semibold bg-[#002B5C]/10"
-                      : "text-[#666666] hover:text-[#002B5C] hover:bg-[#002B5C]/8",
-                  ].join(" ")}>
-                    {label}
-                  </span>
-                </Link>
-              );
-            })}
-
-            {!isLoading && !isAuthenticated && (
+          <div className="hidden md:flex items-center gap-1 flex-1">
+            {isAuthenticated ? (
+              links.map(({ to, label }) => {
+                const active = isActive(to);
+                return (
+                  <Link key={to} href={to}>
+                    <span className={[
+                      "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
+                      active
+                        ? "text-[#002B5C] font-semibold bg-[#002B5C]/10"
+                        : "text-[#666666] hover:text-[#002B5C] hover:bg-[#002B5C]/8",
+                    ].join(" ")}>
+                      {label}
+                    </span>
+                  </Link>
+                );
+              })
+            ) : !isLoading ? (
               <>
-                <Link href="/">
-                  <span className={[
-                    "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
-                    location === "/"
-                      ? "text-[#002B5C] font-semibold bg-[#002B5C]/10"
-                      : "text-[#666666] hover:text-[#002B5C] hover:bg-[#002B5C]/8",
-                  ].join(" ")}>
-                    Главная
-                  </span>
-                </Link>
-                <Link href="/login">
-                  <span className={[
-                    "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
-                    isActive("/login")
-                      ? "text-[#002B5C] font-semibold bg-[#002B5C]/10"
-                      : "text-[#666666] hover:text-[#002B5C] hover:bg-[#002B5C]/8",
-                  ].join(" ")}>
-                    Войти
-                  </span>
-                </Link>
-                <Link href="/register">
-                  <span className={[
-                    "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none",
-                    isActive("/register")
-                      ? "text-[#002B5C] font-semibold bg-[#002B5C]/10"
-                      : "text-[#666666] hover:text-[#002B5C] hover:bg-[#002B5C]/8",
-                  ].join(" ")}>
-                    Зарегистрироваться
-                  </span>
-                </Link>
+                {publicLinks.map(({ id, label }) => (
+                  <button
+                    key={id}
+                    onClick={() => handlePublicLink(id)}
+                    className="px-3 py-1.5 rounded-full text-sm text-[#444444] hover:text-[#002B5C] hover:bg-[#002B5C]/8 transition-all cursor-pointer select-none"
+                  >
+                    {label}
+                  </button>
+                ))}
+                <a
+                  href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-full text-sm text-[#444444] hover:text-[#002B5C] hover:bg-[#002B5C]/8 transition-all cursor-pointer select-none"
+                >
+                  О Палате судебных экспертов
+                </a>
               </>
-            )}
+            ) : null}
           </div>
 
-          {/* Spacer for mobile */}
-          <div className="flex-1 sm:hidden" />
+          {/* Spacer mobile */}
+          <div className="flex-1 md:hidden" />
 
           {/* Right side */}
           <div className="flex items-center gap-2">
 
-            {/* Desktop user menu */}
+            {/* Authenticated user menu */}
             {isAuthenticated && user && (
-              <div className="relative hidden sm:block" ref={menuRef}>
+              <div className="relative hidden md:block" ref={menuRef}>
                 <button
                   onClick={() => setMenuOpen(v => !v)}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all bg-white border border-[#D0D0D0] text-[#002B5C] font-medium hover:border-[#0F4C9A] hover:shadow-sm"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white border border-[#D0D0D0] text-[#002B5C] font-medium hover:border-[#0F4C9A] hover:shadow-sm transition-all"
                 >
                   <RoleAvatar role={user.role} />
                   <span className="max-w-[128px] truncate">{user.full_name ?? user.email}</span>
@@ -154,10 +159,25 @@ export default function Nav() {
               </div>
             )}
 
+            {/* Non-authenticated desktop auth buttons */}
+            {!isLoading && !isAuthenticated && (
+              <div className="hidden md:flex items-center gap-2">
+                <Link href="/login">
+                  <span className="inline-block px-4 py-1.5 rounded-full text-sm font-medium text-[#002B5C] border border-[#002B5C]/30 hover:border-[#002B5C] hover:bg-[#002B5C]/5 transition-all cursor-pointer">
+                    Войти
+                  </span>
+                </Link>
+                <Link href="/register">
+                  <span className="inline-block px-4 py-1.5 rounded-full text-sm font-semibold text-white bg-[#0F4C9A] hover:bg-[#002B5C] transition-all cursor-pointer shadow-sm">
+                    Регистрация
+                  </span>
+                </Link>
+              </div>
+            )}
 
             {/* Mobile hamburger */}
             <button
-              className="sm:hidden p-2 rounded-lg text-[#111111] hover:bg-[#F4F4F4] transition-colors"
+              className="md:hidden p-2 rounded-lg text-[#111111] hover:bg-[#F4F4F4] transition-colors"
               onClick={() => setMobileOpen(v => !v)}
               aria-label={mobileOpen ? "Закрыть меню" : "Открыть меню"}
             >
@@ -169,55 +189,55 @@ export default function Nav() {
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="sm:hidden fixed inset-0 z-20 bg-white top-14 overflow-y-auto">
+        <div className="md:hidden fixed inset-0 z-20 bg-white top-[72px] overflow-y-auto">
           <div className="border-b border-[#D0D0D0]">
             <div className="px-4 py-3 space-y-1">
-              {links.map(({ to, label }) => (
-                <Link key={to} href={to}>
-                  <span className={[
-                    "block px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
-                    isActive(to)
-                      ? "bg-[#002B5C]/10 text-[#002B5C] font-semibold"
-                      : "text-[#111111] hover:bg-[#F4F4F4]",
-                  ].join(" ")}>
-                    {label}
-                  </span>
-                </Link>
-              ))}
-              {!isLoading && !isAuthenticated && (
+              {isAuthenticated ? (
+                links.map(({ to, label }) => (
+                  <Link key={to} href={to}>
+                    <span className={[
+                      "block px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
+                      isActive(to)
+                        ? "bg-[#002B5C]/10 text-[#002B5C] font-semibold"
+                        : "text-[#111111] hover:bg-[#F4F4F4]",
+                    ].join(" ")}>
+                      {label}
+                    </span>
+                  </Link>
+                ))
+              ) : !isLoading ? (
                 <>
-                  <Link href="/">
-                    <span className={[
-                      "block px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
-                      location === "/"
-                        ? "bg-[#002B5C]/10 text-[#002B5C] font-semibold"
-                        : "text-[#111111] hover:bg-[#F4F4F4]",
-                    ].join(" ")}>
-                      Главная
-                    </span>
-                  </Link>
-                  <Link href="/login">
-                    <span className={[
-                      "block px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
-                      isActive("/login")
-                        ? "bg-[#002B5C]/10 text-[#002B5C] font-semibold"
-                        : "text-[#111111] hover:bg-[#F4F4F4]",
-                    ].join(" ")}>
-                      Войти
-                    </span>
-                  </Link>
-                  <Link href="/register">
-                    <span className={[
-                      "block px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
-                      isActive("/register")
-                        ? "bg-[#002B5C]/10 text-[#002B5C] font-semibold"
-                        : "text-[#111111] hover:bg-[#F4F4F4]",
-                    ].join(" ")}>
-                      Зарегистрироваться
-                    </span>
-                  </Link>
+                  {publicLinks.map(({ id, label }) => (
+                    <button
+                      key={id}
+                      onClick={() => handlePublicLink(id)}
+                      className="block w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-[#111111] hover:bg-[#F4F4F4] transition-colors cursor-pointer"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <a
+                    href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block px-4 py-3 rounded-xl text-sm font-medium text-[#111111] hover:bg-[#F4F4F4] transition-colors"
+                  >
+                    О Палате судебных экспертов
+                  </a>
+                  <div className="flex gap-2 px-4 pt-2">
+                    <Link href="/login">
+                      <span className="inline-block px-5 py-2 rounded-full text-sm font-medium text-[#002B5C] border border-[#002B5C]/30 hover:border-[#002B5C] cursor-pointer">
+                        Войти
+                      </span>
+                    </Link>
+                    <Link href="/register">
+                      <span className="inline-block px-5 py-2 rounded-full text-sm font-semibold text-white bg-[#0F4C9A] cursor-pointer">
+                        Регистрация
+                      </span>
+                    </Link>
+                  </div>
                 </>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -240,7 +260,6 @@ export default function Nav() {
               </button>
             </div>
           )}
-
         </div>
       )}
     </>

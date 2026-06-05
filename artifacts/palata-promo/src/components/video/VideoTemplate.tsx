@@ -76,6 +76,16 @@ export default function VideoTemplate({
     audio.play().catch(() => {});
   }, [currentSceneKey, baseSceneKey, muted]);
 
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (paused) {
+      audio.pause();
+    } else {
+      audio.play().catch(() => {});
+    }
+  }, [paused]);
+
   return (
     <>
       <div className="w-full h-screen overflow-hidden relative" style={{ backgroundColor: 'var(--color-bg-light)' }}>

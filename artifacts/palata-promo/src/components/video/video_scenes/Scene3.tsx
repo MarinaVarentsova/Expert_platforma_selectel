@@ -62,7 +62,7 @@ export function Scene3() {
               animate={phase >= 4 ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
             >
               <span className="text-[var(--color-secondary)] bg-white px-4 py-2 rounded-lg inline-block">
-                Все эксперты сертифицированы Палатой
+                Все эксперты сертифицированы Палатой судебных экспертов
               </span>
             </motion.li>
           </motion.ul>

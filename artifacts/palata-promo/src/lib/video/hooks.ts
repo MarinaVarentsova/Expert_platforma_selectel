@@ -67,7 +67,7 @@ export function useVideoPlayer(options: UseVideoPlayerOptions): UseVideoPlayerRe
     }, currentDuration);
 
     return () => clearTimeout(timer);
-  }, [currentScene, totalScenes, durationsArray, hasEnded, loop, onVideoEnd]);
+  }, [currentScene, totalScenes, durationsArray, hasEnded, loop, onVideoEnd, paused]);
 
   return {
     currentScene,

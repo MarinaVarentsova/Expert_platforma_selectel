@@ -26,17 +26,16 @@ export function Scene5() {
       <div className="w-full flex items-center justify-center px-[10vw] gap-12">
         <div className="w-[50%] relative">
           <motion.div
-            className="rounded-xl overflow-hidden shadow-2xl border border-gray-200 bg-white"
-            initial={{ opacity: 0, y: 50, rotateX: 10 }}
-            animate={phase >= 2 ? { opacity: 1, y: 0, rotateX: 0 } : { opacity: 0, y: 50, rotateX: 10 }}
-            transition={{ duration: 0.8, type: 'spring' }}
-            style={{ transformPerspective: 1000 }}
+            className="rounded-xl overflow-hidden shadow-2xl border-2 border-white/30 bg-white"
+            initial={{ opacity: 0, y: 40 }}
+            animate={phase >= 2 ? { opacity: 1, y: 0 } : { opacity: 0, y: 40 }}
+            transition={{ duration: 0.7, type: 'spring', stiffness: 120, damping: 18 }}
           >
             <img
               src={topExpertsImg}
               alt="Лучшие эксперты"
               className="w-full h-auto object-cover"
-              style={{ filter: 'contrast(1.15) saturate(1.1) brightness(1.04) sharpen(1)' }}
+              style={{ filter: 'contrast(1.25) saturate(1.15) brightness(1.12)' }}
             />
           </motion.div>
         </div>

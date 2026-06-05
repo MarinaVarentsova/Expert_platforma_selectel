@@ -138,14 +138,43 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
     throw new Error(profileErr?.message ?? "Failed to fetch expert profiles");
   }
 
+  // 4. Для выездных заказов: строим карту регионов для экспертов,
+  //    НЕ готовых к командировкам — им нужно совпадение региона.
+  //    Готовым к командировкам (business_trip_ready = true) регион не нужен.
+  const expertRegionMap = new Map<string, Set<string>>();
+  if (requiresTravel && experts.length > 0) {
+    const nonTripReadyIds = (experts as unknown as ExpertForMatching[])
+      .filter(e => !e.business_trip_ready)
+      .map(e => e.user_id);
+    if (nonTripReadyIds.length > 0) {
+      const { data: regData } = await supabase
+        .from("palata_expert_regions")
+        .select("expert_id, region_id")
+        .in("expert_id", nonTripReadyIds);
+      for (const row of regData ?? []) {
+        if (!expertRegionMap.has(row.expert_id)) expertRegionMap.set(row.expert_id, new Set());
+        expertRegionMap.get(row.expert_id)!.add(row.region_id);
+      }
+    }
+  }
+
   // 5. Filter + score
-  //    Scenario 1 (travel): business_trip_ready = true — регион не проверяем,
-  //    эксперт готов к командировке в любой регион.
-  //    Scenario 2 / 4 (remote): no region restriction
+  //    Выездной заказ:
+  //      - business_trip_ready = true  → подходит без проверки региона
+  //      - business_trip_ready = false → подходит только если регион совпадает
+  //    Без выезда: регион не проверяем
+  const requestRegionSet = new Set(regionIds);
   const candidates: Array<{ expertId: string; score: number }> = [];
 
   for (const e of experts as unknown as ExpertForMatching[]) {
-    if (requiresTravel && !e.business_trip_ready) continue;
+    if (requiresTravel && !e.business_trip_ready) {
+      const expertRegions = expertRegionMap.get(e.user_id) ?? new Set<string>();
+      let regionMatch = false;
+      for (const rid of requestRegionSet) {
+        if (expertRegions.has(rid)) { regionMatch = true; break; }
+      }
+      if (!regionMatch) continue;
+    }
     candidates.push({ expertId: e.user_id, score: scoreExpert(e) });
   }
 

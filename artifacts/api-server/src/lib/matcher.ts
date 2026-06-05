@@ -72,9 +72,31 @@ export async function runMatchingForRequest(
 
   if (!experts || experts.length === 0) return { matched: 0 };
 
+  // Для выездных заказов: эксперты без business_trip_ready
+  // подходят только если их регион совпадает с регионом заказа.
+  const expertRegionMap = new Map<string, Set<string>>();
+  if (requiresTravel) {
+    const nonTripReadyIds = (experts as ExpertForMatching[])
+      .filter(e => !e.business_trip_ready)
+      .map(e => e.user_id);
+    if (nonTripReadyIds.length > 0) {
+      const { data: regData } = await db
+        .from("palata_expert_regions")
+        .select("expert_id, region_id")
+        .in("expert_id", nonTripReadyIds);
+      for (const row of regData ?? []) {
+        if (!expertRegionMap.has(row.expert_id)) expertRegionMap.set(row.expert_id, new Set());
+        expertRegionMap.get(row.expert_id)!.add(row.region_id);
+      }
+    }
+  }
+
   const candidates: Array<{ expertId: string; score: number }> = [];
   for (const e of experts as ExpertForMatching[]) {
-    if (requiresTravel && !e.business_trip_ready) continue;
+    if (requiresTravel && !e.business_trip_ready) {
+      const eRegs = expertRegionMap.get(e.user_id) ?? new Set<string>();
+      if (regionId && !eRegs.has(regionId)) continue;
+    }
     candidates.push({ expertId: e.user_id, score: scoreExpert(e) });
   }
 

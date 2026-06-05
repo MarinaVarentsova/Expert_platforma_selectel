@@ -749,6 +749,8 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
   const dirsMap = Object.fromEntries(allDirs.map(d => [d.id, d.name]));
   const regsMap = Object.fromEntries(allRegs.map(r => [r.id, r.name]));
 
+  const myMatchStatuses = state.kind === "ok" ? state.myMatchStatuses : {};
+
   const filtered = state.kind === "ok" ? state.orders
     .filter(o => {
       if (filterDirection && o.expertise_direction_id !== filterDirection) return false;
@@ -771,8 +773,6 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
       return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
     })
   : [];
-
-  const myMatchStatuses = state.kind === "ok" ? state.myMatchStatuses : {};
 
   return (
     <div className="space-y-4">

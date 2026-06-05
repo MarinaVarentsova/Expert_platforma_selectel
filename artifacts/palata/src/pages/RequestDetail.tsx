@@ -998,6 +998,38 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .eq("id", match.id);
       if (error) throw error;
       await logEvent("match", match.id, match.status, "declined", note || undefined);
+
+      // Notify customer: expert declined — appears in "Требует действия" with "Ознакомлен" button
+      if (r.customer_id) {
+        const expertUser = usersMap[match.expert_id];
+        const expertName = expertUser?.full_name ?? expertUser?.email ?? null;
+        const DECLINE_LABEL: Record<string, string> = {
+          busy: "Занят",
+          out_of_region: "Не работает в регионе",
+          not_my_specialization: "Не моя специализация",
+          other: "Другое",
+        };
+        await createActionItem({
+          request_id: r.id,
+          expert_id: match.expert_id,
+          customer_id: r.customer_id,
+          assigned_to_user_id: r.customer_id,
+          assigned_role: "customer",
+          action_type: "expert_declined",
+          title: "Эксперт отказался от заказа",
+          description: expertName
+            ? `Эксперт ${expertName} отказался от участия в вашем заказе «${r.title}».`
+            : `Эксперт отказался от участия в вашем заказе «${r.title}».`,
+          payload: {
+            request_id: r.id,
+            expert_id: match.expert_id,
+            expert_name: expertName,
+            decline_reason: DECLINE_LABEL[reason] ?? reason,
+            decline_note: note || null,
+          },
+        });
+      }
+
       setMS(match.id, { kind: "idle" });
       onReload();
     } catch (e: unknown) {

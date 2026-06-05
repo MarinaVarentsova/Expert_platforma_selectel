@@ -842,14 +842,14 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .eq("id", match.id);
       if (me) throw me;
 
-      // 1b. Close all other pending_customer candidates for this request
-      const otherPendingIds = matches
-        .filter(m => m.status === "pending_customer" && m.id !== match.id)
+      // 1b. Close all other proposed (not-yet-seen-by-expert) candidates
+      const otherProposedIds = matches
+        .filter(m => m.status === "proposed" && m.id !== match.id)
         .map(m => m.id);
-      if (otherPendingIds.length > 0) {
+      if (otherProposedIds.length > 0) {
         await supabase.from("palata_request_matches")
           .update({ status: "closed_by_other_expert" })
-          .in("id", otherPendingIds);
+          .in("id", otherProposedIds);
       }
 
       // 2. Create / update palata_request_contacts.

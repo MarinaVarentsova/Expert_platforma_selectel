@@ -360,7 +360,13 @@ export default function ExpertDashboard() {
   const columns = COLUMNS.map((col) => ({
     ...col,
     items: matchState.kind === "ok"
-      ? matchState.rows.filter((r) => col.statuses.includes(r.status))
+      ? matchState.rows.filter((r) => {
+          if (!col.statuses.includes(r.status)) return false;
+          // Hide auto-matched "proposed" offers until customer explicitly selects
+          // the expert (signalled by responded_at being set in handleSelectExpert).
+          if (r.status === "proposed" && !r.responded_at) return false;
+          return true;
+        })
       : [],
   }));
 

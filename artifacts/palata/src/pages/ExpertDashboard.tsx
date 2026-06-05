@@ -602,6 +602,7 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
   const [allRegs, setAllRegs] = useState<Array<{ id: string; name: string }>>([]);
   const [takeDates, setTakeDates] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
+  const [certErrors, setCertErrors] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -703,7 +704,25 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
     const date = takeDates[order.id];
     if (!date) return;
     setSubmitting(p => ({ ...p, [order.id]: true }));
+    setCertErrors(p => ({ ...p, [order.id]: false }));
     try {
+      // ── Certificate check: expert must have a valid verified cert for this direction ──
+      if (order.expertise_direction_id) {
+        const today = new Date().toISOString().slice(0, 10);
+        const { data: certs } = await supabase
+          .from("palata_expert_certificates")
+          .select("id")
+          .eq("expert_id", userId)
+          .eq("status", "verified")
+          .gte("cert_valid_to", today)
+          .contains("cert_direction_ids", [order.expertise_direction_id])
+          .limit(1);
+        if (!certs || certs.length === 0) {
+          setCertErrors(p => ({ ...p, [order.id]: true }));
+          return;
+        }
+      }
+
       const { data: existing } = await supabase
         .from("palata_request_matches").select("id").eq("request_id", order.id).eq("expert_id", userId).maybeSingle();
 
@@ -928,22 +947,44 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
                 )}
 
                 {canRespond && (
-                  <div className="border-t border-slate-100 pt-3 flex items-center gap-2 flex-wrap">
-                    <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Могу взять с</label>
-                    <input
-                      type="date"
-                      value={takeDates[order.id] ?? ""}
-                      min={new Date().toISOString().split("T")[0]}
-                      onChange={e => setTakeDates(p => ({ ...p, [order.id]: e.target.value }))}
-                      className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#CC2222]/30"
-                    />
-                    <button
-                      disabled={!takeDates[order.id] || submitting[order.id]}
-                      onClick={() => handleTake(order)}
-                      className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-[#CC2222] text-white hover:bg-[#A01818] transition-colors disabled:opacity-40"
-                    >
-                      {submitting[order.id] ? "…" : "Откликнуться"}
-                    </button>
+                  <div className="border-t border-slate-100 pt-3 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Могу взять с</label>
+                      <input
+                        type="date"
+                        value={takeDates[order.id] ?? ""}
+                        min={new Date().toISOString().split("T")[0]}
+                        onChange={e => {
+                          setTakeDates(p => ({ ...p, [order.id]: e.target.value }));
+                          setCertErrors(p => ({ ...p, [order.id]: false }));
+                        }}
+                        className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#CC2222]/30"
+                      />
+                      <button
+                        disabled={!takeDates[order.id] || submitting[order.id]}
+                        onClick={() => handleTake(order)}
+                        className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-[#CC2222] text-white hover:bg-[#A01818] transition-colors disabled:opacity-40"
+                      >
+                        {submitting[order.id] ? "…" : "Откликнуться"}
+                      </button>
+                    </div>
+                    {certErrors[order.id] && (
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800 leading-relaxed">
+                        <p className="font-semibold mb-0.5">Сертификат не найден</p>
+                        <p>
+                          Вам необходимо получить сертификат Палаты судебных экспертов
+                          по данному направлению, прежде чем откликаться на этот заказ.{" "}
+                          <a
+                            href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline font-semibold text-amber-900 hover:text-amber-700"
+                          >
+                            Получить сертификат →
+                          </a>
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 

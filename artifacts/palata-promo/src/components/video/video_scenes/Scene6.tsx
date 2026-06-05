@@ -25,12 +25,17 @@ export function Scene6() {
     >
       <div className="text-center px-12 relative z-10">
         <motion.div
-          className="w-24 h-24 bg-white rounded-2xl mx-auto mb-8 flex items-center justify-center shadow-xl"
+          className="mx-auto mb-8"
           initial={{ scale: 0, rotate: -180 }}
           animate={phase >= 1 ? { scale: 1, rotate: 0 } : { scale: 0, rotate: -180 }}
           transition={{ type: 'spring', stiffness: 200, damping: 20 }}
         >
-          <div className="w-12 h-12 bg-[var(--color-secondary)] rounded-full" />
+          <img
+            src={`${import.meta.env.BASE_URL}logo.jpg`}
+            alt="Палата судебных экспертов"
+            className="h-[14vw] w-auto rounded-[2vw] shadow-2xl object-contain bg-white p-[1vw]"
+            style={{ filter: 'contrast(1.05) saturate(1.1)' }}
+          />
         </motion.div>
 
         <motion.h1 

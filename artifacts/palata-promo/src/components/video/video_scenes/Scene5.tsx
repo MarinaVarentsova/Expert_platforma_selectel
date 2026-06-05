@@ -32,7 +32,12 @@ export function Scene5() {
             transition={{ duration: 0.8, type: 'spring' }}
             style={{ transformPerspective: 1000 }}
           >
-            <img src={topExpertsImg} alt="Лучшие эксперты" className="w-full h-auto object-cover" />
+            <img
+              src={topExpertsImg}
+              alt="Лучшие эксперты"
+              className="w-full h-auto object-cover"
+              style={{ filter: 'contrast(1.15) saturate(1.1) brightness(1.04) sharpen(1)' }}
+            />
           </motion.div>
         </div>
 

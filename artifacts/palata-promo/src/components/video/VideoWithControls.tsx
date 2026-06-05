@@ -246,18 +246,21 @@ export default function VideoWithControls() {
               style={{ background: 'radial-gradient(circle, #ffffff, transparent 70%)' }} />
           </div>
 
-          {/* Logo + title */}
-          <div className="relative z-10 flex flex-col items-center gap-4 select-none">
+          {/* Logo */}
+          <a
+            href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="relative z-10 block hover:scale-105 active:scale-95 transition-transform duration-200"
+            aria-label="Палата судебных экспертов — официальный сайт"
+          >
             <img
               src={`${import.meta.env.BASE_URL}logo.jpg`}
               alt="Палата судебных экспертов"
-              className="w-20 h-20 rounded-xl object-cover shadow-lg"
+              className="h-28 w-auto max-w-[260px] rounded-2xl object-contain bg-white p-2 shadow-2xl"
+              style={{ filter: 'contrast(1.05) saturate(1.1)' }}
             />
-            <div className="text-center">
-              <div className="text-white font-bold text-xl leading-tight">Палата судебных экспертов</div>
-              <div className="text-white/60 text-sm mt-1">Как работает платформа</div>
-            </div>
-          </div>
+          </a>
 
           {/* Play button */}
           <button

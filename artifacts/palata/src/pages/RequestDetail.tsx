@@ -832,6 +832,27 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setSelectedMatchId(match.id);
     setCustUI({ kind: "submitting" });
     try {
+      // ── Certificate check: expert must have a valid cert for this direction ──
+      if (r.expertise_direction_id) {
+        const today = new Date().toISOString().slice(0, 10);
+        const { data: certs } = await supabase
+          .from("palata_expert_certificates")
+          .select("id")
+          .eq("expert_id", match.expert_id)
+          .eq("status", "verified")
+          .gte("cert_valid_to", today)
+          .contains("cert_direction_ids", [r.expertise_direction_id])
+          .limit(1);
+        if (!certs || certs.length === 0) {
+          setSelectedMatchId(null);
+          setCustUI({
+            kind: "error",
+            message: "Эксперт неактуален — срок действия сертификата по данному направлению истёк или сертификат отсутствует. Выберите другого эксперта.",
+          });
+          return;
+        }
+      }
+
       const now = new Date().toISOString();
       const expertUser = usersMap[match.expert_id];
 

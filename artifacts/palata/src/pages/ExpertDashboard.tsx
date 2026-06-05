@@ -617,7 +617,7 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
     }
 
     const eligibleIds = allOrders.map(o => o.id);
-    const ACTIVE = ["proposed", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"];
+    const ACTIVE = ["pending_customer", "proposed", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"];
 
     const { data: matches } = await supabase
       .from("palata_request_matches")

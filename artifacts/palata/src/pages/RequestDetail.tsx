@@ -191,6 +191,7 @@ const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 const MATCH_STATUS: Record<string, { label: string; cls: string }> = {
+  pending_customer:       { label: "На рассмотрении",     cls: "bg-slate-100 text-slate-500" },
   proposed:               { label: "Предложено",          cls: "bg-yellow-100 text-yellow-700" },
   can_start_from:         { label: "Может взять",          cls: "bg-[#F4F4F4] text-[#002B5C]" },
   selected_by_customer:   { label: "Выбран заказчиком",   cls: "bg-[#0F4C9A]/10 text-[#002B5C]" },
@@ -228,11 +229,11 @@ const ALL_ORDER_STATUSES = [
   { value: "failed",           label: "Ошибка подбора" },
 ];
 
-const ACTIVE_MATCH_STATUSES = new Set(["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted", "accepted_work"]);
+const ACTIVE_MATCH_STATUSES = new Set(["pending_customer", "proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted", "accepted_work"]);
 const EXPERT_CAN_ACT = new Set(["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted", "accepted_work"]);
 const CONTACTS_REVEALED = new Set(["selected_by_customer", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"]);
 const CUSTOMER_CAN_SELECT = new Set([
-  "proposed", "can_start_from", "accepted", "pending", "matched",
+  "pending_customer", "proposed", "can_start_from", "accepted", "pending", "matched",
 ]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -834,12 +835,22 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       const now = new Date().toISOString();
       const expertUser = usersMap[match.expert_id];
 
-      // 1. Update match → contacts_opened (customer selected this expert)
+      // 1. Update chosen match → proposed (expert now sees it in "Новые предложения")
       const { error: me } = await supabase
         .from("palata_request_matches")
-        .update({ status: "contacts_opened", responded_at: now })
+        .update({ status: "proposed", responded_at: now })
         .eq("id", match.id);
       if (me) throw me;
+
+      // 1b. Close all other pending_customer candidates for this request
+      const otherPendingIds = matches
+        .filter(m => m.status === "pending_customer" && m.id !== match.id)
+        .map(m => m.id);
+      if (otherPendingIds.length > 0) {
+        await supabase.from("palata_request_matches")
+          .update({ status: "closed_by_other_expert" })
+          .in("id", otherPendingIds);
+      }
 
       // 2. Create / update palata_request_contacts.
       // Use only base columns (revealed_at, phones, emails) that exist in all

@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import AdminLayout from "@/components/AdminLayout";
-import { FileText, Clock, Zap, CheckCircle2, AlertTriangle, TrendingUp } from "lucide-react";
+import { FileText, Clock, Zap, CheckCircle2, AlertTriangle, TrendingUp, Settings, LayoutDashboard, Timer } from "lucide-react";
 import { useRequireRole } from "@/lib/useRequireRole";
 
 type Request = {
@@ -82,8 +82,11 @@ const COLUMNS = [
   },
 ];
 
+type Tab = "orders" | "settings";
+
 export default function AdminDashboard() {
   const guard = useRequireRole("admin");
+  const [activeTab, setActiveTab] = useState<Tab>("orders");
   const [state, setState] = useState<State>({ kind: "loading" });
   const [directionMap, setDirectionMap] = useState<Record<string, string>>({});
 
@@ -120,92 +123,228 @@ export default function AdminDashboard() {
 
   const rows = state.kind === "ok" ? state.rows : [];
   const total = state.kind === "ok" ? rows.length : null;
-
   const count = (...statuses: string[]) => rows.filter(r => statuses.includes(r.status)).length;
-
   const columns = COLUMNS.map((col) => ({
     ...col,
-    items: state.kind === "ok"
-      ? rows.filter((r) => col.statuses.includes(r.status))
-      : [],
+    items: state.kind === "ok" ? rows.filter((r) => col.statuses.includes(r.status)) : [],
   }));
 
   return (
     <AdminLayout>
       <div className="px-4 sm:px-6 lg:px-8 py-6 lg:py-8 max-w-screen-2xl mx-auto">
 
-        {/* ── KPI cards ──────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-          <KpiCard
-            label="Всего заявок"
-            value={total ?? "—"}
-            Icon={FileText}
-            colorClass="kpi-indigo"
-            loading={state.kind === "loading"}
-          />
-          <KpiCard
-            label="Новые"
-            value={state.kind === "ok" ? count("draft", "new") : "—"}
-            Icon={Clock}
-            colorClass="kpi-slate"
-            loading={state.kind === "loading"}
-          />
-          <KpiCard
-            label="Идёт подбор"
-            value={state.kind === "ok" ? count("pending", "matching") : "—"}
-            Icon={Zap}
-            colorClass="kpi-yellow"
-            loading={state.kind === "loading"}
-          />
-          <KpiCard
-            label="В работе"
-            value={state.kind === "ok" ? count("in_progress", "in_work") : "—"}
-            Icon={TrendingUp}
-            colorClass="kpi-cyan"
-            loading={state.kind === "loading"}
-          />
-          <KpiCard
-            label="Выполнено"
-            value={state.kind === "ok" ? count("completed") : "—"}
-            Icon={CheckCircle2}
-            colorClass="kpi-emerald"
-            loading={state.kind === "loading"}
-          />
-          <KpiCard
-            label="Проблемные"
-            value={state.kind === "ok" ? count("failed") : "—"}
-            Icon={AlertTriangle}
-            colorClass="kpi-red"
-            loading={state.kind === "loading"}
-          />
+        {/* ── Tabs ─────────────────────────────────────────────── */}
+        <div className="flex gap-1 mb-6 bg-slate-100 rounded-xl p-1 w-fit">
+          <button
+            onClick={() => setActiveTab("orders")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "orders"
+                ? "bg-white text-[#002B5C] shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            Заказы
+          </button>
+          <button
+            onClick={() => setActiveTab("settings")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "settings"
+                ? "bg-white text-[#002B5C] shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            Настройки
+          </button>
         </div>
 
-        {/* ── Section header ─────────────────────────────────────── */}
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Канбан-доска заказов</h1>
-            <p className="text-xs text-slate-400 mt-0.5">Отслеживайте статус каждого заказа в реальном времени</p>
-          </div>
-        </div>
+        {/* ── Orders tab ───────────────────────────────────────── */}
+        {activeTab === "orders" && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+              <KpiCard label="Всего заявок"  value={total ?? "—"}                                     Icon={FileText}      colorClass="kpi-indigo"  loading={state.kind === "loading"} />
+              <KpiCard label="Новые"         value={state.kind === "ok" ? count("draft", "new") : "—"} Icon={Clock}         colorClass="kpi-slate"   loading={state.kind === "loading"} />
+              <KpiCard label="Идёт подбор"   value={state.kind === "ok" ? count("pending", "matching") : "—"} Icon={Zap}   colorClass="kpi-yellow"  loading={state.kind === "loading"} />
+              <KpiCard label="В работе"      value={state.kind === "ok" ? count("in_progress", "in_work") : "—"} Icon={TrendingUp} colorClass="kpi-cyan" loading={state.kind === "loading"} />
+              <KpiCard label="Выполнено"     value={state.kind === "ok" ? count("completed") : "—"}   Icon={CheckCircle2}  colorClass="kpi-emerald" loading={state.kind === "loading"} />
+              <KpiCard label="Проблемные"    value={state.kind === "ok" ? count("failed") : "—"}      Icon={AlertTriangle} colorClass="kpi-red"     loading={state.kind === "loading"} />
+            </div>
 
-        {state.kind === "loading" && (
-          <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
-            <div className="h-4 w-4 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />
-            Загрузка данных…
-          </div>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">Канбан-доска заказов</h1>
+                <p className="text-xs text-slate-400 mt-0.5">Отслеживайте статус каждого заказа в реальном времени</p>
+              </div>
+            </div>
+
+            {state.kind === "loading" && (
+              <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
+                <div className="h-4 w-4 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />
+                Загрузка данных…
+              </div>
+            )}
+            {state.kind === "error" && <ErrorCard message={state.message} />}
+            {state.kind === "ok" && (
+              <KanbanBoard
+                columns={columns}
+                renderCard={(r: Request) => <AdminCard request={r} directionMap={directionMap} />}
+                emptyText="Нет заявок"
+              />
+            )}
+          </>
         )}
-        {state.kind === "error" && <ErrorCard message={state.message} />}
-        {state.kind === "ok" && (
-          <KanbanBoard
-            columns={columns}
-            renderCard={(r: Request) => <AdminCard request={r} directionMap={directionMap} />}
-            emptyText="Нет заявок"
-          />
-        )}
+
+        {/* ── Settings tab ─────────────────────────────────────── */}
+        {activeTab === "settings" && <SettingsTab />}
       </div>
     </AdminLayout>
   );
 }
+
+// ─── Settings Tab ─────────────────────────────────────────────────────────────
+
+type SettingsState =
+  | { kind: "loading" }
+  | { kind: "ok"; intervalMinutes: number }
+  | { kind: "error"; message: string };
+
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+function SettingsTab() {
+  const [state, setState] = useState<SettingsState>({ kind: "loading" });
+  const [inputValue, setInputValue] = useState<string>("");
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+
+  useEffect(() => {
+    fetch("/api/settings/matching-interval")
+      .then(r => r.json())
+      .then((data: { intervalMinutes: number }) => {
+        setState({ kind: "ok", intervalMinutes: data.intervalMinutes });
+        setInputValue(String(data.intervalMinutes));
+      })
+      .catch(() => setState({ kind: "error", message: "Не удалось загрузить настройки" }));
+  }, []);
+
+  async function handleSave() {
+    const minutes = parseInt(inputValue, 10);
+    if (isNaN(minutes) || minutes < 1 || minutes > 120) return;
+    setSaveState("saving");
+    try {
+      const res = await fetch("/api/settings/matching-interval", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intervalMinutes: minutes }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error ?? "Ошибка сохранения");
+      }
+      const data = await res.json() as { intervalMinutes: number };
+      setState({ kind: "ok", intervalMinutes: data.intervalMinutes });
+      setInputValue(String(data.intervalMinutes));
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 2500);
+    } catch (e: unknown) {
+      setSaveState("error");
+      setTimeout(() => setSaveState("idle"), 3000);
+      console.error(e);
+    }
+  }
+
+  const currentMinutes = state.kind === "ok" ? state.intervalMinutes : null;
+  const inputNum = parseInt(inputValue, 10);
+  const isValid = !isNaN(inputNum) && inputNum >= 1 && inputNum <= 120;
+  const isDirty = state.kind === "ok" && inputNum !== state.intervalMinutes;
+
+  return (
+    <div className="max-w-2xl">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-slate-900">Настройки платформы</h1>
+        <p className="text-xs text-slate-400 mt-0.5">Параметры автоматической обработки заказов</p>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <div className="flex items-start gap-4 mb-5">
+          <div className="w-9 h-9 rounded-xl bg-[#EEF3FB] flex items-center justify-center flex-shrink-0">
+            <Timer className="w-5 h-5 text-[#0F4C9A]" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-800">Интервал автоподбора экспертов</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Планировщик автоматически запускает подбор для всех заказов в статусе «Идёт подбор».
+              {currentMinutes !== null && (
+                <> Текущий интервал: <span className="font-medium text-slate-700">{currentMinutes} мин.</span></>
+              )}
+            </p>
+          </div>
+        </div>
+
+        {state.kind === "loading" && (
+          <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
+            <div className="h-3.5 w-3.5 rounded-full border-2 border-slate-200 border-t-slate-500 animate-spin" />
+            Загрузка…
+          </div>
+        )}
+
+        {state.kind === "error" && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{state.message}</p>
+        )}
+
+        {state.kind === "ok" && (
+          <div className="flex items-end gap-3">
+            <div className="flex-1 max-w-[180px]">
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                Интервал (минуты, 1–120)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={inputValue}
+                onChange={e => { setInputValue(e.target.value); setSaveState("idle"); }}
+                className={`w-full px-3 py-2 text-sm border rounded-lg outline-none transition-colors
+                  ${!isValid && inputValue !== ""
+                    ? "border-red-400 bg-red-50 focus:ring-1 focus:ring-red-400"
+                    : "border-slate-300 bg-white focus:border-[#0F4C9A] focus:ring-1 focus:ring-[#0F4C9A]/30"
+                  }`}
+              />
+              {!isValid && inputValue !== "" && (
+                <p className="text-[11px] text-red-500 mt-1">От 1 до 120 минут</p>
+              )}
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={!isValid || !isDirty || saveState === "saving"}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all
+                ${saveState === "saved"
+                  ? "bg-emerald-500 text-white"
+                  : saveState === "error"
+                  ? "bg-red-500 text-white"
+                  : (!isValid || !isDirty || saveState === "saving")
+                  ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                  : "bg-[#0F4C9A] text-white hover:bg-[#002B5C]"
+                }`}
+            >
+              {saveState === "saving" ? "Сохраняю…"
+                : saveState === "saved" ? "✓ Сохранено"
+                : saveState === "error" ? "Ошибка"
+                : "Сохранить"}
+            </button>
+          </div>
+        )}
+
+        <p className="text-[11px] text-slate-400 mt-4 leading-relaxed">
+          После сохранения планировщик перезапускается с новым интервалом немедленно.
+          Значение сохраняется в базе данных и восстанавливается при перезапуске сервера (если таблица <code className="font-mono bg-slate-100 px-1 rounded">palata_settings</code> создана).
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Shared sub-components ────────────────────────────────────────────────────
 
 function KpiCard({
   label, value, Icon, colorClass, loading,
@@ -256,7 +395,6 @@ function AdminCard({ request: r, directionMap }: { request: Request; directionMa
         <p className="text-xs font-semibold text-slate-800 leading-snug mb-2.5 line-clamp-2 group-hover:text-[#002B5C] transition-colors">
           {r.title}
         </p>
-
         <div className="space-y-1 mb-3">
           {dirName && (
             <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
@@ -270,7 +408,6 @@ function AdminCard({ request: r, directionMap }: { request: Request; directionMa
             </p>
           )}
         </div>
-
         <div className="flex items-center justify-between pt-2 border-t border-slate-50">
           <span className="text-[10px] text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded">
             Раунд {r.matching_round}

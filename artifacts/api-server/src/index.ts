@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { supabase } from "./lib/supabase";
-import { runAllPendingMatching } from "./lib/matcher";
+import { initScheduler } from "./lib/scheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -26,22 +26,9 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
 
   if (supabase) {
-    const INTERVAL_MS = 10 * 60 * 1000;
-
-    const db = supabase;
-    const runScheduled = () => {
-      runAllPendingMatching(db).then(result => {
-        if (result.processed > 0) {
-          logger.info(result, "Scheduled matching complete");
-        }
-      }).catch(e => {
-        logger.warn({ err: (e as Error).message }, "Scheduled matching error");
-      });
-    };
-
-    setTimeout(runScheduled, 30_000);
-    setInterval(runScheduled, INTERVAL_MS);
-    logger.info({ intervalMs: INTERVAL_MS }, "Matching scheduler started");
+    initScheduler(supabase).catch(e => {
+      logger.warn({ err: (e as Error).message }, "Scheduler init error");
+    });
   } else {
     logger.warn("Matching scheduler disabled — Supabase not configured");
   }

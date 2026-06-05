@@ -4,7 +4,7 @@ const STATS = [
   { value: "150+",   label: "Экспертов" },
   { value: "74",     label: "Региона" },
   { value: "1 000+", label: "Дел закрыто" },
-  { value: "100%",   label: "Верифицированы" },
+  { value: "100%",   label: "Сертифицированы" },
 ];
 
 const CRITERIA = [
@@ -120,9 +120,9 @@ export default function Home() {
                 Закрытая профессиональная платформа
               </div>
 
-              <h1 className="text-4xl sm:text-5xl xl:text-6xl font-bold text-[#111111] leading-[1.08] tracking-tight mb-4">
+              <h1 className="text-4xl sm:text-4xl lg:text-5xl xl:text-5xl font-bold text-[#111111] leading-[1.08] tracking-tight mb-4">
                 Платформа<br />
-                <span className="text-[#0F4C9A]">сертифицированных</span><br />
+                <span className="text-[#0F4C9A]">профессиональных</span><br />
                 экспертов
               </h1>
 

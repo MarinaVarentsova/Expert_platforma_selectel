@@ -616,7 +616,7 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
     setState({ kind: "loading" });
 
     // Show all requests except "неактуально" (cancelled) and "в работе" (completed / in_work)
-    const HIDDEN_STATUSES = ["cancelled", "completed", "in_work", "accepted_work"];
+    const HIDDEN_STATUSES = ["cancelled", "completed", "in_work"];
 
     const { data: rawOrders, error } = await supabase
       .from("palata_requests")

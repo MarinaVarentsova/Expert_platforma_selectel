@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Maximize2, Play, Repeat, Volume2, VolumeX } from 'lucide-react';
+import { ChevronDown, ChevronUp, Maximize2, Pause, Play, Repeat, Volume2, VolumeX } from 'lucide-react';
 import VideoTemplate, { SCENE_DURATIONS } from './VideoTemplate';
 import { useSceneControls } from './useSceneControls';
 
@@ -10,12 +10,14 @@ interface ControlBarProps {
   collapsed: boolean;
   locked: boolean;
   muted: boolean;
+  playing: boolean;
   sceneKeys: string[];
   activeIndex: number;
   activeDuration: number;
   tick: number;
   onToggleLock: () => void;
   onToggleMuted: () => void;
+  onTogglePlaying: () => void;
   onJumpTo: (index: number) => void;
   onToggleCollapsed: () => void;
   onFullscreen: () => void;
@@ -26,24 +28,43 @@ function ProgressSegments({
   activeIndex,
   activeDuration,
   tick,
+  paused,
   onJumpTo,
 }: {
   sceneKeys: string[];
   activeIndex: number;
   activeDuration: number;
   tick: number;
+  paused: boolean;
   onJumpTo: (index: number) => void;
 }) {
   const [elapsed, setElapsed] = useState(0);
+  const pausedAtRef = useRef<number | null>(null);
+  const elapsedAtPauseRef = useRef(0);
 
   useEffect(() => {
     setElapsed(0);
-    const start = performance.now();
-    const id = window.setInterval(() => {
-      setElapsed(performance.now() - start);
-    }, PROGRESS_TICK_MS);
-    return () => window.clearInterval(id);
+    pausedAtRef.current = null;
+    elapsedAtPauseRef.current = 0;
   }, [tick]);
+
+  useEffect(() => {
+    if (paused) {
+      pausedAtRef.current = performance.now();
+      return;
+    }
+    const resumeBase = elapsedAtPauseRef.current;
+    const resumeTime = performance.now();
+    pausedAtRef.current = null;
+
+    const id = window.setInterval(() => {
+      setElapsed(resumeBase + (performance.now() - resumeTime));
+    }, PROGRESS_TICK_MS);
+    return () => {
+      elapsedAtPauseRef.current = resumeBase + (performance.now() - resumeTime);
+      window.clearInterval(id);
+    };
+  }, [paused, tick]);
 
   const progress = activeDuration > 0 ? Math.min(1, elapsed / activeDuration) : 0;
 
@@ -76,12 +97,14 @@ function ControlBar({
   collapsed,
   locked,
   muted,
+  playing,
   sceneKeys,
   activeIndex,
   activeDuration,
   tick,
   onToggleLock,
   onToggleMuted,
+  onTogglePlaying,
   onJumpTo,
   onToggleCollapsed,
   onFullscreen,
@@ -96,14 +119,26 @@ function ControlBar({
       aria-hidden={!visible}
     >
       <button
+        onClick={onTogglePlaying}
+        className="w-14 h-14 flex items-center justify-center transition-colors rounded-lg shrink-0 text-white hover:bg-white/15"
+        title={playing ? 'Пауза' : 'Воспроизведение'}
+        aria-label={playing ? 'Пауза' : 'Воспроизведение'}
+        aria-pressed={!playing}
+      >
+        {playing
+          ? <Pause className="w-8 h-8" />
+          : <Play className="w-8 h-8 ml-0.5" fill="white" />}
+      </button>
+
+      <button
         onClick={onToggleLock}
         className={`w-14 h-14 flex items-center justify-center transition-colors rounded-lg shrink-0 ${
           locked
             ? 'text-white bg-white/15 hover:bg-white/25'
             : 'text-white/60 hover:text-white hover:bg-white/10'
         }`}
-        title={locked ? 'Loop current scene: on' : 'Loop current scene: off'}
-        aria-label={locked ? 'Loop current scene: on' : 'Loop current scene: off'}
+        title={locked ? 'Повтор сцены: вкл' : 'Повтор сцены: выкл'}
+        aria-label={locked ? 'Повтор сцены: вкл' : 'Повтор сцены: выкл'}
         aria-pressed={locked}
       >
         <Repeat className="w-8 h-8" />
@@ -112,8 +147,8 @@ function ControlBar({
       <button
         onClick={onToggleMuted}
         className="w-14 h-14 flex items-center justify-center transition-colors rounded-lg shrink-0 text-white/60 hover:text-white hover:bg-white/10"
-        title={muted ? 'Unmute audio' : 'Mute audio'}
-        aria-label={muted ? 'Unmute audio' : 'Mute audio'}
+        title={muted ? 'Включить звук' : 'Выключить звук'}
+        aria-label={muted ? 'Включить звук' : 'Выключить звук'}
         aria-pressed={muted}
       >
         {muted ? <VolumeX className="w-8 h-8" /> : <Volume2 className="w-8 h-8" />}
@@ -126,6 +161,7 @@ function ControlBar({
         activeIndex={activeIndex}
         activeDuration={activeDuration}
         tick={tick}
+        paused={!playing}
         onJumpTo={onJumpTo}
       />
 
@@ -145,8 +181,8 @@ function ControlBar({
       <button
         onClick={onToggleCollapsed}
         className="w-14 h-14 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded-lg shrink-0"
-        title={collapsed ? 'Show controls' : 'Hide controls'}
-        aria-label={collapsed ? 'Show controls' : 'Hide controls'}
+        title={collapsed ? 'Показать панель' : 'Скрыть панель'}
+        aria-label={collapsed ? 'Показать панель' : 'Скрыть панель'}
         aria-expanded={!collapsed}
       >
         {collapsed ? <ChevronUp className="w-10 h-10" /> : <ChevronDown className="w-10 h-10" />}
@@ -172,6 +208,7 @@ export default function VideoWithControls() {
   } = useSceneControls(SCENE_DURATIONS);
 
   const [started, setStarted] = useState(false);
+  const [playing, setPlaying] = useState(true);
   const [muted, setMuted] = useState(true);
   const sensorRef = useRef<HTMLDivElement | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -181,10 +218,12 @@ export default function VideoWithControls() {
   const handlePlay = useCallback(() => {
     jumpTo(0);
     setStarted(true);
+    setPlaying(true);
   }, [jumpTo]);
 
   const handleVideoEnd = useCallback(() => {
     setStarted(false);
+    setPlaying(true);
   }, []);
 
   const handleFullscreen = useCallback(() => {
@@ -232,17 +271,20 @@ export default function VideoWithControls() {
           durations={durations}
           loop={false}
           muted={muted}
+          paused={!playing}
           onSceneChange={onSceneChange}
           onVideoEnd={handleVideoEnd}
         />
       ) : (
-        /* Poster / не запущено */
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-8" style={{ background: 'linear-gradient(135deg, #002B5C 0%, #0F4C9A 60%, #1a6bbf 100%)' }}>
-          {/* subtle glow */}
+        /* Poster */
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center gap-7"
+          style={{ background: 'linear-gradient(150deg, #0a3d7a 0%, #0F4C9A 55%, #1561c4 100%)' }}
+        >
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <div className="absolute w-[60vw] h-[60vw] rounded-full blur-[120px] opacity-20 -top-1/4 right-0"
-              style={{ background: 'radial-gradient(circle, #4A90D9, transparent 70%)' }} />
-            <div className="absolute w-[40vw] h-[40vw] rounded-full blur-[80px] opacity-15 bottom-0 left-0"
+            <div className="absolute w-[60vw] h-[60vw] rounded-full blur-[120px] opacity-15 -top-1/4 right-0"
+              style={{ background: 'radial-gradient(circle, #6aaef5, transparent 70%)' }} />
+            <div className="absolute w-[40vw] h-[40vw] rounded-full blur-[80px] opacity-10 bottom-0 left-0"
               style={{ background: 'radial-gradient(circle, #ffffff, transparent 70%)' }} />
           </div>
 
@@ -261,6 +303,13 @@ export default function VideoWithControls() {
               style={{ filter: 'contrast(1.05) saturate(1.1)' }}
             />
           </a>
+
+          {/* Platform description */}
+          <div className="relative z-10 text-center select-none">
+            <div className="text-white/90 text-sm font-medium tracking-wide uppercase">
+              Платформа профессиональных экспертов
+            </div>
+          </div>
 
           {/* Play button */}
           <button
@@ -288,12 +337,14 @@ export default function VideoWithControls() {
             collapsed={collapsed}
             locked={locked}
             muted={muted}
+            playing={playing}
             sceneKeys={sceneKeys}
             activeIndex={activeIndex}
             activeDuration={activeDuration}
             tick={tick}
             onToggleLock={toggleLock}
             onToggleMuted={() => setMuted(m => !m)}
+            onTogglePlaying={() => setPlaying(p => !p)}
             onJumpTo={jumpTo}
             onToggleCollapsed={handleToggleCollapsed}
             onFullscreen={handleFullscreen}

@@ -601,10 +601,13 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
   async function loadMarket() {
     setState({ kind: "loading" });
 
+    // Show all requests except "неактуально" (cancelled) and "в работе" (completed / in_work)
+    const HIDDEN_STATUSES = ["cancelled", "completed", "in_work", "accepted_work"];
+
     const { data: rawOrders, error } = await supabase
       .from("palata_requests")
       .select("id, title, status, expertise_direction_id, region_id, requires_travel, description, created_at, customer_id")
-      .in("status", ["matching", "expert_selection"]);
+      .not("status", "in", `(${HIDDEN_STATUSES.map(s => `"${s}"`).join(",")})`);
 
     if (error) { setState({ kind: "error", message: error.message }); return; }
 
@@ -623,25 +626,21 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
     }
 
     const eligibleIds = allOrders.map(o => o.id);
-    const ACTIVE = ["pending_customer", "proposed", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"];
 
+    // Fetch only this expert's matches to show their personal status on each card
     const { data: matches } = await supabase
       .from("palata_request_matches")
       .select("request_id, expert_id, status")
-      .in("request_id", eligibleIds);
+      .in("request_id", eligibleIds)
+      .eq("expert_id", userId);
 
     const matchList = (matches ?? []) as Array<{ request_id: string; expert_id: string; status: string }>;
 
-    const ordersWithActiveOtherMatch = new Set<string>(
-      matchList.filter(m => ACTIVE.includes(m.status) && m.expert_id !== userId).map(m => m.request_id)
-    );
-
     const myMatchStatuses: Record<string, string> = {};
-    matchList.filter(m => m.expert_id === userId).forEach(m => { myMatchStatuses[m.request_id] = m.status; });
+    matchList.forEach(m => { myMatchStatuses[m.request_id] = m.status; });
 
-    const marketOrders = allOrders.filter(o =>
-      myMatchStatuses[o.id] !== undefined || !ordersWithActiveOtherMatch.has(o.id)
-    );
+    // All experts see all qualifying orders — no filtering by other experts' matches
+    const marketOrders = allOrders;
 
     if (marketOrders.length === 0) {
       setState({ kind: "ok", orders: [], myMatchStatuses });

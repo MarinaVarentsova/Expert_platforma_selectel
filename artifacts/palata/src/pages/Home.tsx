@@ -385,16 +385,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <div className="border-t border-white/10 py-4 bg-[#002B5C]">
-        <div className={`${W} flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2`}>
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-white/40">Статус системы</p>
-          <div className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs text-white/50">Supabase подключён · Система работает штатно</span>
-          </div>
-        </div>
-      </div>
 
     </div>
   );

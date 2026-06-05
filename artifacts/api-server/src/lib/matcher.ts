@@ -72,25 +72,9 @@ export async function runMatchingForRequest(
 
   if (!experts || experts.length === 0) return { matched: 0 };
 
-  const expertRegionMap = new Map<string, Set<string>>();
-  if (requiresTravel) {
-    const { data: regData } = await db
-      .from("palata_expert_regions")
-      .select("expert_id, region_id")
-      .in("expert_id", (experts as ExpertForMatching[]).map(e => e.user_id));
-    for (const row of regData ?? []) {
-      if (!expertRegionMap.has(row.expert_id)) expertRegionMap.set(row.expert_id, new Set());
-      expertRegionMap.get(row.expert_id)!.add(row.region_id);
-    }
-  }
-
   const candidates: Array<{ expertId: string; score: number }> = [];
   for (const e of experts as ExpertForMatching[]) {
-    if (requiresTravel) {
-      if (!e.business_trip_ready) continue;
-      const eRegs = expertRegionMap.get(e.user_id) ?? new Set<string>();
-      if (regionId && !eRegs.has(regionId)) continue;
-    }
+    if (requiresTravel && !e.business_trip_ready) continue;
     candidates.push({ expertId: e.user_id, score: scoreExpert(e) });
   }
 

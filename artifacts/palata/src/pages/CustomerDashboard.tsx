@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
@@ -125,7 +125,13 @@ export default function CustomerDashboard() {
   }, []);
   const directionMap = Object.fromEntries(allDirections.map(d => [d.id, d.name]));
   const slugMap = Object.fromEntries(allDirections.map(d => [d.slug, d.name]));
-  const [tab, setTab] = useState<"requests" | "actions" | "rate" | "profile">("requests");
+  const search = useSearch();
+  const initialTab = (() => {
+    const t = new URLSearchParams(search).get("tab");
+    if (t === "actions" || t === "rate" || t === "profile") return t;
+    return "requests";
+  })();
+  const [tab, setTab] = useState<"requests" | "actions" | "rate" | "profile">(initialTab);
   const [requestState, setRequestState] = useState<RequestState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
   const [pendingRatingsState, setPendingRatingsState] = useState<PendingRatingsState>({ kind: "loading" });

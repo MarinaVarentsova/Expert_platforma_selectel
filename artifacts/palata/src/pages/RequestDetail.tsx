@@ -432,8 +432,8 @@ function CustomerTopNav({ userId, userName, userEmail }: {
       .eq("status", "open")
       .eq("is_resolved", false)
       .then(({ data }) => {
-        const excluded = ["experts_matched", "manual_matching_required", "expert_completed_order"];
-        setActionCount((data ?? []).filter((i: { action_type: string }) => !excluded.includes(i.action_type)).length);
+        const allowed = ["expert_can_start_from", "expert_declined"];
+        setActionCount((data ?? []).filter((i: { action_type: string }) => allowed.includes(i.action_type)).length);
       });
 
     supabase.from("palata_action_items")

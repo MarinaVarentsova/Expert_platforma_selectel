@@ -13,11 +13,12 @@ export type ActionType =
   | "customer_declined_start_date"
   | "choose_another_expert"
   | "you_are_approved_for_work"
-  | "manual_matching_required";
+  | "manual_matching_required"
+  | "cert_expiring_soon";
 
 export type ActionItem = {
   id: string;
-  request_id: string;
+  request_id: string | null;
   expert_id: string | null;
   customer_id: string | null;
   assigned_to_user_id: string;

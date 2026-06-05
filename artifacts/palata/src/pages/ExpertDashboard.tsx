@@ -2041,7 +2041,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
     return (data as { id: string } | null)?.id ?? null;
   }
 
-  const shortId = `#${item.request_id.slice(0, 8).toUpperCase()}`;
+  const shortId = `#${item.request_id?.slice(0, 8).toUpperCase() ?? ""}`;
 
   async function handleTakeWork() {
     setBusy(true);
@@ -2075,7 +2075,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
 
     // 5. Resolve expert's action item; cancel others for this request
     await resolveActionItem(item.id);
-    await cancelRequestActionItems(item.request_id, item.id);
+    await cancelRequestActionItems(item.request_id!, item.id);
 
     // 6. Action item for customer
     const custId = item.customer_id ?? req?.customer_id ?? null;
@@ -2099,7 +2099,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
     }
 
     // 7. Status + email events
-    await logStatusEvent(item.request_id, "expert_selection", "in_work", "expert_accepted_work");
+    await logStatusEvent(item.request_id!, "expert_selection", "in_work", "expert_accepted_work");
 
     setBusy(false);
     onDone();
@@ -2150,7 +2150,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
     }
 
     // 5. Status event
-    await logStatusEvent(item.request_id, "expert_selection", "expert_selection", "expert_can_start_from");
+    await logStatusEvent(item.request_id!, "expert_selection", "expert_selection", "expert_can_start_from");
 
     setBusy(false);
     onDone();
@@ -2204,7 +2204,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
     }
 
     // 5. Status event
-    await logStatusEvent(item.request_id, "expert_selection", "matching", "expert_declined");
+    await logStatusEvent(item.request_id!, "expert_selection", "matching", "expert_declined");
 
     // 6. If all matches are declined → trigger re-matching
     try {
@@ -2224,7 +2224,7 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
       if (allDeclined) {
         const custId2 = item.customer_id ?? req?.customer_id ?? undefined;
         await runMatching({
-          requestId:           item.request_id,
+          requestId:           item.request_id!,
           expertiseDirectionId: req?.expertise_direction_id ?? null,
           regionIds:           req?.region_id ? [req.region_id] : [],
           requiresTravel:      req?.requires_travel ?? false,
@@ -2457,7 +2457,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
     return (data as { id: string } | null)?.id ?? null;
   }
 
-  const shortId = `#${item.request_id.slice(0, 8).toUpperCase()}`;
+  const shortId = `#${item.request_id?.slice(0, 8).toUpperCase() ?? ""}`;
   const startFmt = canStartFrom
     ? new Date(canStartFrom).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })
     : null;
@@ -2496,7 +2496,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
 
     // 5. Resolve expert's action item; cancel others for this request
     await resolveActionItem(item.id);
-    await cancelRequestActionItems(item.request_id, item.id);
+    await cancelRequestActionItems(item.request_id!, item.id);
 
     // 6. Action item for customer: expert_started_work
     const custId = custIdFromPayload ?? req?.customer_id ?? null;
@@ -2522,7 +2522,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
     }
 
     // 7. Events
-    await logStatusEvent(item.request_id, "expert_selection", "in_work", "expert_took_work");
+    await logStatusEvent(item.request_id!, "expert_selection", "in_work", "expert_took_work");
     if (userEmail) {
       await logEmailTestEvent(userId, userEmail, "expert_accepted_work",
         "Вы взяли заказ в работу",
@@ -2590,7 +2590,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
     }
 
     // 5. Events
-    await logStatusEvent(item.request_id, "expert_selection", "matching", "expert_declined");
+    await logStatusEvent(item.request_id!, "expert_selection", "matching", "expert_declined");
 
     // 6. Re-matching if all experts declined
     try {
@@ -2610,7 +2610,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
       if (allDeclined) {
         const custId2 = custIdFromPayload ?? req?.customer_id ?? undefined;
         await runMatching({
-          requestId:           item.request_id,
+          requestId:           item.request_id!,
           expertiseDirectionId: req?.expertise_direction_id ?? null,
           regionIds:           req?.region_id ? [req.region_id] : [],
           requiresTravel:      req?.requires_travel ?? false,

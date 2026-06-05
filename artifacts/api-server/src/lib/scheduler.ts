@@ -1,9 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runAllPendingMatching } from "./matcher";
+import { checkExpiringCerts } from "./cert-checker";
 import { logger } from "./logger";
 
 const DEFAULT_INTERVAL_MINUTES = 10;
 const SETTING_KEY = "matching_interval_minutes";
+
+// Moscow time = UTC+3
+const CERT_CHECK_HOUR_MSK = 9;
+const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 let _intervalMinutes = DEFAULT_INTERVAL_MINUTES;
 let _timerId: ReturnType<typeof setInterval> | null = null;
@@ -27,6 +32,41 @@ function applyTimer(isInitial: boolean) {
   _timerId = setInterval(runScheduled, ms);
 }
 
+/** Schedule a daily task at a fixed clock hour in Moscow time (UTC+3). */
+function scheduleDailyCertCheck(db: SupabaseClient) {
+  function msUntilNextRun(): number {
+    const now = Date.now();
+    const nowMsk = new Date(now + MSK_OFFSET_MS);
+
+    const nextRun = new Date(nowMsk);
+    nextRun.setUTCHours(CERT_CHECK_HOUR_MSK, 0, 0, 0);
+
+    if (nextRun.getTime() <= nowMsk.getTime()) {
+      nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+    }
+
+    return nextRun.getTime() - nowMsk.getTime();
+  }
+
+  function schedule() {
+    const delay = msUntilNextRun();
+    const runAtMsk = new Date(Date.now() + MSK_OFFSET_MS + delay);
+    logger.info(
+      { nextRunMsk: runAtMsk.toISOString().replace("T", " ").slice(0, 16) },
+      "cert-checker: next run scheduled",
+    );
+
+    setTimeout(() => {
+      checkExpiringCerts(db).catch(e => {
+        logger.warn({ err: (e as Error).message }, "cert-checker error");
+      });
+      schedule();
+    }, delay);
+  }
+
+  schedule();
+}
+
 export async function initScheduler(db: SupabaseClient): Promise<void> {
   _dbRef = db;
 
@@ -48,6 +88,8 @@ export async function initScheduler(db: SupabaseClient): Promise<void> {
 
   applyTimer(true);
   logger.info({ intervalMinutes: _intervalMinutes }, "Matching scheduler started");
+
+  scheduleDailyCertCheck(db);
 }
 
 export function getIntervalMinutes(): number {

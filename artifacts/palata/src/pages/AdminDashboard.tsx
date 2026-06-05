@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import AdminLayout from "@/components/AdminLayout";
-import { FileText, Clock, Zap, CheckCircle2, AlertTriangle, TrendingUp, Settings, LayoutDashboard, Timer } from "lucide-react";
+import { FileText, Clock, Zap, CheckCircle2, AlertTriangle, TrendingUp, Settings, LayoutDashboard, Timer, ShieldAlert } from "lucide-react";
 import { useRequireRole } from "@/lib/useRequireRole";
 
 type Request = {
@@ -82,7 +82,7 @@ const COLUMNS = [
   },
 ];
 
-type Tab = "orders" | "settings";
+type Tab = "orders" | "settings" | "certs";
 
 export default function AdminDashboard() {
   const guard = useRequireRole("admin");
@@ -157,6 +157,17 @@ export default function AdminDashboard() {
             <Settings className="w-4 h-4" />
             Настройки
           </button>
+          <button
+            onClick={() => setActiveTab("certs")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "certs"
+                ? "bg-white text-[#002B5C] shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4" />
+            Продлить сертификат
+          </button>
         </div>
 
         {/* ── Orders tab ───────────────────────────────────────── */}
@@ -197,6 +208,9 @@ export default function AdminDashboard() {
 
         {/* ── Settings tab ─────────────────────────────────────── */}
         {activeTab === "settings" && <SettingsTab />}
+
+        {/* ── Certs tab ────────────────────────────────────────── */}
+        {activeTab === "certs" && <CertsTab />}
       </div>
     </AdminLayout>
   );
@@ -340,6 +354,217 @@ function SettingsTab() {
           Значение сохраняется в базе данных и восстанавливается при перезапуске сервера (если таблица <code className="font-mono bg-slate-100 px-1 rounded">palata_settings</code> создана).
         </p>
       </div>
+    </div>
+  );
+}
+
+// ─── Certs Tab ────────────────────────────────────────────────────────────────
+
+type ExpiringCert = {
+  id: string;
+  expert_id: string;
+  certificate_number: string | null;
+  cert_valid_to: string;
+  cert_direction_ids: string[];
+  expert_name: string | null;
+  expert_email: string;
+  expert_phone: string | null;
+  direction_names: string;
+  days_left: number;
+};
+
+type CertsState =
+  | { kind: "loading" }
+  | { kind: "ok"; rows: ExpiringCert[] }
+  | { kind: "error"; message: string };
+
+const CERT_SITE_URL = "https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/";
+const LOOK_AHEAD_DAYS = 30;
+
+function CertsTab() {
+  const [state, setState] = useState<CertsState>({ kind: "loading" });
+  const [dirMap, setDirMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    async function load() {
+      const today = new Date();
+      const todayStr = today.toISOString().slice(0, 10);
+      const ahead = new Date(today);
+      ahead.setDate(ahead.getDate() + LOOK_AHEAD_DAYS);
+      const aheadStr = ahead.toISOString().slice(0, 10);
+
+      const [certsRes, dirsRes] = await Promise.all([
+        supabase
+          .from("palata_expert_certificates")
+          .select("id, expert_id, certificate_number, cert_valid_to, cert_direction_ids")
+          .eq("status", "verified")
+          .gte("cert_valid_to", todayStr)
+          .lte("cert_valid_to", aheadStr)
+          .order("cert_valid_to", { ascending: true }),
+        supabase
+          .from("palata_expertise_directions")
+          .select("id, name"),
+      ]);
+
+      if (certsRes.error) { setState({ kind: "error", message: certsRes.error.message }); return; }
+
+      const dm: Record<string, string> = {};
+      for (const d of (dirsRes.data ?? []) as { id: string; name: string }[]) dm[d.id] = d.name;
+      setDirMap(dm);
+
+      const certs = (certsRes.data ?? []) as {
+        id: string;
+        expert_id: string;
+        certificate_number: string | null;
+        cert_valid_to: string;
+        cert_direction_ids: string[];
+      }[];
+
+      if (certs.length === 0) { setState({ kind: "ok", rows: [] }); return; }
+
+      const expertIds = [...new Set(certs.map(c => c.expert_id))];
+      const { data: users } = await supabase
+        .from("palata_users")
+        .select("id, full_name, email, phone")
+        .in("id", expertIds);
+
+      const usersMap: Record<string, { full_name: string | null; email: string; phone: string | null }> =
+        Object.fromEntries(
+          ((users ?? []) as { id: string; full_name: string | null; email: string; phone: string | null }[])
+            .map(u => [u.id, u]),
+        );
+
+      const rows: ExpiringCert[] = certs.map(c => {
+        const u = usersMap[c.expert_id];
+        const daysLeft = Math.ceil(
+          (new Date(c.cert_valid_to).getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        return {
+          ...c,
+          expert_name: u?.full_name ?? null,
+          expert_email: u?.email ?? "—",
+          expert_phone: u?.phone ?? null,
+          direction_names: (c.cert_direction_ids ?? []).map((id: string) => dm[id] ?? id).join(", "),
+          days_left: daysLeft,
+        };
+      });
+
+      setState({ kind: "ok", rows });
+    }
+    load().catch(e => setState({ kind: "error", message: (e as Error).message }));
+  }, []);
+
+  const urgent = state.kind === "ok" ? state.rows.filter(r => r.days_left <= 7) : [];
+  const soon   = state.kind === "ok" ? state.rows.filter(r => r.days_left > 7) : [];
+
+  return (
+    <div className="max-w-5xl">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-slate-900">Продление сертификатов</h1>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Сертификаты, истекающие в ближайшие {LOOK_AHEAD_DAYS} дней. Система уведомляет экспертов автоматически в 9:00 МСК при сроке ≤ 7 дней.
+        </p>
+      </div>
+
+      {state.kind === "loading" && (
+        <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
+          <div className="h-4 w-4 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />
+          Загрузка…
+        </div>
+      )}
+
+      {state.kind === "error" && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+          <p className="text-sm text-red-700">{state.message}</p>
+        </div>
+      )}
+
+      {state.kind === "ok" && state.rows.length === 0 && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-6 py-10 text-center">
+          <ShieldAlert className="w-8 h-8 text-emerald-400 mx-auto mb-3" />
+          <p className="text-sm font-medium text-emerald-800">Нет сертификатов с истекающим сроком</p>
+          <p className="text-xs text-emerald-600 mt-1">В ближайшие {LOOK_AHEAD_DAYS} дней все сертификаты действительны</p>
+        </div>
+      )}
+
+      {state.kind === "ok" && state.rows.length > 0 && (
+        <div className="space-y-6">
+          {urgent.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="h-2 w-2 rounded-full bg-red-500" />
+                <h2 className="text-sm font-semibold text-red-700">Истекают в течение 7 дней ({urgent.length})</h2>
+              </div>
+              <CertsTable rows={urgent} />
+            </section>
+          )}
+          {soon.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="h-2 w-2 rounded-full bg-amber-400" />
+                <h2 className="text-sm font-semibold text-amber-700">Истекают от 8 до {LOOK_AHEAD_DAYS} дней ({soon.length})</h2>
+              </div>
+              <CertsTable rows={soon} />
+            </section>
+          )}
+
+          <p className="text-xs text-slate-400">
+            Продление сертификатов:{" "}
+            <a href={CERT_SITE_URL} target="_blank" rel="noreferrer" className="text-[#0F4C9A] underline underline-offset-2">
+              {CERT_SITE_URL}
+            </a>
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CertsTable({ rows }: { rows: ExpiringCert[] }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+      <table className="min-w-full text-sm">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Эксперт</th>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Контакты</th>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">№ сертификата</th>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Направление</th>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Истекает</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 bg-white">
+          {rows.map(r => (
+            <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+              <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
+                {r.expert_name ?? <span className="text-slate-400 italic">Без имени</span>}
+              </td>
+              <td className="px-4 py-3 text-slate-600">
+                <div>{r.expert_email}</div>
+                {r.expert_phone && <div className="text-slate-400">{r.expert_phone}</div>}
+              </td>
+              <td className="px-4 py-3 font-mono text-xs text-slate-700 whitespace-nowrap">
+                {r.certificate_number ?? <span className="text-slate-400">—</span>}
+              </td>
+              <td className="px-4 py-3 text-slate-600 max-w-[260px]">
+                <span className="line-clamp-2 text-xs">{r.direction_names || "—"}</span>
+              </td>
+              <td className="px-4 py-3 whitespace-nowrap">
+                <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold ${
+                  r.days_left <= 3
+                    ? "bg-red-100 text-red-700"
+                    : r.days_left <= 7
+                    ? "bg-orange-100 text-orange-700"
+                    : "bg-amber-50 text-amber-700"
+                }`}>
+                  {new Date(r.cert_valid_to).toLocaleDateString("ru-RU", { day: "2-digit", month: "short", year: "numeric" })}
+                  <span className="opacity-70">· {r.days_left} дн.</span>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

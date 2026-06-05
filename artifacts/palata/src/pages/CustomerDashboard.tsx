@@ -326,7 +326,7 @@ export default function CustomerDashboard() {
     await resolveActionItem(item.action_item_id);
 
     // 3. Status event
-    await logStatusEvent(item.request_id, "completed", "completed",
+    await logStatusEvent(item.request_id!, "completed", "completed",
       `Заказчик оценил эксперта: ${form.score}/5`);
 
     // 4. Email test event to expert
@@ -1201,7 +1201,7 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
     await resolveActionItem(item.id);
 
     // 6. Events
-    await logStatusEvent(item.request_id, "matching", "expert_selection",
+    await logStatusEvent(item.request_id!, "matching", "expert_selection",
       `Заказчик выбрал эксперта: ${expert.expert_name ?? expert.expert_id}`);
 
     if (expert.expert_email) {
@@ -1323,7 +1323,7 @@ function ExpertCanStartCard({ item, userId, onDone }: {
     load();
   }, [item.request_id, expertId]);
 
-  const shortId = `#${item.request_id.slice(0, 8).toUpperCase()}`;
+  const shortId = `#${item.request_id?.slice(0, 8).toUpperCase() ?? ""}`;
   const startFmt = canStartFrom
     ? new Date(canStartFrom).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })
     : null;
@@ -1350,7 +1350,7 @@ function ExpertCanStartCard({ item, userId, onDone }: {
     });
 
     // 3. Events
-    await logStatusEvent(item.request_id, "expert_selection", "expert_selection", "customer_approved_start_date");
+    await logStatusEvent(item.request_id!, "expert_selection", "expert_selection", "customer_approved_start_date");
     if (expertId && expertEmail) {
       await logEmailTestEvent(expertId, expertEmail, "you_are_approved_for_work",
         "Заказчик подтвердил вашу кандидатуру",
@@ -1402,7 +1402,7 @@ function ExpertCanStartCard({ item, userId, onDone }: {
     });
 
     // 5. Events
-    await logStatusEvent(item.request_id, "expert_selection", "expert_selection", "customer_declined_start_date");
+    await logStatusEvent(item.request_id!, "expert_selection", "expert_selection", "customer_declined_start_date");
     if (expertId && expertEmail) {
       await logEmailTestEvent(expertId, expertEmail, "customer_declined_start_date",
         "Заказчик отклонил предложенную дату",

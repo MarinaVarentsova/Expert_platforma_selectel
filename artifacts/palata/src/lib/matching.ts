@@ -193,7 +193,7 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
       request_id: requestId,
       expert_id: s.expertId,
       matching_round: nextRound,
-      status: "pending_customer",
+      status: "proposed",
     })),
   );
   if (insertErr) throw new Error(insertErr.message);

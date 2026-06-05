@@ -110,7 +110,7 @@ export async function runMatchingForRequest(
       request_id: requestId,
       expert_id: s.expertId,
       matching_round: nextRound,
-      status: "pending_customer",
+      status: "proposed",
     })),
   );
   if (insertErr) {

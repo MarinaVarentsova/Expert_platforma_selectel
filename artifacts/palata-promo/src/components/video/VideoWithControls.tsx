@@ -237,20 +237,35 @@ export default function VideoWithControls() {
         />
       ) : (
         /* Poster / не запущено */
-        <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-light, #f5f6fa)' }}>
-          {/* subtle background gradient */}
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute w-[70vw] h-[70vw] rounded-full blur-[100px] opacity-20 -top-1/4 -left-1/4"
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-8" style={{ background: 'linear-gradient(135deg, #002B5C 0%, #0F4C9A 60%, #1a6bbf 100%)' }}>
+          {/* subtle glow */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            <div className="absolute w-[60vw] h-[60vw] rounded-full blur-[120px] opacity-20 -top-1/4 right-0"
               style={{ background: 'radial-gradient(circle, #4A90D9, transparent 70%)' }} />
-            <div className="absolute w-[50vw] h-[50vw] rounded-full blur-[80px] opacity-10 bottom-0 right-0"
-              style={{ background: 'radial-gradient(circle, #002B5C, transparent 70%)' }} />
+            <div className="absolute w-[40vw] h-[40vw] rounded-full blur-[80px] opacity-15 bottom-0 left-0"
+              style={{ background: 'radial-gradient(circle, #ffffff, transparent 70%)' }} />
           </div>
+
+          {/* Logo + title */}
+          <div className="relative z-10 flex flex-col items-center gap-4 select-none">
+            <img
+              src={`${import.meta.env.BASE_URL}logo.jpg`}
+              alt="Палата судебных экспертов"
+              className="w-20 h-20 rounded-xl object-cover shadow-lg"
+            />
+            <div className="text-center">
+              <div className="text-white font-bold text-xl leading-tight">Палата судебных экспертов</div>
+              <div className="text-white/60 text-sm mt-1">Как работает платформа</div>
+            </div>
+          </div>
+
+          {/* Play button */}
           <button
             onClick={handlePlay}
-            className="relative z-10 flex items-center justify-center w-24 h-24 rounded-full bg-[#0F4C9A] hover:bg-[#002B5C] shadow-2xl transition-all duration-200 hover:scale-105 active:scale-95"
+            className="relative z-10 flex items-center justify-center w-20 h-20 rounded-full bg-white/15 hover:bg-white/25 border-2 border-white/40 hover:border-white/70 shadow-2xl transition-all duration-200 hover:scale-105 active:scale-95 backdrop-blur-sm"
             aria-label="Смотреть видео"
           >
-            <Play className="w-10 h-10 text-white ml-1" fill="white" />
+            <Play className="w-9 h-9 text-white ml-1" fill="white" />
           </button>
         </div>
       )}

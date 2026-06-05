@@ -121,13 +121,13 @@ export default function Home() {
               </div>
 
               <h1 className="text-4xl sm:text-5xl xl:text-6xl font-bold text-[#111111] leading-[1.08] tracking-tight mb-4">
-                Платформа,<br />
-                которая <span className="text-[#0F4C9A]">находит</span><br />
-                нужного эксперта
+                Платформа<br />
+                <span className="text-[#0F4C9A]">сертифицированных</span><br />
+                экспертов
               </h1>
 
               <p className="text-base sm:text-lg text-[#666666] leading-relaxed max-w-md">
-                Автоматизированный подбор аккредитованных судебных экспертов по специализации, региону и репутации.
+                Автоподбор экспертов по специализации, региону, рейтингу.
               </p>
             </div>
 

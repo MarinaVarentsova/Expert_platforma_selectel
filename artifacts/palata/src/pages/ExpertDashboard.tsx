@@ -578,11 +578,25 @@ const MATCH_STATUS_LABEL: Record<string, string> = {
   withdrawn: "Отозвано",
 };
 
+type MarketBadge = { label: string; cls: string } | null;
+function getMarketBadge(status: string | undefined): MarketBadge {
+  if (!status || status === "proposed") return null; // auto-matched, no expert action yet
+  if (status === "declined" || status === "withdrawn")
+    return { label: "Вы отказались", cls: "bg-red-50 text-red-700 border border-red-200" };
+  if (status === "can_start_from")
+    return { label: "Вы откликнулись", cls: "bg-amber-50 text-amber-700 border border-amber-200" };
+  // contacts_opened / accepted / accepted_work — handled in "Мои заказы"
+  return { label: MATCH_STATUS_LABEL[status] ?? status, cls: "bg-slate-100 text-slate-600 border border-slate-200" };
+}
+
+type SortBy = "rating_desc" | "date_desc" | "date_asc";
+
 function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile | null }) {
   const [state, setState] = useState<MarketState>({ kind: "loading" });
   const [filterDirection, setFilterDirection] = useState("");
   const [filterRegion, setFilterRegion] = useState("");
   const [filterTravel, setFilterTravel] = useState<"all" | "remote" | "travel">("all");
+  const [sortBy, setSortBy] = useState<SortBy>("rating_desc");
   const [allDirs, setAllDirs] = useState<Array<{ id: string; name: string }>>([]);
   const [allRegs, setAllRegs] = useState<Array<{ id: string; name: string }>>([]);
   const [takeDates, setTakeDates] = useState<Record<string, string>>({});
@@ -734,13 +748,24 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
   const dirsMap = Object.fromEntries(allDirs.map(d => [d.id, d.name]));
   const regsMap = Object.fromEntries(allRegs.map(r => [r.id, r.name]));
 
-  const filtered = state.kind === "ok" ? state.orders.filter(o => {
-    if (filterDirection && o.expertise_direction_id !== filterDirection) return false;
-    if (filterRegion && o.region_id !== filterRegion) return false;
-    if (filterTravel === "remote" && o.requires_travel) return false;
-    if (filterTravel === "travel" && !o.requires_travel) return false;
-    return true;
-  }) : [];
+  const filtered = state.kind === "ok" ? state.orders
+    .filter(o => {
+      if (filterDirection && o.expertise_direction_id !== filterDirection) return false;
+      if (filterRegion && o.region_id !== filterRegion) return false;
+      if (filterTravel === "remote" && o.requires_travel) return false;
+      if (filterTravel === "travel" && !o.requires_travel) return false;
+      return true;
+    })
+    .slice()
+    .sort((a, b) => {
+      if (sortBy === "rating_desc")
+        return (b.customer_rating ?? 0) - (a.customer_rating ?? 0);
+      if (sortBy === "date_desc")
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      // date_asc
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    })
+  : [];
 
   const myMatchStatuses = state.kind === "ok" ? state.myMatchStatuses : {};
 
@@ -753,7 +778,7 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
         )}
       </div>
 
-      {/* Filters */}
+      {/* Filters + Sort */}
       <div className="flex gap-2 flex-wrap">
         <select
           value={filterDirection}
@@ -777,8 +802,17 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
           className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30"
         >
           <option value="all">Все форматы</option>
-          <option value="remote">Только дистанционно</option>
-          <option value="travel">Только выезд</option>
+          <option value="remote">Дистанционно</option>
+          <option value="travel">Выезд</option>
+        </select>
+        <select
+          value={sortBy}
+          onChange={e => setSortBy(e.target.value as SortBy)}
+          className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 ml-auto"
+        >
+          <option value="rating_desc">↓ По рейтингу заказчика</option>
+          <option value="date_desc">↓ Новые сначала</option>
+          <option value="date_asc">↑ Старые сначала</option>
         </select>
       </div>
 
@@ -801,7 +835,9 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
 
       {state.kind === "ok" && filtered.map(order => {
         const myStatus = myMatchStatuses[order.id];
-        const hasMyResponse = myStatus !== undefined && !["declined", "withdrawn"].includes(myStatus);
+        const badge = getMarketBadge(myStatus);
+        // Can respond if not already responded (proposed = auto-matched = can still apply; declined = cannot)
+        const canRespond = !myStatus || myStatus === "proposed";
         const isOpen = expanded[order.id];
 
         return (
@@ -838,9 +874,9 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {myStatus && (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      {MATCH_STATUS_LABEL[myStatus] ?? myStatus}
+                  {badge && (
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badge.cls}`}>
+                      {badge.label}
                     </span>
                   )}
                   <span className="text-slate-300 text-xs">{isOpen ? "▲" : "▼"}</span>
@@ -856,7 +892,7 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
                     <span className="font-medium">{order.customer_name ?? "—"}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Дата создания:</span>{" "}
+                    <span className="text-slate-400">Дата размещения:</span>{" "}
                     <span className="font-medium">
                       {new Date(order.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}
                     </span>
@@ -876,7 +912,7 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
                   </p>
                 )}
 
-                {!hasMyResponse && (
+                {canRespond && (
                   <div className="border-t border-slate-100 pt-3 flex items-center gap-2 flex-wrap">
                     <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Могу взять с</label>
                     <input
@@ -896,11 +932,11 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
                   </div>
                 )}
 
-                {hasMyResponse && (
+                {!canRespond && badge && (
                   <div className="border-t border-slate-100 pt-3">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      {MATCH_STATUS_LABEL[myStatus] ?? "Вы откликнулись"}
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg ${badge.cls}`}>
+                      {myStatus === "can_start_from" && <CheckCircle2 className="w-3.5 h-3.5" />}
+                      {badge.label}
                     </span>
                   </div>
                 )}

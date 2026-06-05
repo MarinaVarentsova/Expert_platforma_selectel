@@ -313,7 +313,7 @@ export default function Home() {
           <CardGrid cols={3}>
             {EXPERT_STEPS.map(({ n, text, link }) => (
               <div key={n} className="p-6 bg-white">
-                <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">{n}</p>
+                <div className="w-6 h-[3px] bg-[#C0392B] mb-4 rounded-sm" />
                 <p className="text-sm font-bold text-[#111111] leading-snug">{text}</p>
                 {link && (
                   <a
@@ -336,7 +336,7 @@ export default function Home() {
           <CardGrid cols={4}>
             {MATCHING_STEPS.map(({ n, text }) => (
               <div key={n} className="p-6 bg-white">
-                <p className="text-xs font-bold text-[#0F4C9A] mb-4 tracking-wide">{n}</p>
+                <div className="w-6 h-[3px] bg-[#C0392B] mb-4 rounded-sm" />
                 <p className="text-sm font-bold text-[#111111] leading-snug">{text}</p>
               </div>
             ))}

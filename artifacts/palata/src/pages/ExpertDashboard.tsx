@@ -596,6 +596,7 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
   const [filterDirection, setFilterDirection] = useState("");
   const [filterRegion, setFilterRegion] = useState("");
   const [filterTravel, setFilterTravel] = useState<"all" | "remote" | "travel">("all");
+  const [filterMyStatus, setFilterMyStatus] = useState<"all" | "new" | "responded" | "declined">("all");
   const [sortBy, setSortBy] = useState<SortBy>("rating_desc");
   const [allDirs, setAllDirs] = useState<Array<{ id: string; name: string }>>([]);
   const [allRegs, setAllRegs] = useState<Array<{ id: string; name: string }>>([]);
@@ -754,6 +755,10 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
       if (filterRegion && o.region_id !== filterRegion) return false;
       if (filterTravel === "remote" && o.requires_travel) return false;
       if (filterTravel === "travel" && !o.requires_travel) return false;
+      const ms = myMatchStatuses[o.id];
+      if (filterMyStatus === "new" && ms && ms !== "proposed") return false;
+      if (filterMyStatus === "responded" && ms !== "can_start_from") return false;
+      if (filterMyStatus === "declined" && ms !== "declined" && ms !== "withdrawn") return false;
       return true;
     })
     .slice()
@@ -804,6 +809,16 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
           <option value="all">Все форматы</option>
           <option value="remote">Дистанционно</option>
           <option value="travel">Выезд</option>
+        </select>
+        <select
+          value={filterMyStatus}
+          onChange={e => setFilterMyStatus(e.target.value as "all" | "new" | "responded" | "declined")}
+          className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30"
+        >
+          <option value="all">Мой статус: все</option>
+          <option value="new">Новые (без действий)</option>
+          <option value="responded">Вы откликнулись</option>
+          <option value="declined">Вы отказались</option>
         </select>
         <select
           value={sortBy}

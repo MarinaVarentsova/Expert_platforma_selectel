@@ -36,7 +36,7 @@ export function Scene4() {
           animate={phase >= 1 ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
           transition={{ duration: 0.6, delay: 0.2 }}
         >
-          Шаг 4 & 5.
+          Шаг 3.
           <br/>
           <span className="text-[var(--color-secondary)]">Работа над заказом</span>
         </motion.h2>

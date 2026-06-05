@@ -34,7 +34,7 @@ export function Scene3() {
             animate={phase >= 1 ? { opacity: 1, x: 0 } : { opacity: 0, x: -50 }}
             transition={{ duration: 0.6 }}
           >
-            Шаг 2 & 3.
+            Шаг 2.
             <br/>
             <span className="text-[var(--color-secondary)] text-white/80">Подбор и Выбор</span>
           </motion.h2>

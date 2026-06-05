@@ -21,7 +21,7 @@ const PUBLIC_LINKS = [
   { id: "platform",   label: "Платформа" },
   { id: "customers",  label: "Заказчикам" },
   { id: "experts",    label: "Экспертам" },
-  { id: "palata-org", label: "Палата судебных экспертов" },
+  { id: "palata-org", label: "О Палате" },
 ];
 
 function scrollTo(id: string) {
@@ -74,17 +74,14 @@ export default function Nav() {
             href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 mr-4 sm:mr-6 cursor-pointer select-none shrink-0"
+            className="flex items-center mr-4 sm:mr-6 cursor-pointer select-none shrink-0"
           >
-            <img src="/logo.jpg" alt="Палата судебных экспертов" className="h-12 w-auto" />
-            <span className="hidden sm:block text-sm font-bold text-[#002B5C] leading-tight tracking-tight">
-              Палата<br />Судебных<br />Экспертов
-            </span>
+            <img src="/logo.jpg" alt="Палата судебных экспертов" className="h-14 w-auto rounded-lg" />
           </a>
 
           {/* Desktop nav links — always public, plus role links when authenticated */}
           {!isLoading && (
-            <div className="hidden md:flex items-center gap-1 flex-1 flex-wrap">
+            <div className="hidden lg:flex items-center gap-1 flex-1">
               {PUBLIC_LINKS.map(({ id, label }) => (
                 <button
                   key={id}
@@ -114,14 +111,14 @@ export default function Nav() {
           )}
 
           {/* Spacer mobile */}
-          <div className="flex-1 md:hidden" />
+          <div className="flex-1 lg:hidden" />
 
           {/* Right side */}
           <div className="flex items-center gap-2">
 
             {/* Authenticated user menu */}
             {isAuthenticated && user && (
-              <div className="relative hidden md:block" ref={menuRef}>
+              <div className="relative hidden lg:block" ref={menuRef}>
                 <button
                   onClick={() => setMenuOpen(v => !v)}
                   className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white border border-[#D0D0D0] text-[#002B5C] font-medium hover:border-[#0F4C9A] hover:shadow-sm transition-all"
@@ -152,7 +149,7 @@ export default function Nav() {
 
             {/* Non-authenticated desktop auth buttons */}
             {!isLoading && !isAuthenticated && (
-              <div className="hidden md:flex items-center gap-2">
+              <div className="hidden lg:flex items-center gap-2">
                 <Link href="/login">
                   <span className="inline-block px-4 py-1.5 rounded-full text-sm font-medium text-[#002B5C] border border-[#002B5C]/30 hover:border-[#002B5C] hover:bg-[#002B5C]/5 transition-all cursor-pointer">
                     Войти
@@ -168,7 +165,7 @@ export default function Nav() {
 
             {/* Mobile hamburger */}
             <button
-              className="md:hidden p-2 rounded-lg text-[#111111] hover:bg-[#F4F4F4] transition-colors"
+              className="lg:hidden p-2 rounded-lg text-[#111111] hover:bg-[#F4F4F4] transition-colors"
               onClick={() => setMobileOpen(v => !v)}
               aria-label={mobileOpen ? "Закрыть меню" : "Открыть меню"}
             >
@@ -180,7 +177,7 @@ export default function Nav() {
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="md:hidden fixed inset-0 z-20 bg-white top-[72px] overflow-y-auto">
+        <div className="lg:hidden fixed inset-0 z-20 bg-white top-[72px] overflow-y-auto">
           <div className="border-b border-[#D0D0D0]">
             <div className="px-4 py-3 space-y-1">
               {/* Always show public links */}

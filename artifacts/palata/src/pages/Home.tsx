@@ -111,10 +111,10 @@ export default function Home() {
 
         {/* Hero */}
         <div className={`${W} pt-10 pb-10 sm:pt-14 sm:pb-14`}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 xl:gap-14 items-center">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 xl:gap-14 items-center">
 
             {/* Left text */}
-            <div className="order-2 lg:order-1">
+            <div className="order-2 md:order-1">
               <div className="inline-flex items-center gap-2 border border-[#D0D0D0] text-[#666666] text-xs font-medium px-3 py-1.5 rounded-full mb-6">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Закрытая профессиональная платформа
@@ -132,7 +132,7 @@ export default function Home() {
             </div>
 
             {/* Right — video */}
-            <div className="order-1 lg:order-2">
+            <div className="order-1 md:order-2">
               <div className="rounded-2xl overflow-hidden shadow-xl border border-[#D0D0D0]" style={{ aspectRatio: "16/9" }}>
                 <iframe
                   src="/palata-promo/"

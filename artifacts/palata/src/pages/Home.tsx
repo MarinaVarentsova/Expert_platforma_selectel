@@ -261,8 +261,8 @@ export default function Home() {
 
             <CardGrid cols={4}>
               {SITUATIONS.map((s) => (
-                <div key={s.num} className="p-6 bg-white border-t-2 border-t-[#0F4C9A]">
-                  <p className="text-xs font-bold text-[#0F4C9A] mb-3 tracking-wide">{s.num}</p>
+                <div key={s.num} className="p-6 bg-white border-t-2 border-t-[#CC2222]">
+                  <div className="w-6 h-[2px] bg-[#CC2222] mb-4" />
                   <p className="text-sm font-bold text-[#111111] leading-snug mb-2">{s.title}</p>
                   <p className="text-xs text-[#666666] leading-relaxed">{s.desc}</p>
                 </div>

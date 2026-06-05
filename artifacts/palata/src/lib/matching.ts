@@ -1,4 +1,4 @@
-import { supabase, anonSupabase } from "./supabaseClient";
+import { supabase } from "./supabaseClient";
 import { createActionItem } from "./actionItems";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -138,45 +138,14 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
     throw new Error(profileErr?.message ?? "Failed to fetch expert profiles");
   }
 
-  // 4. For travel orders: build region map.
-  //    For remote orders: skip — region is not a filter criterion.
-  const expertRegionMap = new Map<string, Set<string>>();
-  if (requiresTravel && experts.length > 0) {
-    const expertIdList = (experts as unknown as ExpertForMatching[]).map(e => e.user_id);
-    // Use anonSupabase (no user JWT) so the "Anon read expert_regions"
-    // FOR SELECT TO anon USING (true) policy applies instead of
-    // "Expert manage own regions" FOR ALL, which would return 0 rows
-    // for a customer whose auth.uid() is not in palata_expert_regions.
-    const { data: regData } = await anonSupabase
-      .from("palata_expert_regions")
-      .select("expert_id, region_id")
-      .in("expert_id", expertIdList);
-
-    for (const row of regData ?? []) {
-      if (!expertRegionMap.has(row.expert_id)) {
-        expertRegionMap.set(row.expert_id, new Set());
-      }
-      expertRegionMap.get(row.expert_id)!.add(row.region_id);
-    }
-  }
-
   // 5. Filter + score
-  //    Scenario 1 (travel): must cover request region AND business_trip_ready = true
+  //    Scenario 1 (travel): business_trip_ready = true — регион не проверяем,
+  //    эксперт готов к командировке в любой регион.
   //    Scenario 2 / 4 (remote): no region restriction
-  const requestRegionSet = new Set(regionIds);
   const candidates: Array<{ expertId: string; score: number }> = [];
 
   for (const e of experts as unknown as ExpertForMatching[]) {
-    if (requiresTravel) {
-      if (!e.business_trip_ready) continue;
-      const expertRegions = expertRegionMap.get(e.user_id) ?? new Set<string>();
-      let regionMatch = false;
-      for (const rid of requestRegionSet) {
-        if (expertRegions.has(rid)) { regionMatch = true; break; }
-      }
-      if (!regionMatch) continue;
-    }
-
+    if (requiresTravel && !e.business_trip_ready) continue;
     candidates.push({ expertId: e.user_id, score: scoreExpert(e) });
   }
 

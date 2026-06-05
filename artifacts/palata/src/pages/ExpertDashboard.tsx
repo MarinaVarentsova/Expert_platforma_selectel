@@ -147,10 +147,10 @@ export default function ExpertDashboard() {
   const search = useSearch();
   const initialTab = (() => {
     const p = new URLSearchParams(search).get("tab");
-    if (p === "actions" || p === "profile") return p;
+    if (p === "actions" || p === "profile" || p === "market") return p;
     return "requests";
   })();
-  const [tab, setTab] = useState<"requests" | "actions" | "profile">(initialTab);
+  const [tab, setTab] = useState<"requests" | "actions" | "profile" | "market">(initialTab);
   const [matchState, setMatchState] = useState<MatchState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
   const [pendingRatingsState, setPendingRatingsState] = useState<PendingRatingsState>({ kind: "loading" });
@@ -455,6 +455,17 @@ export default function ExpertDashboard() {
             </span>
           )}
         </TabButton>
+        <button
+          onClick={() => setTab("market")}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all rounded-full border-b-2 -mb-px
+            ${tab === "market"
+              ? "bg-[#CC2222] text-white border-transparent shadow-sm"
+              : "border-transparent text-[#CC2222] hover:bg-[#CC2222]/10"
+            }`}
+        >
+          <Briefcase className="w-3.5 h-3.5" />
+          Рынок
+        </button>
       </div>
 
       {/* Tab: Requests */}
@@ -493,6 +504,14 @@ export default function ExpertDashboard() {
         </div>
       )}
 
+      {/* Tab: Market */}
+      {tab === "market" && (
+        <MarketTab
+          userId={user.id}
+          profile={profileState.kind === "ok" ? profileState.profile : null}
+        />
+      )}
+
       {/* Tab: Profile */}
       {tab === "profile" && (
         <>
@@ -517,6 +536,408 @@ export default function ExpertDashboard() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// ─── Market Tab ───────────────────────────────────────────────────────────────
+
+type MarketOrder = {
+  id: string;
+  title: string;
+  status: string;
+  expertise_direction_id: string | null;
+  region_id: string | null;
+  requires_travel: boolean;
+  description: string | null;
+  created_at: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  customer_rating: number | null;
+};
+
+type MarketState =
+  | { kind: "loading" }
+  | { kind: "ok"; orders: MarketOrder[]; myMatchStatuses: Record<string, string> }
+  | { kind: "error"; message: string };
+
+const MATCH_STATUS_LABEL: Record<string, string> = {
+  can_start_from: "Вы откликнулись",
+  proposed: "Вы предложены",
+  contacts_opened: "Контакты открыты",
+  accepted: "В работе",
+  accepted_work: "В работе",
+  declined: "Вы отказались",
+  withdrawn: "Отозвано",
+};
+
+function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile | null }) {
+  const [state, setState] = useState<MarketState>({ kind: "loading" });
+  const [filterDirection, setFilterDirection] = useState("");
+  const [filterRegion, setFilterRegion] = useState("");
+  const [filterTravel, setFilterTravel] = useState<"all" | "remote" | "travel">("all");
+  const [allDirs, setAllDirs] = useState<Array<{ id: string; name: string }>>([]);
+  const [allRegs, setAllRegs] = useState<Array<{ id: string; name: string }>>([]);
+  const [takeDates, setTakeDates] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    supabase.from("palata_expertise_directions").select("id, name").eq("is_active", true).order("sort_order")
+      .then(({ data }) => setAllDirs(data ?? []));
+    supabase.from("palata_regions").select("id, name").order("name")
+      .then(({ data }) => setAllRegs(data ?? []));
+  }, []);
+
+  useEffect(() => { loadMarket(); }, [userId]);
+
+  async function loadMarket() {
+    setState({ kind: "loading" });
+
+    if (!profile?.accepts_requests) {
+      setState({ kind: "ok", orders: [], myMatchStatuses: {} });
+      return;
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+
+    const [{ data: certs }, { data: expertRegions }] = await Promise.all([
+      supabase.from("palata_expert_certificates")
+        .select("cert_direction_ids, cert_valid_to")
+        .eq("expert_id", userId).eq("status", "verified").gte("cert_valid_to", today),
+      supabase.from("palata_expert_regions").select("region_id").eq("expert_id", userId),
+    ]);
+
+    if (!certs || certs.length === 0) {
+      setState({ kind: "ok", orders: [], myMatchStatuses: {} });
+      return;
+    }
+
+    const validDirIds = new Set<string>(
+      (certs as Array<{ cert_direction_ids: string[] }>).flatMap(c => c.cert_direction_ids ?? [])
+    );
+    const myRegionIds = new Set<string>(
+      (expertRegions ?? []).map((r: { region_id: string }) => r.region_id)
+    );
+
+    const { data: rawOrders, error } = await supabase
+      .from("palata_requests")
+      .select("id, title, status, expertise_direction_id, region_id, requires_travel, description, created_at, customer_id")
+      .in("status", ["matching", "expert_selection"]);
+
+    if (error) { setState({ kind: "error", message: error.message }); return; }
+
+    type RawOrder = {
+      id: string; title: string; status: string;
+      expertise_direction_id: string | null; region_id: string | null;
+      requires_travel: boolean; description: string | null;
+      created_at: string; customer_id: string | null;
+    };
+
+    const eligible = (rawOrders ?? [] as RawOrder[]).filter((o: RawOrder) => {
+      const dirId = o.expertise_direction_id;
+      if (!dirId || !validDirIds.has(dirId)) return false;
+      if (o.requires_travel) {
+        if (!profile?.business_trip_ready) return false;
+        if (o.region_id && !myRegionIds.has(o.region_id)) return false;
+      }
+      return true;
+    }) as RawOrder[];
+
+    if (eligible.length === 0) {
+      setState({ kind: "ok", orders: [], myMatchStatuses: {} });
+      return;
+    }
+
+    const eligibleIds = eligible.map(o => o.id);
+    const ACTIVE = ["proposed", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"];
+
+    const { data: matches } = await supabase
+      .from("palata_request_matches")
+      .select("request_id, expert_id, status")
+      .in("request_id", eligibleIds);
+
+    const matchList = (matches ?? []) as Array<{ request_id: string; expert_id: string; status: string }>;
+
+    const ordersWithActiveOtherMatch = new Set<string>(
+      matchList.filter(m => ACTIVE.includes(m.status) && m.expert_id !== userId).map(m => m.request_id)
+    );
+
+    const myMatchStatuses: Record<string, string> = {};
+    matchList.filter(m => m.expert_id === userId).forEach(m => { myMatchStatuses[m.request_id] = m.status; });
+
+    const marketOrders = eligible.filter(o =>
+      myMatchStatuses[o.id] !== undefined || !ordersWithActiveOtherMatch.has(o.id)
+    );
+
+    if (marketOrders.length === 0) {
+      setState({ kind: "ok", orders: [], myMatchStatuses });
+      return;
+    }
+
+    const customerIds = [...new Set(marketOrders.map(o => o.customer_id).filter(Boolean))] as string[];
+
+    const [{ data: customers }, { data: ratings }] = await Promise.all([
+      customerIds.length > 0
+        ? supabase.from("palata_users").select("id, full_name, email").in("id", customerIds)
+        : Promise.resolve({ data: [] }),
+      customerIds.length > 0
+        ? supabase.from("palata_customer_ratings").select("customer_id, score").in("customer_id", customerIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const ratingAcc: Record<string, number[]> = {};
+    for (const r of ratings ?? []) {
+      const cr = r as { customer_id: string; score: number };
+      if (!ratingAcc[cr.customer_id]) ratingAcc[cr.customer_id] = [];
+      ratingAcc[cr.customer_id].push(cr.score);
+    }
+    const avgRating = (id: string): number => {
+      const s = ratingAcc[id]; return s?.length ? s.reduce((a, b) => a + b, 0) / s.length : 0;
+    };
+    const custMap = Object.fromEntries(
+      (customers ?? []).map((u: { id: string; full_name: string | null; email: string }) => [u.id, u])
+    );
+
+    const result: MarketOrder[] = marketOrders.map(o => {
+      const c = o.customer_id ? custMap[o.customer_id] : null;
+      return {
+        ...o,
+        customer_name: c?.full_name ?? null,
+        customer_email: c?.email ?? null,
+        customer_rating: o.customer_id ? avgRating(o.customer_id) : null,
+      };
+    }).sort((a, b) => (b.customer_rating ?? 0) - (a.customer_rating ?? 0));
+
+    setState({ kind: "ok", orders: result, myMatchStatuses });
+  }
+
+  async function handleTake(order: MarketOrder) {
+    const date = takeDates[order.id];
+    if (!date) return;
+    setSubmitting(p => ({ ...p, [order.id]: true }));
+    try {
+      const { data: existing } = await supabase
+        .from("palata_request_matches").select("id").eq("request_id", order.id).eq("expert_id", userId).maybeSingle();
+
+      if (existing) {
+        await supabase.from("palata_request_matches")
+          .update({ status: "can_start_from", can_start_from_date: date, responded_at: new Date().toISOString() })
+          .eq("id", (existing as { id: string }).id);
+      } else {
+        await supabase.from("palata_request_matches").insert({
+          request_id: order.id, expert_id: userId,
+          status: "can_start_from", can_start_from_date: date,
+          matching_round: 99, responded_at: new Date().toISOString(),
+        });
+      }
+
+      await supabase.from("palata_status_events").insert({
+        entity_type: "match", entity_id: order.id,
+        old_status: "market", new_status: "can_start_from",
+        actor_id: null, note: `Эксперт откликнулся с рынка, может начать с ${date}`,
+      });
+
+      if (order.customer_id) {
+        const { data: eu } = await supabase.from("palata_users").select("full_name").eq("id", userId).single();
+        const expertName = (eu as { full_name: string | null } | null)?.full_name ?? "Эксперт";
+        const fmtDate = (d: string) => new Date(d).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
+        await createActionItem({
+          request_id: order.id, expert_id: userId,
+          customer_id: order.customer_id, assigned_to_user_id: order.customer_id,
+          assigned_role: "customer", action_type: "expert_can_start_from",
+          title: "Эксперт предложил дату начала",
+          description: `${expertName} может начать работу с ${fmtDate(date)}`,
+          payload: { request_id: order.id, expert_id: userId, can_start_from: date, expert_name: expertName },
+        });
+      }
+      await loadMarket();
+    } catch (_e) {
+      // silently retry
+    } finally {
+      setSubmitting(p => ({ ...p, [order.id]: false }));
+    }
+  }
+
+  const dirsMap = Object.fromEntries(allDirs.map(d => [d.id, d.name]));
+  const regsMap = Object.fromEntries(allRegs.map(r => [r.id, r.name]));
+
+  const filtered = state.kind === "ok" ? state.orders.filter(o => {
+    if (filterDirection && o.expertise_direction_id !== filterDirection) return false;
+    if (filterRegion && o.region_id !== filterRegion) return false;
+    if (filterTravel === "remote" && o.requires_travel) return false;
+    if (filterTravel === "travel" && !o.requires_travel) return false;
+    return true;
+  }) : [];
+
+  const myMatchStatuses = state.kind === "ok" ? state.myMatchStatuses : {};
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-sm font-bold text-slate-700">Заказы на рынке</h2>
+        {state.kind === "ok" && (
+          <button onClick={loadMarket} className="text-xs text-[#0F4C9A] hover:underline">Обновить</button>
+        )}
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-2 flex-wrap">
+        <select
+          value={filterDirection}
+          onChange={e => setFilterDirection(e.target.value)}
+          className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30"
+        >
+          <option value="">Все направления</option>
+          {allDirs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+        <select
+          value={filterRegion}
+          onChange={e => setFilterRegion(e.target.value)}
+          className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30"
+        >
+          <option value="">Все регионы</option>
+          {allRegs.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+        <select
+          value={filterTravel}
+          onChange={e => setFilterTravel(e.target.value as "all" | "remote" | "travel")}
+          className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30"
+        >
+          <option value="all">Все форматы</option>
+          <option value="remote">Только дистанционно</option>
+          <option value="travel">Только выезд</option>
+        </select>
+      </div>
+
+      {state.kind === "loading" && <LoadingRows />}
+      {state.kind === "error" && <ErrorCard message={state.message} />}
+
+      {state.kind === "ok" && !profile?.accepts_requests && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-700">
+          Для просмотра рынка включите приём заявок в профиле.
+        </div>
+      )}
+
+      {state.kind === "ok" && profile?.accepts_requests && filtered.length === 0 && (
+        <div className="text-center py-12 text-slate-400 text-sm">
+          <Briefcase className="w-8 h-8 mx-auto mb-2 opacity-30" />
+          <p>Нет подходящих заказов на рынке</p>
+          <p className="text-xs mt-1 text-slate-300">Заказы появятся, когда автоподбор не найдёт совпадений</p>
+        </div>
+      )}
+
+      {state.kind === "ok" && filtered.map(order => {
+        const myStatus = myMatchStatuses[order.id];
+        const hasMyResponse = myStatus !== undefined && !["declined", "withdrawn"].includes(myStatus);
+        const isOpen = expanded[order.id];
+
+        return (
+          <div key={order.id} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div
+              className="p-4 cursor-pointer hover:bg-slate-50 transition-colors"
+              onClick={() => setExpanded(p => ({ ...p, [order.id]: !p[order.id] }))}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 truncate">{order.title}</p>
+                  <div className="flex items-center gap-2 flex-wrap mt-1">
+                    {order.expertise_direction_id && (
+                      <span className="inline-flex items-center gap-1 text-[10px] bg-[#0F4C9A]/8 text-[#0F4C9A] px-2 py-0.5 rounded-full font-medium">
+                        <GraduationCap className="w-3 h-3" />
+                        {dirsMap[order.expertise_direction_id] ?? "—"}
+                      </span>
+                    )}
+                    {order.region_id && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+                        <MapPin className="w-3 h-3" />
+                        {regsMap[order.region_id] ?? "—"}
+                      </span>
+                    )}
+                    <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${order.requires_travel ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+                      {order.requires_travel ? "Выезд" : "Дистанционно"}
+                    </span>
+                    {order.customer_rating != null && order.customer_rating > 0 && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-600 font-semibold">
+                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                        {order.customer_rating.toFixed(1)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {myStatus && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {MATCH_STATUS_LABEL[myStatus] ?? myStatus}
+                    </span>
+                  )}
+                  <span className="text-slate-300 text-xs">{isOpen ? "▲" : "▼"}</span>
+                </div>
+              </div>
+            </div>
+
+            {isOpen && (
+              <div className="border-t border-slate-100 p-4 space-y-3 bg-slate-50/50">
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                  <div>
+                    <span className="text-slate-400">Заказчик:</span>{" "}
+                    <span className="font-medium">{order.customer_name ?? "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Дата создания:</span>{" "}
+                    <span className="font-medium">
+                      {new Date(order.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Регион:</span>{" "}
+                    <span className="font-medium">{order.region_id ? regsMap[order.region_id] ?? "—" : "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Формат:</span>{" "}
+                    <span className="font-medium">{order.requires_travel ? "Выезд" : "Дистанционно"}</span>
+                  </div>
+                </div>
+                {order.description && (
+                  <p className="text-xs text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+                    {order.description}
+                  </p>
+                )}
+
+                {!hasMyResponse && (
+                  <div className="border-t border-slate-100 pt-3 flex items-center gap-2 flex-wrap">
+                    <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Могу взять с</label>
+                    <input
+                      type="date"
+                      value={takeDates[order.id] ?? ""}
+                      min={new Date().toISOString().split("T")[0]}
+                      onChange={e => setTakeDates(p => ({ ...p, [order.id]: e.target.value }))}
+                      className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#CC2222]/30"
+                    />
+                    <button
+                      disabled={!takeDates[order.id] || submitting[order.id]}
+                      onClick={() => handleTake(order)}
+                      className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-[#CC2222] text-white hover:bg-[#A01818] transition-colors disabled:opacity-40"
+                    >
+                      {submitting[order.id] ? "…" : "Откликнуться"}
+                    </button>
+                  </div>
+                )}
+
+                {hasMyResponse && (
+                  <div className="border-t border-slate-100 pt-3">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {MATCH_STATUS_LABEL[myStatus] ?? "Вы откликнулись"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

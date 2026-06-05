@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "wouter";
-import { ClipboardList, Zap, Star, User } from "lucide-react";
+import { ClipboardList, Zap, Star, User, Briefcase } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrentUser } from "@/lib/authContext";
 
@@ -375,18 +375,23 @@ function ExpertTopNav({ userId, userName, userEmail }: {
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-slate-200 overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 scrollbar-none">
         {[
-          { tab: "requests", icon: <ClipboardList className="w-3.5 h-3.5" />, label: "Мои заказы", badge: 0 },
-          { tab: "actions",  icon: <Zap className="w-3.5 h-3.5" />,           label: "Требуют действия", badge: actionCount },
-        ].map(({ tab, icon, label, badge }) => {
+          { tab: "requests", icon: <ClipboardList className="w-3.5 h-3.5" />, label: "Мои заказы", badge: 0, red: false },
+          { tab: "actions",  icon: <Zap className="w-3.5 h-3.5" />,           label: "Требуют действия", badge: actionCount, red: false },
+          { tab: "market",   icon: <Briefcase className="w-3.5 h-3.5" />,     label: "Рынок", badge: 0, red: true },
+        ].map(({ tab, icon, label, badge, red }) => {
           const isActive = tab === "requests";
           return (
           <Link
             key={tab}
             href={`/expert?tab=${tab}`}
             className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all rounded-full border-b-2 -mb-px whitespace-nowrap ${
-              isActive
-                ? "bg-[#0F4C9A] text-white border-transparent shadow-sm"
-                : "border-transparent text-[#002B5C] hover:bg-[#0F4C9A]/10 hover:text-[#0F4C9A]"
+              red
+                ? isActive
+                  ? "bg-[#CC2222] text-white border-transparent shadow-sm"
+                  : "border-transparent text-[#CC2222] hover:bg-[#CC2222]/10"
+                : isActive
+                  ? "bg-[#0F4C9A] text-white border-transparent shadow-sm"
+                  : "border-transparent text-[#002B5C] hover:bg-[#0F4C9A]/10 hover:text-[#0F4C9A]"
             }`}
           >
             {icon}

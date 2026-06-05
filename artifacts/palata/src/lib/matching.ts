@@ -237,6 +237,27 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   return { matched: selected.length, round: nextRound, experts: selected };
 }
 
+// ─── Run matching for all pending orders ──────────────────────────────────────
+
+export async function runAllPendingMatching(): Promise<void> {
+  const { data: orders } = await supabase
+    .from("palata_requests")
+    .select("id, expertise_direction_id, region_id, requires_travel, customer_id")
+    .eq("status", "matching");
+
+  for (const order of orders ?? []) {
+    try {
+      await runMatching({
+        requestId:             order.id,
+        expertiseDirectionId:  order.expertise_direction_id ?? null,
+        regionIds:             order.region_id ? [order.region_id] : [],
+        requiresTravel:        order.requires_travel ?? false,
+        customerId:            order.customer_id ?? undefined,
+      });
+    } catch { /* non-fatal: continue with next */ }
+  }
+}
+
 // ─── Helper: no experts found ─────────────────────────────────────────────────
 
 type NoExpertsReason =

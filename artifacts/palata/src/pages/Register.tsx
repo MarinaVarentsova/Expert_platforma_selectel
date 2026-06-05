@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { runAllPendingMatching } from "@/lib/matching";
 import {
   ChevronLeft, Building2, GraduationCap, Check,
   Eye, EyeOff,
@@ -272,6 +273,10 @@ export default function Register() {
             regionIds.map(id => ({ expert_id: userId, region_id: id }))
           );
           if (erErr) console.error("[register] palata_expert_regions insert:", erErr.message);
+        }
+
+        if (role === "expert") {
+          runAllPendingMatching().catch(() => {});
         }
       }
       navigate(role === "customer" ? "/customer" : "/expert");

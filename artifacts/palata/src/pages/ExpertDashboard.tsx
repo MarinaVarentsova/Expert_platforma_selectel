@@ -595,32 +595,6 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
   async function loadMarket() {
     setState({ kind: "loading" });
 
-    if (!profile?.accepts_requests) {
-      setState({ kind: "ok", orders: [], myMatchStatuses: {} });
-      return;
-    }
-
-    const today = new Date().toISOString().split("T")[0];
-
-    const [{ data: certs }, { data: expertRegions }] = await Promise.all([
-      supabase.from("palata_expert_certificates")
-        .select("cert_direction_ids, cert_valid_to")
-        .eq("expert_id", userId).eq("status", "verified").gte("cert_valid_to", today),
-      supabase.from("palata_expert_regions").select("region_id").eq("expert_id", userId),
-    ]);
-
-    if (!certs || certs.length === 0) {
-      setState({ kind: "ok", orders: [], myMatchStatuses: {} });
-      return;
-    }
-
-    const validDirIds = new Set<string>(
-      (certs as Array<{ cert_direction_ids: string[] }>).flatMap(c => c.cert_direction_ids ?? [])
-    );
-    const myRegionIds = new Set<string>(
-      (expertRegions ?? []).map((r: { region_id: string }) => r.region_id)
-    );
-
     const { data: rawOrders, error } = await supabase
       .from("palata_requests")
       .select("id, title, status, expertise_direction_id, region_id, requires_travel, description, created_at, customer_id")
@@ -635,22 +609,14 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
       created_at: string; customer_id: string | null;
     };
 
-    const eligible = (rawOrders ?? [] as RawOrder[]).filter((o: RawOrder) => {
-      const dirId = o.expertise_direction_id;
-      if (!dirId || !validDirIds.has(dirId)) return false;
-      if (o.requires_travel) {
-        if (!profile?.business_trip_ready) return false;
-        if (o.region_id && !myRegionIds.has(o.region_id)) return false;
-      }
-      return true;
-    }) as RawOrder[];
+    const allOrders = (rawOrders ?? []) as RawOrder[];
 
-    if (eligible.length === 0) {
+    if (allOrders.length === 0) {
       setState({ kind: "ok", orders: [], myMatchStatuses: {} });
       return;
     }
 
-    const eligibleIds = eligible.map(o => o.id);
+    const eligibleIds = allOrders.map(o => o.id);
     const ACTIVE = ["proposed", "contacts_opened", "can_start_from", "accepted", "accepted_work", "completed"];
 
     const { data: matches } = await supabase
@@ -667,7 +633,7 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
     const myMatchStatuses: Record<string, string> = {};
     matchList.filter(m => m.expert_id === userId).forEach(m => { myMatchStatuses[m.request_id] = m.status; });
 
-    const marketOrders = eligible.filter(o =>
+    const marketOrders = allOrders.filter(o =>
       myMatchStatuses[o.id] !== undefined || !ordersWithActiveOtherMatch.has(o.id)
     );
 

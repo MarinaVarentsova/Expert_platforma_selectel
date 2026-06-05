@@ -6,26 +6,27 @@ export function Scene1() {
 
   useEffect(() => {
     const timers = [
-      setTimeout(() => setPhase(1), 400),
-      setTimeout(() => setPhase(2), 1400),
+      setTimeout(() => setPhase(1), 300),
+      setTimeout(() => setPhase(2), 1100),
     ];
     return () => timers.forEach(t => clearTimeout(t));
   }, []);
 
   return (
     <motion.div
-      className="absolute inset-0 flex flex-col items-center justify-center bg-transparent z-10"
-      initial={{ opacity: 0, scale: 1.05 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.92, filter: 'blur(10px)' }}
-      transition={{ duration: 0.8 }}
+      className="absolute inset-0 flex flex-col items-center justify-center z-10"
+      style={{ background: 'linear-gradient(135deg, #0F4C9A 0%, #002B5C 100%)' }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, scale: 0.96, filter: 'blur(8px)' }}
+      transition={{ duration: 0.6 }}
     >
-      {/* Logo */}
+      {/* Logo card */}
       <motion.div
-        initial={{ scale: 0.7, opacity: 0, y: 20 }}
-        animate={phase >= 1 ? { scale: 1, opacity: 1, y: 0 } : { scale: 0.7, opacity: 0, y: 20 }}
-        transition={{ type: 'spring', stiffness: 180, damping: 18 }}
-        className="mb-8"
+        initial={{ scale: 0.75, opacity: 0, y: 24 }}
+        animate={phase >= 1 ? { scale: 1, opacity: 1, y: 0 } : { scale: 0.75, opacity: 0, y: 24 }}
+        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+        className="mb-[3vw]"
       >
         <img
           src={`${import.meta.env.BASE_URL}logo.jpg`}
@@ -37,12 +38,12 @@ export function Scene1() {
 
       {/* Tagline */}
       <motion.p
-        className="text-[2vw] font-medium text-[var(--color-secondary)] tracking-wide uppercase"
-        initial={{ opacity: 0, y: 16 }}
-        animate={phase >= 2 ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
-        transition={{ duration: 0.6 }}
+        className="text-[1.8vw] font-semibold text-white tracking-[0.25em] uppercase"
+        initial={{ opacity: 0, y: 14 }}
+        animate={phase >= 2 ? { opacity: 1, y: 0 } : { opacity: 0, y: 14 }}
+        transition={{ duration: 0.7 }}
       >
-        Прозрачность и надежность на каждом этапе
+        Платформа профессиональных экспертов
       </motion.p>
     </motion.div>
   );

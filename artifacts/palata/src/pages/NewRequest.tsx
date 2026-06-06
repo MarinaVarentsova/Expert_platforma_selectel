@@ -69,7 +69,15 @@ export default function NewRequest() {
   useEffect(() => {
     supabase.from("palata_regions").select("id, name")
       .order("sort_order").order("name")
-      .then(({ data }) => setAllRegions(data ?? []));
+      .then(({ data }) => {
+        const list = data ?? [];
+        list.sort((a, b) => {
+          if (a.name === "Вся Россия") return -1;
+          if (b.name === "Вся Россия") return 1;
+          return 0;
+        });
+        setAllRegions(list);
+      });
   }, []);
 
   const [form, setForm] = useState<FormData>({

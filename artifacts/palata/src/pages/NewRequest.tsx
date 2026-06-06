@@ -327,10 +327,24 @@ export default function NewRequest() {
               </p>
             </div>
           ) : (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 mb-8 text-left">
-              <p className="text-sm font-semibold text-amber-800 mb-1">Автоподбор не нашёл экспертов</p>
-              <p className="text-xs text-amber-700 leading-relaxed">
-                Администратор займётся подбором вручную и свяжется с вами.
+            <div className="bg-[#F4F6FA] border border-[#D0D8E8] rounded-xl px-5 py-5 mb-8 text-center">
+              {/* Radar widget */}
+              <div className="flex items-center justify-center mb-3">
+                <div className="relative w-14 h-14 flex items-center justify-center">
+                  <span className="absolute inline-flex w-14 h-14 rounded-full bg-[#0F4C9A]/10 animate-ping" style={{ animationDuration: "1.8s" }} />
+                  <span className="absolute inline-flex w-10 h-10 rounded-full bg-[#0F4C9A]/15 animate-ping" style={{ animationDuration: "1.8s", animationDelay: "0.3s" }} />
+                  <span className="relative w-7 h-7 rounded-full bg-[#0F4C9A]/20 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-[#0F4C9A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <circle cx="11" cy="11" r="8" />
+                      <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+                    </svg>
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm font-semibold text-[#002B5C] mb-1">Поиск продолжается</p>
+              <p className="text-xs text-[#555555] leading-relaxed">
+                Мы не останавливаемся — система продолжает искать подходящих экспертов
+                и уведомит вас, как только найдёт кандидатов.
               </p>
             </div>
           )}

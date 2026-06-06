@@ -541,11 +541,6 @@ export default function ExpertDashboard() {
                 allDirections={allDirections}
                 onSave={reloadProfile}
               />
-              <DocumentsSection
-                userId={user.id}
-                docsState={docsState}
-                onReload={reloadDocs}
-              />
             </div>
           )}
         </>

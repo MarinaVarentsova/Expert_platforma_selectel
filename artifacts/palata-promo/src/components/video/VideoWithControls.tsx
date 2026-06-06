@@ -290,7 +290,7 @@ export default function VideoWithControls() {
 
           {/* Logo */}
           <a
-            href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+            href="https://палатаэкспертов.рф/"
             target="_blank"
             rel="noopener noreferrer"
             className="relative z-10 block hover:scale-105 active:scale-95 transition-transform duration-200"

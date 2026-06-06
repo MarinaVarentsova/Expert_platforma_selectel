@@ -62,7 +62,7 @@ export default function Register() {
   const [registeredDirNames, setRegisteredDirNames] = useState<string[]>([]);
   const [certWarnings, setCertWarnings]             = useState<string[]>([]);
 
-  const PALATA_URL = "https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/";
+  const PALATA_URL = "палатаэкспертов.рф";
 
   useEffect(() => {
     supabase.from("palata_expertise_directions")

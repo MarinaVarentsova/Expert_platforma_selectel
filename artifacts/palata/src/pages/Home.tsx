@@ -66,7 +66,7 @@ const EXPERT_STEPS = [
   {
     n: "1",
     text: "Оформите сертификат Палаты судебных экспертов по своему направлению.",
-    link: { href: "https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/", label: "Перейти на сайт Палаты →" },
+    link: { href: "https://палатаэкспертов.рф/", label: "палатаэкспертов.рф →" },
   },
   { n: "2", text: "Зарегистрируйтесь на платформе и заполните профиль эксперта." },
   { n: "3", text: "Начните получать интересные заказы для реализации профессиональных навыков." },
@@ -354,7 +354,7 @@ export default function Home() {
 
             <div>
               <a
-                href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+                href="https://палатаэкспертов.рф/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 mb-6 cursor-pointer group"

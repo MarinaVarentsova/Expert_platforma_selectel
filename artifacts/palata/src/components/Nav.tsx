@@ -71,7 +71,7 @@ export default function Nav() {
 
           {/* Brand */}
           <a
-            href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+            href="https://палатаэкспертов.рф/"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center mr-4 sm:mr-6 cursor-pointer select-none shrink-0"

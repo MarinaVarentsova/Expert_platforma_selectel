@@ -990,12 +990,12 @@ function MarketTab({ userId, profile, allDirections }: {
                           Вам необходимо получить сертификат Палаты судебных экспертов
                           по данному направлению, прежде чем откликаться на этот заказ.{" "}
                           <a
-                            href="https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/"
+                            href="https://палатаэкспертов.рф/"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="underline font-semibold text-amber-900 hover:text-amber-700"
                           >
-                            Получить сертификат →
+                            палатаэкспертов.рф
                           </a>
                         </p>
                       </div>
@@ -1074,7 +1074,7 @@ function ProfileView({
   const [certVerifying, setCertVerifying] = useState<boolean[]>([false]);
   const [certWarnMsgs, setCertWarnMsgs]   = useState<string[]>([]);
 
-  const PALATA_URL = "https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/";
+  const PALATA_URL = "палатаэкспертов.рф";
 
   useEffect(() => {
     supabase.from("palata_expert_directions")

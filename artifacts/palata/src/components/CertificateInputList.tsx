@@ -1,3 +1,4 @@
+import React from "react";
 import { Plus, Trash2, CheckCircle2, XCircle, Clock, Loader2 } from "lucide-react";
 import type { CertResult, CertStatus } from "@/lib/certificates";
 
@@ -23,7 +24,21 @@ function StatusBadge({ result, verifying }: { result: CertResult | null; verifyi
   }
   if (!result || result.status === "idle") return null;
 
-  const map: Record<CertStatus, { icon: React.ReactNode; text: string; cls: string }> = {
+  const certNotFoundMsg = (
+    <>
+      Сертификат {result.raw.trim()} не найден или срок его действия истёк. Новый сертификат можно получить на сайте{" "}
+      <a
+        href="https://палатаэкспертов.рф/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline font-semibold hover:opacity-75"
+      >
+        палатаэкспертов.рф
+      </a>
+    </>
+  );
+
+  const map: Record<CertStatus, { icon: React.ReactNode; text: React.ReactNode; cls: string }> = {
     verified: {
       icon: <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />,
       text: result.directionNames.length > 0
@@ -33,12 +48,12 @@ function StatusBadge({ result, verifying }: { result: CertResult | null; verifyi
     },
     not_found: {
       icon: <XCircle className="w-3.5 h-3.5 flex-shrink-0" />,
-      text: `Сертификат ${result.raw.trim()} не найден или срок его действия истёк. Новый сертификат можно получить на сайте Палаты: https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/`,
+      text: certNotFoundMsg,
       cls: "text-amber-700 bg-amber-50 border-amber-200",
     },
     expired: {
       icon: <Clock className="w-3.5 h-3.5 flex-shrink-0" />,
-      text: `Сертификат ${result.raw.trim()} не найден или срок его действия истёк. Новый сертификат можно получить на сайте Палаты: https://xn--80aaaio3ae2acfmjkg3n.xn--p1ai/`,
+      text: certNotFoundMsg,
       cls: "text-amber-700 bg-amber-50 border-amber-200",
     },
     no_name: {

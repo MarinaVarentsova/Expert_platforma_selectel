@@ -13,7 +13,7 @@ import {
 import {
   Inbox, Star, User, CheckCircle2, XCircle, MapPin,
   Briefcase, FileText, GraduationCap, ClipboardList, Zap, Calendar,
-  Pencil, X, Upload, Phone, BarChart3, TrendingUp, AlertTriangle, Lightbulb,
+  Pencil, X, Upload, Phone,
 } from "lucide-react";
 import {
   loadOpenActionItems, createActionItem, resolveActionItem, cancelRequestActionItems,
@@ -147,10 +147,10 @@ export default function ExpertDashboard() {
   const search = useSearch();
   const initialTab = (() => {
     const p = new URLSearchParams(search).get("tab");
-    if (p === "actions" || p === "profile" || p === "market" || p === "metrics") return p;
+    if (p === "actions" || p === "profile" || p === "market") return p;
     return "requests";
   })();
-  const [tab, setTab] = useState<"requests" | "actions" | "profile" | "market" | "metrics">(initialTab);
+  const [tab, setTab] = useState<"requests" | "actions" | "profile" | "market">(initialTab);
   const [matchState, setMatchState] = useState<MatchState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
   const [pendingRatingsState, setPendingRatingsState] = useState<PendingRatingsState>({ kind: "loading" });
@@ -207,12 +207,22 @@ export default function ExpertDashboard() {
 
     const reqIds = completedMatches.map(m => m.request_id);
 
-    // Check which ones have customer ratings by this expert
-    const { data: ratings } = await supabase
-      .from("palata_customer_ratings")
-      .select("request_id")
-      .eq("expert_id", userId)
-      .in("request_id", reqIds);
+    // Derive all customer ids upfront so we can run ratings + users in parallel
+    const allCustomerIds = [...new Set(
+      completedMatches.map(m => getReq(m)?.customer_id).filter(Boolean)
+    )] as string[];
+
+    // Parallel: check which requests are already rated + fetch customer info
+    const [{ data: ratings }, { data: customers }] = await Promise.all([
+      supabase
+        .from("palata_customer_ratings")
+        .select("request_id")
+        .eq("expert_id", userId)
+        .in("request_id", reqIds),
+      allCustomerIds.length > 0
+        ? supabase.from("palata_users").select("id, full_name, email").in("id", allCustomerIds)
+        : Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string }[] }),
+    ]);
 
     const ratedReqIds = new Set((ratings ?? []).map((r: { request_id: string }) => r.request_id));
     const unratedMatches = completedMatches.filter(m => !ratedReqIds.has(m.request_id));
@@ -228,15 +238,6 @@ export default function ExpertDashboard() {
       setPendingRatingsState({ kind: "ok", items: [] });
       return;
     }
-
-    // Fetch customer info
-    const customerIds = [...new Set(
-      unratedMatches.map(m => getReq(m)?.customer_id).filter(Boolean)
-    )] as string[];
-
-    const { data: customers } = customerIds.length > 0
-      ? await supabase.from("palata_users").select("id, full_name, email").in("id", customerIds)
-      : { data: [] };
 
     const custMap = Object.fromEntries(
       (customers ?? []).map((u: { id: string; full_name: string | null; email: string }) => [u.id, u])
@@ -472,10 +473,6 @@ export default function ExpertDashboard() {
           <Briefcase className="w-3.5 h-3.5" />
           Рынок
         </button>
-        <TabButton active={tab === "metrics"} onClick={() => setTab("metrics")}>
-          <BarChart3 className="w-3.5 h-3.5" />
-          Метрики
-        </TabButton>
       </div>
 
       {/* Tab: Requests */}
@@ -521,9 +518,6 @@ export default function ExpertDashboard() {
           profile={profileState.kind === "ok" ? profileState.profile : null}
         />
       )}
-
-      {/* Tab: Metrics */}
-      {tab === "metrics" && <MetricsTab userId={user.id} />}
 
       {/* Tab: Profile */}
       {tab === "profile" && (
@@ -630,7 +624,9 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
     const { data: rawOrders, error } = await supabase
       .from("palata_requests")
       .select("id, title, status, expertise_direction_id, region_id, requires_travel, description, created_at, customer_id")
-      .not("status", "in", `(${HIDDEN_STATUSES.map(s => `"${s}"`).join(",")})`);
+      .not("status", "in", `(${HIDDEN_STATUSES.map(s => `"${s}"`).join(",")})`)
+      .order("created_at", { ascending: false })
+      .limit(200);
 
     if (error) { setState({ kind: "error", message: error.message }); return; }
 
@@ -1008,318 +1004,6 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
           </div>
         );
       })}
-    </div>
-  );
-}
-
-// ─── Metrics Tab ───────────────────────────────────────────────────────────────
-
-type DirCount = { id: string; name: string; count: number };
-type Recommendation = { id: string; name: string; orders: number; experts: number; score: number };
-
-type MetricsData = {
-  myRating:       number | null;
-  avgDirRating:   number | null;
-  completedCount: number;
-  conversionRate: number | null;
-  topPlatform:    DirCount[];
-  topRemote:      DirCount[];
-  topTravel:      DirCount[];
-  missed:         DirCount[];
-  recommendations: Recommendation[];
-};
-
-function MetricsTab({ userId }: { userId: string }) {
-  const [data, setData]     = useState<MetricsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr]       = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const today         = new Date().toISOString().slice(0, 10);
-        const ago90         = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-
-        const [ratRes, matchRes, regRes, myCertRes, ordRes, allCertRes, dirRes] = await Promise.all([
-          supabase.from("palata_expert_ratings").select("score").eq("expert_id", userId),
-          supabase.from("palata_request_matches").select("status, responded_at").eq("expert_id", userId),
-          supabase.from("palata_expert_regions").select("region_id").eq("expert_id", userId),
-          supabase.from("palata_expert_certificates")
-            .select("cert_direction_ids").eq("expert_id", userId)
-            .eq("status", "verified").gte("cert_valid_to", today),
-          supabase.from("palata_requests")
-            .select("expertise_direction_id, requires_travel, region_id")
-            .gte("created_at", ago90)
-            .not("expertise_direction_id", "is", null),
-          supabase.from("palata_expert_certificates")
-            .select("expert_id, cert_direction_ids")
-            .eq("status", "verified").gte("cert_valid_to", today),
-          supabase.from("palata_expertise_directions").select("id, name").eq("is_active", true),
-        ]);
-
-        if (cancelled) return;
-
-        // Direction lookup map
-        const dirMap: Record<string, string> = {};
-        for (const d of (dirRes.data ?? []) as { id: string; name: string }[]) dirMap[d.id] = d.name;
-
-        // Block 1.1 — My rating
-        const rats = (ratRes.data ?? []) as { score: number }[];
-        const myRating = rats.length ? rats.reduce((s, r) => s + r.score, 0) / rats.length : null;
-
-        // Block 1.3 / 1.4 — Completed + Conversion
-        const matches = (matchRes.data ?? []) as { status: string; responded_at: string | null }[];
-        const completedCount = matches.filter(m => m.status === "completed").length;
-        const selectedCount  = matches.filter(m => m.responded_at !== null).length;
-        const conversionRate = selectedCount > 0 ? (completedCount / selectedCount) * 100 : null;
-
-        // My cert direction ids
-        const myCertDirs = new Set<string>();
-        for (const c of (myCertRes.data ?? []) as { cert_direction_ids: string[] }[])
-          for (const id of c.cert_direction_ids ?? []) myCertDirs.add(id);
-
-        // Block 1.2 — Avg rating among peers (experts sharing ≥1 direction with me)
-        const allCerts = (allCertRes.data ?? []) as { expert_id: string; cert_direction_ids: string[] }[];
-        const peerIds  = new Set<string>();
-        for (const c of allCerts) {
-          if (c.expert_id === userId) continue;
-          if ((c.cert_direction_ids ?? []).some(id => myCertDirs.has(id))) peerIds.add(c.expert_id);
-        }
-        let avgDirRating: number | null = null;
-        if (peerIds.size > 0) {
-          const { data: pr } = await supabase
-            .from("palata_expert_ratings").select("score").in("expert_id", [...peerIds]);
-          const prs = (pr ?? []) as { score: number }[];
-          avgDirRating = prs.length ? prs.reduce((s, r) => s + r.score, 0) / prs.length : null;
-        }
-
-        // My region ids
-        const myRegions = new Set((regRes.data ?? []).map((r: { region_id: string }) => r.region_id));
-
-        // Group recent orders
-        const orders = (ordRes.data ?? []) as { expertise_direction_id: string; requires_travel: boolean; region_id: string | null }[];
-        const allCnt:    Record<string, number> = {};
-        const remoteCnt: Record<string, number> = {};
-        const travelCnt: Record<string, number> = {};
-        for (const o of orders) {
-          const d = o.expertise_direction_id;
-          allCnt[d]    = (allCnt[d]    ?? 0) + 1;
-          if (!o.requires_travel)
-            remoteCnt[d] = (remoteCnt[d] ?? 0) + 1;
-          if (o.requires_travel && o.region_id && myRegions.has(o.region_id))
-            travelCnt[d] = (travelCnt[d] ?? 0) + 1;
-        }
-
-        const topOf = (cnt: Record<string, number>, n: number): DirCount[] =>
-          Object.entries(cnt).sort(([, a], [, b]) => b - a).slice(0, n)
-            .map(([id, count]) => ({ id, name: dirMap[id] ?? "—", count }));
-
-        const topPlatform = topOf(allCnt, 10);
-        const topRemote   = topOf(remoteCnt, 10);
-        const topTravel   = topOf(travelCnt, 10);
-
-        // Block 5 — Missed
-        const missed = topOf(allCnt, 30).filter(d => !myCertDirs.has(d.id)).slice(0, 10);
-
-        // Block 6 — Recommendations: score = orders / active_experts
-        const expertsPerDir: Record<string, Set<string>> = {};
-        for (const c of allCerts)
-          for (const id of c.cert_direction_ids ?? []) {
-            if (!expertsPerDir[id]) expertsPerDir[id] = new Set();
-            expertsPerDir[id].add(c.expert_id);
-          }
-
-        const recommendations: Recommendation[] = Object.entries(allCnt)
-          .map(([id, orders]) => {
-            const experts = expertsPerDir[id]?.size ?? 0;
-            const score   = experts > 0 ? orders / experts : orders;
-            return { id, name: dirMap[id] ?? "—", orders, experts, score };
-          })
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 5);
-
-        if (!cancelled)
-          setData({ myRating, avgDirRating, completedCount, conversionRate, topPlatform, topRemote, topTravel, missed, recommendations });
-      } catch (e) {
-        if (!cancelled) setErr((e as Error).message ?? "Ошибка загрузки");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [userId]);
-
-  if (loading) return (
-    <div className="flex items-center gap-3 py-12 text-sm text-slate-400">
-      <div className="h-4 w-4 rounded-full border-2 border-[#D0D0D0] border-t-[#0F4C9A] animate-spin" />
-      Загрузка метрик…
-    </div>
-  );
-  if (err) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>;
-  if (!data) return null;
-
-  const fmtRating = (v: number | null) => v != null ? v.toFixed(1) : "—";
-  const maxCount  = (arr: DirCount[]) => arr[0]?.count ?? 1;
-
-  return (
-    <div className="space-y-8 pb-8">
-
-      {/* ── Block 1: Моя позиция ─────────────────────────────────── */}
-      <section>
-        <SectionHeader Icon={Star} title="Моя позиция" />
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <MetricKpi label="Мой рейтинг" value={fmtRating(data.myRating)} sub="средний балл" color="indigo" />
-          <MetricKpi label="Средний по направлениям" value={fmtRating(data.avgDirRating)} sub="среди коллег" color="slate" />
-          <MetricKpi label="Выполнено заказов" value={String(data.completedCount)} sub="всего" color="emerald" />
-          <MetricKpi
-            label="Конверсия"
-            value={data.conversionRate != null ? `${data.conversionRate.toFixed(0)}%` : "—"}
-            sub="завершено / выбран"
-            color="amber"
-          />
-        </div>
-      </section>
-
-      {/* ── Block 2: ТОП-10 платформы ────────────────────────────── */}
-      <section>
-        <SectionHeader Icon={BarChart3} title="ТОП-10 направлений платформы" sub="Последние 90 дней" />
-        {data.topPlatform.length === 0
-          ? <EmptyMetric text="Нет данных за последние 90 дней" />
-          : <DirBar rows={data.topPlatform} max={maxCount(data.topPlatform)} color="#0F4C9A" />}
-      </section>
-
-      {/* ── Block 3: ТОП-10 дистанционно ────────────────────────── */}
-      <section>
-        <SectionHeader Icon={TrendingUp} title="ТОП-10 дистанционной работы" sub="Последние 90 дней · requires_travel = false" />
-        {data.topRemote.length === 0
-          ? <EmptyMetric text="Нет заказов без выезда за последние 90 дней" />
-          : <DirBar rows={data.topRemote} max={maxCount(data.topRemote)} color="#0F4C9A" />}
-      </section>
-
-      {/* ── Block 4: ТОП-10 выездные в моих регионах ─────────────── */}
-      <section>
-        <SectionHeader Icon={MapPin} title="ТОП-10 выездных в моих регионах" sub="Последние 90 дней · заказы с выездом в ваших регионах" />
-        {data.topTravel.length === 0
-          ? <EmptyMetric text="Нет выездных заказов в ваших регионах за 90 дней" />
-          : <DirBar rows={data.topTravel} max={maxCount(data.topTravel)} color="#CC2222" />}
-      </section>
-
-      {/* ── Block 5: Упущенные возможности ───────────────────────── */}
-      <section>
-        <SectionHeader Icon={AlertTriangle} title="Упущенные возможности" sub="Направления с активным спросом, по которым у вас нет сертификата" />
-        {data.missed.length === 0
-          ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800 font-medium">
-              У вас есть сертификаты по всем востребованным направлениям 🎉
-            </div>
-          : (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
-              {data.missed.map((d, i) => (
-                <div key={d.id} className={`flex items-center justify-between px-5 py-3 ${i > 0 ? "border-t border-amber-100" : ""}`}>
-                  <span className="text-sm font-medium text-amber-900">{d.name}</span>
-                  <span className="text-xs text-amber-700 font-semibold">{d.count} зак.</span>
-                </div>
-              ))}
-            </div>
-          )}
-      </section>
-
-      {/* ── Block 6: Рекомендации платформы ──────────────────────── */}
-      <section>
-        <SectionHeader Icon={Lightbulb} title="Рекомендации платформы" sub="ТОП-5 направлений по индексу дефицита: чем выше — тем выгоднее сертификат" />
-        {data.recommendations.length === 0
-          ? <EmptyMetric text="Недостаточно данных для рекомендаций" />
-          : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {data.recommendations.map((r, i) => (
-                <div key={r.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <p className="text-sm font-semibold text-[#002B5C] leading-snug">{r.name}</p>
-                    <span className={`flex-shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${
-                      i === 0 ? "bg-red-100 text-red-700" : i === 1 ? "bg-orange-100 text-orange-700" : "bg-amber-100 text-amber-700"
-                    }`}>
-                      #{i + 1}
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-xs text-slate-500">
-                    <div className="flex justify-between">
-                      <span>Заказов (90 дней)</span>
-                      <span className="font-semibold text-slate-700">{r.orders}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Активных экспертов</span>
-                      <span className="font-semibold text-slate-700">{r.experts}</span>
-                    </div>
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-xs text-slate-500">Индекс дефицита</span>
-                    <span className="text-lg font-bold text-[#0F4C9A]">{r.score.toFixed(1)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-      </section>
-    </div>
-  );
-}
-
-function SectionHeader({ Icon, title, sub }: { Icon: React.ElementType; title: string; sub?: string }) {
-  return (
-    <div className="flex items-center gap-3 mb-4">
-      <div className="w-8 h-8 rounded-lg bg-[#EEF3FB] flex items-center justify-center flex-shrink-0">
-        <Icon className="w-4 h-4 text-[#0F4C9A]" />
-      </div>
-      <div>
-        <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-        {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
-function MetricKpi({ label, value, sub, color }: { label: string; value: string; sub: string; color: "indigo" | "slate" | "emerald" | "amber" }) {
-  const palette = {
-    indigo:  "bg-[#EEF3FB] text-[#0F4C9A]",
-    slate:   "bg-slate-100 text-slate-600",
-    emerald: "bg-emerald-50 text-emerald-700",
-    amber:   "bg-amber-50 text-amber-700",
-  };
-  return (
-    <div className={`rounded-xl p-4 ${palette[color]}`}>
-      <p className="text-[11px] font-medium opacity-70 leading-tight mb-1">{label}</p>
-      <p className="text-2xl font-bold tabular-nums">{value}</p>
-      <p className="text-[10px] opacity-60 mt-0.5">{sub}</p>
-    </div>
-  );
-}
-
-function DirBar({ rows, max, color }: { rows: DirCount[]; max: number; color: string }) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-      {rows.map((d, i) => (
-        <div key={d.id} className={`flex items-center gap-3 px-4 py-2.5 ${i > 0 ? "border-t border-slate-50" : ""}`}>
-          <span className="text-[11px] text-slate-400 w-4 text-right flex-shrink-0">{i + 1}</span>
-          <span className="flex-1 text-xs font-medium text-slate-700 truncate">{d.name}</span>
-          <div className="w-28 flex items-center gap-2">
-            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{ width: `${(d.count / max) * 100}%`, backgroundColor: color }}
-              />
-            </div>
-            <span className="text-[11px] font-semibold text-slate-600 w-8 text-right">{d.count}</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function EmptyMetric({ text }: { text: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-400">
-      {text}
     </div>
   );
 }

@@ -119,6 +119,11 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   );
 
   if (qualifiedIdList.length === 0) {
+    // If there are still active proposals from a prior round, do NOT downgrade the
+    // request status back to "matching" — those proposals are still valid.
+    if (activelyProposedIds.size > 0) {
+      return { matched: 0, round: nextRound, experts: [] };
+    }
     await _handleNoExperts(requestId, nextRound, input, "no_valid_cert_for_direction");
     return { matched: 0, round: nextRound, experts: [] };
   }
@@ -179,6 +184,10 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   }
 
   if (candidates.length === 0) {
+    // Same guard: if prior-round proposals are still pending, don't revert status.
+    if (activelyProposedIds.size > 0) {
+      return { matched: 0, round: nextRound, experts: [] };
+    }
     await _handleNoExperts(requestId, nextRound, input, "no_candidates_after_filter");
     return { matched: 0, round: nextRound, experts: [] };
   }

@@ -315,7 +315,7 @@ export default function NewRequest() {
                 Подобрано {state.matchedCount} эксперт{state.matchedCount === 1 ? "" : state.matchedCount < 5 ? "а" : "ов"}
               </p>
               <p className="text-xs text-[#666666] leading-relaxed">
-                Эксперты получат предложение и смогут принять заказ. Как только кто-то примет — вы увидите уведомление во вкладке «Требуют действия».
+                Перейдите в заказ для выбора экспертов.
               </p>
             </div>
           ) : (

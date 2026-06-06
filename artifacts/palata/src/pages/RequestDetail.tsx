@@ -1490,15 +1490,34 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           </div>
 
           {custUI.kind === "error" && (
-            <div className="mb-3 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
               {custUI.message}
               <button className="ml-2 underline" onClick={() => setCustUI({ kind: "idle" })}>Закрыть</button>
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2 items-start">
+          {/* ── Primary CTA: выбор эксперта ── */}
+          {isOrderActive && r.status === "expert_selection" && matches.some(m => CUSTOMER_CAN_SELECT.has(m.status)) && custUI.kind === "idle" && (
+            <div className="mb-5 p-4 rounded-xl bg-[#EEF3FB] border border-[#C5D6F0]">
+              <p className="text-base font-bold text-[#002B5C] mb-1">Подберите эксперта</p>
+              <p className="text-xs text-[#555555] mb-3">
+                Ниже показаны профили подобранных экспертов. Нажмите «Выбрать эксперта» под карточкой нужного.
+              </p>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  document.getElementById("experts-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >
+                Перейти к выбору ↓
+              </button>
+            </div>
+          )}
+
+          {/* ── Secondary actions ── */}
+          <div className="flex flex-wrap gap-2 items-center">
             {isOrderActive && !["in_work", "in_progress", "completed", "cancelled"].includes(r.status) && custUI.kind === "idle" && (
-              <button className="btn-primary" onClick={handleRematch} disabled={matchingRunning}>
+              <button className="btn-ghost border border-slate-300 text-slate-600 hover:bg-slate-50" onClick={handleRematch} disabled={matchingRunning}>
                 {matchingRunning ? "Идёт подбор…" : "Запустить автоподбор"}
               </button>
             )}
@@ -1512,13 +1531,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             )}
             {!isOrderActive && (
               <p className="text-xs text-slate-400 italic">Заказ завершён — действия недоступны</p>
-            )}
-
-            {/* Prompt: select expert from matched list below */}
-            {isOrderActive && r.status === "expert_selection" && matches.some(m => CUSTOMER_CAN_SELECT.has(m.status)) && custUI.kind === "idle" && (
-              <div className="w-full mt-1 p-3 rounded-lg bg-[#F4F4F4] border border-[#D0D0D0] text-xs text-[#002B5C]">
-                <span className="font-semibold">Подберите эксперта</span> — ниже показаны профили подобранных экспертов. Нажмите «Выбрать эксперта» под карточкой нужного.
-              </div>
             )}
           </div>
         </Card>
@@ -1934,7 +1946,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
       {/* ══ 6. ПОДОБРАННЫЕ ЭКСПЕРТЫ (customer + admin) ══════════════════════ */}
       {(role === "customer" || role === "admin") && (
-        <Card title="Подобранные эксперты" count={matches.length}>
+        <Card id="experts-section" title="Подобранные эксперты" count={matches.length}>
           {matches.length === 0 ? <Empty text="Эксперты ещё не подбирались" /> : (
             <div className="space-y-4">
               {matches.map(m => {
@@ -2352,9 +2364,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
 // ─── Shared UI atoms ──────────────────────────────────────────────────────────
 
-function Card({ title, count, children }: { title?: string; count?: number; children: React.ReactNode }) {
+function Card({ title, count, id, children }: { title?: string; count?: number; id?: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6">
+    <div id={id} className="bg-white rounded-xl border border-slate-200 p-6">
       {title && (
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-slate-700">{title}</h2>

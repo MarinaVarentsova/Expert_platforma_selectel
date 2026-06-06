@@ -1517,7 +1517,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             {/* Prompt: select expert from matched list below */}
             {isOrderActive && r.status === "expert_selection" && matches.some(m => CUSTOMER_CAN_SELECT.has(m.status)) && custUI.kind === "idle" && (
               <div className="w-full mt-1 p-3 rounded-lg bg-[#F4F4F4] border border-[#D0D0D0] text-xs text-[#002B5C]">
-                <span className="font-semibold">Подберите эксперта</span> — ниже показаны профили подобранных специалистов. Нажмите «Выбрать эксперта» под карточкой нужного.
+                <span className="font-semibold">Подберите эксперта</span> — ниже показаны профили подобранных экспертов. Нажмите «Выбрать эксперта» под карточкой нужного.
               </div>
             )}
           </div>

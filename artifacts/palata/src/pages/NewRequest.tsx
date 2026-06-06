@@ -561,7 +561,7 @@ export default function NewRequest() {
               <textarea
                 className={`${inputCls(false)} resize-none`}
                 rows={3}
-                placeholder="Дополнительные пожелания к эксперту, сроки, особые условия — любые комментарии, которые помогут специалисту"
+                placeholder="Дополнительные пожелания к эксперту, сроки, особые условия — любые комментарии, которые помогут эксперту"
                 value={form.customer_comment}
                 onChange={e => set("customer_comment", e.target.value)}
                 disabled={busy}

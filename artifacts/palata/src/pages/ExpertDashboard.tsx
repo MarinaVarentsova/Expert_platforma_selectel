@@ -265,6 +265,7 @@ export default function ExpertDashboard() {
     if (guard.status !== "ok") return;
     const userId = guard.user.id;
 
+    // ── Critical queries: needed for first visible render ──────────────────
     supabase
       .from("palata_request_matches")
       .select(`
@@ -294,25 +295,30 @@ export default function ExpertDashboard() {
         setProfileState({ kind: "ok", profile: data as ExpertProfile | null });
       });
 
-    supabase.from("palata_users").select("phone").eq("id", userId).single()
-      .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
+    // ── Background queries: deferred so critical requests get first pick ───
+    const bgTimer = setTimeout(() => {
+      supabase.from("palata_users").select("phone").eq("id", userId).single()
+        .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
 
-    supabase.from("palata_expert_documents")
-      .select("id, doc_type, file_name, bucket_path, mime_type, size_bytes, verified, created_at")
-      .eq("expert_id", userId)
-      .order("created_at", { ascending: false })
-      .then(({ data, error }) => {
-        if (error) { setDocsState({ kind: "error", message: error.message }); return; }
-        setDocsState({ kind: "ok", docs: (data ?? []) as ExpertDocument[] });
+      supabase.from("palata_expert_documents")
+        .select("id, doc_type, file_name, bucket_path, mime_type, size_bytes, verified, created_at")
+        .eq("expert_id", userId)
+        .order("created_at", { ascending: false })
+        .then(({ data, error }) => {
+          if (error) { setDocsState({ kind: "error", message: error.message }); return; }
+          setDocsState({ kind: "ok", docs: (data ?? []) as ExpertDocument[] });
+        });
+
+      loadPendingRatings(userId);
+
+      setAiLoading(true);
+      loadOpenActionItems(userId).then(items => {
+        setActionItems(filterExpertActionItems(items));
+        setAiLoading(false);
       });
+    }, 50);
 
-    loadPendingRatings(userId);
-
-    setAiLoading(true);
-    loadOpenActionItems(userId).then(items => {
-      setActionItems(filterExpertActionItems(items));
-      setAiLoading(false);
-    });
+    return () => clearTimeout(bgTimer);
   }, [guard.status]);
 
   function reloadActionItems() {
@@ -516,6 +522,7 @@ export default function ExpertDashboard() {
         <MarketTab
           userId={user.id}
           profile={profileState.kind === "ok" ? profileState.profile : null}
+          allDirections={allDirections}
         />
       )}
 
@@ -592,14 +599,18 @@ function getMarketBadge(status: string | undefined): MarketBadge {
 
 type SortBy = "rating_desc" | "date_desc" | "date_asc";
 
-function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile | null }) {
+function MarketTab({ userId, profile, allDirections }: {
+  userId: string;
+  profile: ExpertProfile | null;
+  allDirections: Array<{ id: string; name: string }>;
+}) {
   const [state, setState] = useState<MarketState>({ kind: "loading" });
   const [filterDirection, setFilterDirection] = useState("");
   const [filterRegion, setFilterRegion] = useState("");
   const [filterTravel, setFilterTravel] = useState<"all" | "remote" | "travel">("all");
   const [filterMyStatus, setFilterMyStatus] = useState<"all" | "new" | "responded" | "declined">("all");
   const [sortBy, setSortBy] = useState<SortBy>("rating_desc");
-  const [allDirs, setAllDirs] = useState<Array<{ id: string; name: string }>>([]);
+  const allDirs = allDirections;
   const [allRegs, setAllRegs] = useState<Array<{ id: string; name: string }>>([]);
   const [takeDates, setTakeDates] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
@@ -607,8 +618,6 @@ function MarketTab({ userId, profile }: { userId: string; profile: ExpertProfile
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    supabase.from("palata_expertise_directions").select("id, name").eq("is_active", true).order("sort_order")
-      .then(({ data }) => setAllDirs(data ?? []));
     supabase.from("palata_regions").select("id, name").order("name")
       .then(({ data }) => setAllRegs(data ?? []));
   }, []);

@@ -299,42 +299,51 @@ async function _handleNoExperts(
     note: `no_experts_found: раунд ${nextRound}, причина: ${reason}`,
   });
 
-  if (input.customerId) {
-    try {
-      await createActionItem({
-        request_id: requestId,
-        expert_id: null,
-        customer_id: input.customerId,
-        assigned_to_user_id: input.customerId,
-        assigned_role: "customer",
-        action_type: "manual_matching_required",
-        title: "Эксперты не найдены автоматически",
-        description:
-          "По вашему заказу не удалось подобрать экспертов. Администратор займётся подбором вручную.",
-        payload: { round: nextRound, reason },
-      });
-    } catch { /* non-fatal */ }
-  }
-
   try {
-    const { data: admins } = await supabase
-      .from("palata_users")
+    // Dedup: skip creating action_items if an open manual_matching_required already exists for this request
+    const { data: existing } = await supabase
+      .from("palata_action_items")
       .select("id")
-      .eq("role", "admin")
-      .eq("is_active", true);
+      .eq("request_id", requestId)
+      .eq("action_type", "manual_matching_required")
+      .eq("status", "open")
+      .limit(1);
 
-    for (const admin of admins ?? []) {
-      await createActionItem({
-        request_id: requestId,
-        expert_id: null,
-        customer_id: input.customerId ?? null,
-        assigned_to_user_id: admin.id,
-        assigned_role: "admin",
-        action_type: "manual_matching_required",
-        title: "Требуется ручной подбор эксперта",
-        description: `Автоподбор не нашёл кандидатов (раунд ${nextRound}, причина: ${reason}). Назначьте эксперта вручную.`,
-        payload: { round: nextRound, request_id: requestId, reason },
-      });
+    if (!existing || existing.length === 0) {
+      if (input.customerId) {
+        await createActionItem({
+          request_id: requestId,
+          expert_id: null,
+          customer_id: input.customerId,
+          assigned_to_user_id: input.customerId,
+          assigned_role: "customer",
+          action_type: "manual_matching_required",
+          title: "Эксперты не найдены автоматически",
+          description:
+            "По вашему заказу не удалось подобрать экспертов. Администратор займётся подбором вручную.",
+          payload: { round: nextRound, reason },
+        });
+      }
+
+      const { data: admins } = await supabase
+        .from("palata_users")
+        .select("id")
+        .eq("role", "admin")
+        .eq("is_active", true);
+
+      for (const admin of admins ?? []) {
+        await createActionItem({
+          request_id: requestId,
+          expert_id: null,
+          customer_id: input.customerId ?? null,
+          assigned_to_user_id: admin.id,
+          assigned_role: "admin",
+          action_type: "manual_matching_required",
+          title: "Требуется ручной подбор эксперта",
+          description: `Автоподбор не нашёл кандидатов (раунд ${nextRound}, причина: ${reason}). Назначьте эксперта вручную.`,
+          payload: { round: nextRound, request_id: requestId, reason },
+        });
+      }
     }
   } catch { /* non-fatal */ }
 }

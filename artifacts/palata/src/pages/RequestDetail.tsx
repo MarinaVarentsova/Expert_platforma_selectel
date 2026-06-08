@@ -1317,6 +1317,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     }
     setRatingUI({ kind: "done" });
     onReload();
+    navigate("/expert?tab=requests");
   }
 
   // ── Derived ────────────────────────────────────────────────────────────────

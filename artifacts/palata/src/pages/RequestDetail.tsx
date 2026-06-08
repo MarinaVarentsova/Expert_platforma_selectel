@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "wouter";
-import { ClipboardList, Zap, Star, User, Briefcase } from "lucide-react";
+import { ClipboardList, Zap, Star, User, Briefcase, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrentUser } from "@/lib/authContext";
 
@@ -1520,20 +1520,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
               )}
             </div>
 
-            {/* Description + materials — shown below the fields grid */}
-            {r.description ? (
-              <div className="mt-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Описание ситуации</p>
-                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
-              </div>
-            ) : null}
-
-            {r.materials_available && (
-              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Имеющиеся материалы</p>
-                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
-              </div>
-            )}
           </>
         )}
       </Card>
@@ -1918,8 +1904,26 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         </Card>
       )}
 
-      {/* ══ 5. ДОКУМЕНТЫ ════════════════════════════════════════════════════ */}
-      <Card title="Документы" count={files.length}>
+      {/* ══ 5. ОПИСАНИЕ ══════════════════════════════════════════════════════ */}
+      {(r.description || r.materials_available) && (
+        <Card title="Описание заказа" collapsible defaultOpen={false}>
+          {r.description && (
+            <div className={r.materials_available ? "mb-4" : ""}>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Описание ситуации</p>
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
+            </div>
+          )}
+          {r.materials_available && (
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Имеющиеся материалы</p>
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* ══ 6. ДОКУМЕНТЫ ════════════════════════════════════════════════════ */}
+      <Card title="Документы" count={files.length} collapsible defaultOpen={false}>
         {files.length === 0 ? <Empty text="Файлы не загружены" /> : (
           <div className="divide-y divide-slate-50 -mx-6 -mb-6">
             {files.map(f => (
@@ -2366,18 +2370,31 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
 // ─── Shared UI atoms ──────────────────────────────────────────────────────────
 
-function Card({ title, count, id, children }: { title?: string; count?: number; id?: string; children: React.ReactNode }) {
+function Card({ title, count, id, collapsible, defaultOpen = true, children }: {
+  title?: string; count?: number; id?: string; collapsible?: boolean; defaultOpen?: boolean; children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div id={id} className="bg-white rounded-xl border border-slate-200 p-6">
       {title && (
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
-          {count != null && (
-            <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{count}</span>
+        <div
+          className={`flex items-center justify-between ${open ? "mb-4" : ""} ${collapsible ? "cursor-pointer select-none" : ""}`}
+          onClick={collapsible ? () => setOpen(o => !o) : undefined}
+        >
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
+            {count != null && (
+              <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{count}</span>
+            )}
+          </div>
+          {collapsible && (
+            <span className="text-slate-400">
+              {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </span>
           )}
         </div>
       )}
-      {children}
+      {(!collapsible || open) && children}
     </div>
   );
 }

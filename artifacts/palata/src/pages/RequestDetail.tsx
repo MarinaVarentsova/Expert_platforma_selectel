@@ -963,10 +963,10 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         const activeMatches = matches.filter(m => !terminalStatuses.includes(m.status));
         const activeMatchIds = activeMatches.map(m => m.id);
 
-        // 1. Close matches → "withdrawn" so expert kanban shows grey (not orange) column
+        // 1. Close matches (request becomes hidden on expert kanban via HIDDEN_STATUSES)
         if (activeMatchIds.length > 0) {
           await supabase.from("palata_request_matches")
-            .update({ status: "withdrawn", decline_reason: "customer_cancelled" })
+            .update({ status: "closed_by_other_expert", decline_reason: "customer_cancelled" })
             .in("id", activeMatchIds);
         }
 

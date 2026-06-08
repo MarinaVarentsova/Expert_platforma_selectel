@@ -1886,6 +1886,7 @@ const ACTION_LABEL_EX: Record<string, { label: string; color: string }> = {
   customer_approved_start_date: { label: "Дата согласована",         color: "text-emerald-700 bg-emerald-50" },
   you_are_approved_for_work:    { label: "Заказчик подтвердил дату", color: "text-[#002B5C] bg-[#D0D0D0]" },
   customer_declined_start_date: { label: "Заказчик отклонил дату",   color: "text-red-700 bg-red-50" },
+  customer_cancelled_order:     { label: "Заказ отменён",            color: "text-slate-600 bg-slate-100" },
   experts_matched:              { label: "Подобраны эксперты",       color: "text-[#002B5C] bg-[#F4F4F4]" },
   expert_declined:              { label: "Эксперт отказался",        color: "text-red-700 bg-red-50" },
   expert_can_start_from:        { label: "Предложена дата",          color: "text-amber-700 bg-amber-50" },
@@ -1959,6 +1960,9 @@ function ExpertActionCard({ item, userId, userEmail, onDone }: {
   }
   if (item.action_type === "customer_declined_start_date") {
     return <CustomerDeclinedDateCard item={item} onDone={onDone} />;
+  }
+  if (item.action_type === "customer_cancelled_order") {
+    return <CustomerCancelledCard item={item} onDone={onDone} />;
   }
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
@@ -2777,6 +2781,37 @@ function CustomerDeclinedDateCard({ item, onDone }: { item: ActionItem; onDone: 
           className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-800 transition-colors"
         >
           Понятно
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── customer_cancelled_order ─────────────────────────────────────────────────
+
+function CustomerCancelledCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
+  const [done, setDone] = useState(false);
+
+  async function handleAck() {
+    await resolveActionItem(item.id);
+    setDone(true);
+    onDone();
+  }
+
+  if (done) return null;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <ExpertActionItemHeader item={item} />
+      <div className="mt-3 bg-slate-50 rounded-xl px-4 py-3">
+        <p className="text-xs text-slate-600">{item.description}</p>
+      </div>
+      <div className="mt-4">
+        <button
+          onClick={handleAck}
+          className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-800 transition-colors"
+        >
+          Ознакомлен
         </button>
       </div>
     </div>

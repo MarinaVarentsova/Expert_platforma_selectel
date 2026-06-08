@@ -9,6 +9,7 @@ import { notify, type NotifyItem } from "@/lib/notifyApi";
 import {
   resolveActionItem,
   createActionItem,
+  cancelRequestActionItems,
   logStatusEvent,
   logEmailTestEvent,
   type ActionItem,
@@ -956,16 +957,36 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .update({ status: newStatus }).eq("id", r.id);
       if (error) throw error;
 
-      // When cancelled: close all active matches as "customer_cancelled"
+      // When cancelled: close all active matches, notify each affected expert
       if (newStatus === "cancelled") {
         const terminalStatuses = ["declined", "completed", "withdrawn", "closed_by_other_expert", "customer_declined_start_date"];
-        const activeMatchIds = matches
-          .filter(m => !terminalStatuses.includes(m.status))
-          .map(m => m.id);
+        const activeMatches = matches.filter(m => !terminalStatuses.includes(m.status));
+        const activeMatchIds = activeMatches.map(m => m.id);
+
+        // 1. Close matches → "withdrawn" so expert kanban shows grey (not orange) column
         if (activeMatchIds.length > 0) {
           await supabase.from("palata_request_matches")
-            .update({ status: "closed_by_other_expert", decline_reason: "customer_cancelled" })
+            .update({ status: "withdrawn", decline_reason: "customer_cancelled" })
             .in("id", activeMatchIds);
+        }
+
+        // 2. Cancel all open action items for this request (clears expert inbox)
+        await cancelRequestActionItems(r.id);
+
+        // 3. Create "customer_cancelled_order" action item for each affected expert
+        const uniqueExpertIds = [...new Set(activeMatches.map(m => m.expert_id))];
+        for (const expertId of uniqueExpertIds) {
+          await createActionItem({
+            request_id:          r.id,
+            expert_id:           expertId,
+            customer_id:         r.customer_id ?? null,
+            assigned_to_user_id: expertId,
+            assigned_role:       "expert",
+            action_type:         "customer_cancelled_order",
+            title:               "Заказчик отменил заказ",
+            description:         `Заказ «${r.title}» (#${shortId(r.id)}) был отменён заказчиком.`,
+            payload:             { requestTitle: r.title },
+          });
         }
       }
 

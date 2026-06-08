@@ -1285,7 +1285,67 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   return (
     <div className="space-y-6">
 
-      {/* ══ 1. ОСНОВНАЯ ИНФОРМАЦИЯ ══════════════════════════════════════════ */}
+      {/* ══ 1. ДЕЙСТВИЯ ЗАКАЗЧИКА (first for customers) ═════════════════════ */}
+      {role === "customer" && (
+        <Card>
+          {/* Request title as context in top-left */}
+          <div className="mb-4">
+            <p className="text-xs font-mono text-slate-400 mb-0.5">#{shortId(r.id)}</p>
+            <h2 className="text-base font-bold text-[#002B5C] mb-3 leading-snug">{r.title}</h2>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#0F4C9A]" />
+              <span className="text-sm font-semibold text-slate-700">Действия заказчика</span>
+            </div>
+          </div>
+
+          {custUI.kind === "error" && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+              {custUI.message}
+              <button className="ml-2 underline" onClick={() => setCustUI({ kind: "idle" })}>Закрыть</button>
+            </div>
+          )}
+
+          {/* ── Primary CTA: выбор эксперта ── */}
+          {isOrderActive && r.status === "expert_selection" && matches.some(m => CUSTOMER_CAN_SELECT.has(m.status)) && custUI.kind === "idle" && (
+            <div className="mb-5 p-4 rounded-xl bg-[#EEF3FB] border border-[#C5D6F0]">
+              <p className="text-base font-bold text-[#002B5C] mb-1">Подберите эксперта</p>
+              <p className="text-xs text-[#555555] mb-3">
+                Ниже показаны профили подобранных экспертов. Нажмите «Выбрать эксперта» под карточкой нужного.
+              </p>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  document.getElementById("experts-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >
+                Перейти к выбору ↓
+              </button>
+            </div>
+          )}
+
+          {/* ── Secondary actions ── */}
+          <div className="flex flex-wrap gap-2 items-center">
+            {isOrderActive && !["in_work", "in_progress", "completed", "cancelled"].includes(r.status) && custUI.kind === "idle" && (
+              <button className="btn-ghost border border-slate-300 text-slate-600 hover:bg-slate-50" onClick={handleRematch} disabled={matchingRunning}>
+                {matchingRunning ? "Идёт подбор…" : "Запустить автоподбор"}
+              </button>
+            )}
+
+            {custUI.kind === "submitting" && <Spinner inline />}
+
+            {isOrderActive && custUI.kind === "idle" && (
+              <button className="btn-danger" onClick={() => handleOrderStatus("cancelled")}>
+                Сделать неактуальным
+              </button>
+            )}
+            {!isOrderActive && (
+              <p className="text-xs text-slate-400 italic">Заказ завершён — действия недоступны</p>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* ══ 2. ОСНОВНАЯ ИНФОРМАЦИЯ ══════════════════════════════════════════ */}
       <Card>
         <div className="flex items-start justify-between gap-4 mb-5">
           <div className="flex-1 min-w-0">
@@ -1419,24 +1479,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         ) : (
           /* ── View mode ── */
           <>
-            {r.description ? (
-              <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Описание ситуации</p>
-                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
-              </div>
-            ) : (
-              <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                <p className="text-xs text-slate-400 italic">Описание не указано</p>
-              </div>
-            )}
-
-            {r.materials_available && (
-              <div className="mb-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Имеющиеся материалы</p>
-                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
-              </div>
-            )}
-
             <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
               {role !== "expert" && (
                 <Field label="Заказчик">
@@ -1477,64 +1519,24 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                 </Field>
               )}
             </div>
+
+            {/* Description + materials — shown below the fields grid */}
+            {r.description ? (
+              <div className="mt-5 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Описание ситуации</p>
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
+              </div>
+            ) : null}
+
+            {r.materials_available && (
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Имеющиеся материалы</p>
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
+              </div>
+            )}
           </>
         )}
       </Card>
-
-      {/* ══ 2. ДЕЙСТВИЯ ЗАКАЗЧИКА ══════════════════════════════════════════ */}
-      {role === "customer" && (
-        <Card>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="w-2 h-2 rounded-full bg-[#0F4C9A]" />
-            <h2 className="text-sm font-semibold text-slate-700">Действия заказчика</h2>
-          </div>
-
-          {custUI.kind === "error" && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
-              {custUI.message}
-              <button className="ml-2 underline" onClick={() => setCustUI({ kind: "idle" })}>Закрыть</button>
-            </div>
-          )}
-
-          {/* ── Primary CTA: выбор эксперта ── */}
-          {isOrderActive && r.status === "expert_selection" && matches.some(m => CUSTOMER_CAN_SELECT.has(m.status)) && custUI.kind === "idle" && (
-            <div className="mb-5 p-4 rounded-xl bg-[#EEF3FB] border border-[#C5D6F0]">
-              <p className="text-base font-bold text-[#002B5C] mb-1">Подберите эксперта</p>
-              <p className="text-xs text-[#555555] mb-3">
-                Ниже показаны профили подобранных экспертов. Нажмите «Выбрать эксперта» под карточкой нужного.
-              </p>
-              <button
-                className="btn-primary"
-                onClick={() => {
-                  document.getElementById("experts-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-              >
-                Перейти к выбору ↓
-              </button>
-            </div>
-          )}
-
-          {/* ── Secondary actions ── */}
-          <div className="flex flex-wrap gap-2 items-center">
-            {isOrderActive && !["in_work", "in_progress", "completed", "cancelled"].includes(r.status) && custUI.kind === "idle" && (
-              <button className="btn-ghost border border-slate-300 text-slate-600 hover:bg-slate-50" onClick={handleRematch} disabled={matchingRunning}>
-                {matchingRunning ? "Идёт подбор…" : "Запустить автоподбор"}
-              </button>
-            )}
-
-            {custUI.kind === "submitting" && <Spinner inline />}
-
-            {isOrderActive && custUI.kind === "idle" && (
-              <button className="btn-danger" onClick={() => handleOrderStatus("cancelled")}>
-                Сделать неактуальным
-              </button>
-            )}
-            {!isOrderActive && (
-              <p className="text-xs text-slate-400 italic">Заказ завершён — действия недоступны</p>
-            )}
-          </div>
-        </Card>
-      )}
 
       {/* ══ 3. СТАТУС ЭКСПЕРТА ПО ЭТОМУ ЗАКАЗУ ══════════════════════════════ */}
       {role === "expert" && (

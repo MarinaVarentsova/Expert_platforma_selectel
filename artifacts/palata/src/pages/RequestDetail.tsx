@@ -1908,35 +1908,37 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       <Card title="Подробнее о заказе" collapsible defaultOpen={false} largeChevron>
         <div className="space-y-3">
 
-          {/* — Описание и материалы — */}
-          {(r.description || r.materials_available) && (
-            <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-4 shadow-sm">
+          {/* — 01: Описание ситуации — */}
+          {r.description && (
+            <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-3 shadow-sm">
               <div className="flex items-center gap-2.5">
                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-white text-[9px] font-bold flex items-center justify-center">
                   01
                 </span>
-                <h3 className="text-xs font-bold uppercase tracking-widest text-[#666666]">Описание и материалы</h3>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-[#666666]">Описание ситуации</h3>
               </div>
-              {r.description && (
-                <div>
-                  <p className="text-xs text-slate-400 mb-1">Описание ситуации</p>
-                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
-                </div>
-              )}
-              {r.materials_available && (
-                <div>
-                  <p className="text-xs text-slate-400 mb-1">Имеющиеся материалы</p>
-                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
-                </div>
-              )}
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
             </div>
           )}
 
-          {/* — Прикреплённые документы — */}
+          {/* — 02: Имеющиеся материалы — */}
+          {r.materials_available && (
+            <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-3 shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-white text-[9px] font-bold flex items-center justify-center">
+                  02
+                </span>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-[#666666]">Имеющиеся материалы</h3>
+              </div>
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
+            </div>
+          )}
+
+          {/* — 03: Прикреплённые документы — */}
           <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-3 shadow-sm">
             <div className="flex items-center gap-2.5">
               <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-white text-[9px] font-bold flex items-center justify-center">
-                02
+                03
               </span>
               <h3 className="text-xs font-bold uppercase tracking-widest text-[#666666]">Прикреплённые документы</h3>
               {files.length > 0 && (
@@ -1972,12 +1974,12 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             )}
           </div>
 
-          {/* — Контактные данные — */}
+          {/* — 04: Контактные данные — */}
           {role !== "expert" && (r.customer_name || r.customer_phone || r.customer_email) && (
             <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-3 shadow-sm">
               <div className="flex items-center gap-2.5">
                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-white text-[9px] font-bold flex items-center justify-center">
-                  03
+                  04
                 </span>
                 <h3 className="text-xs font-bold uppercase tracking-widest text-[#666666]">Контактные данные</h3>
               </div>

@@ -34,7 +34,6 @@ type FormData = {
   requires_travel: boolean;
   description: string;
   materials_available: string;
-  customer_comment: string;
   customer_name: string;
   customer_phone: string;
   customer_email: string;
@@ -88,7 +87,6 @@ export default function NewRequest() {
     requires_travel: false,
     description: "",
     materials_available: "",
-    customer_comment: "",
     customer_name: currentUser?.full_name ?? "",
     customer_phone: "",
     customer_email: currentUser?.email ?? "",
@@ -128,6 +126,8 @@ export default function NewRequest() {
       e.expertise_direction_id = "Выберите направление экспертизы";
     if (!form.region_id)
       e.region_id = "Выберите регион";
+    if (!form.description.trim())
+      e.description = "Опишите суть дела";
     if (!form.customer_name.trim())
       e.customer_name = "Введите ваше имя";
     if (!form.customer_email.trim() && !form.customer_phone.trim())
@@ -155,13 +155,6 @@ export default function NewRequest() {
     setState({ kind: "submitting", step: "Создание заказа…" });
 
     try {
-      // Build combined description: situation + comment (if any)
-      const situation = form.description.trim();
-      const comment   = form.customer_comment.trim();
-      const fullDescription = situation && comment
-        ? `${situation}\n\n─── Комментарий заказчика ───\n${comment}`
-        : situation || (comment ? `─── Комментарий заказчика ───\n${comment}` : null);
-
       // 1. Insert request
       const selectedRegionId = form.region_id || null;
       console.log("[new-request] selectedRegionId:", selectedRegionId);
@@ -169,7 +162,7 @@ export default function NewRequest() {
       const insertPayload = {
         status: "new",
         title: form.title.trim(),
-        description: fullDescription,
+        description: form.description.trim() || null,
         expertise_direction_id: form.expertise_direction_id,
         region_id: selectedRegionId,
         urgency: form.urgency,
@@ -383,6 +376,7 @@ export default function NewRequest() {
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-1">Новый заказ</p>
           <h1 className="text-2xl font-bold text-[#111111]">Создать заказ на экспертизу</h1>
           <p className="text-sm text-[#666666] mt-1">Заполните форму — система автоматически подберёт эксперта</p>
+          <p className="text-xs text-[#888888] mt-0.5"><span className="text-red-400">*</span> — обязательные поля для заполнения</p>
         </div>
 
         {/* Error */}
@@ -557,9 +551,9 @@ export default function NewRequest() {
 
           {/* ── 2: Описание ─────────────────────────────────────────── */}
           <FormCard title="Описание и материалы" num="02">
-            <Field label="Описание ситуации">
+            <Field label="Описание ситуации" required error={errors.description}>
               <textarea
-                className={`${inputCls(false)} resize-none`}
+                className={`${inputCls(!!errors.description)} resize-none`}
                 rows={4}
                 placeholder="Опишите суть дела, что произошло и какой результат вам нужен от экспертизы"
                 value={form.description}
@@ -578,66 +572,10 @@ export default function NewRequest() {
                 disabled={busy}
               />
             </Field>
-
-            <Field label="Комментарий заказчика">
-              <textarea
-                className={`${inputCls(false)} resize-none`}
-                rows={3}
-                placeholder="Дополнительные пожелания к эксперту, сроки, особые условия — любые комментарии, которые помогут эксперту"
-                value={form.customer_comment}
-                onChange={e => set("customer_comment", e.target.value)}
-                disabled={busy}
-              />
-            </Field>
           </FormCard>
 
-          {/* ── 3: Контакты ─────────────────────────────────────────── */}
-          <FormCard title="Контактные данные" num="03">
-            <p className="text-xs text-[#666666] -mt-1">
-              Необходимы для связи с экспертом после подбора
-            </p>
-
-            <Field label="Ваше имя" required error={errors.customer_name}>
-              <input
-                type="text"
-                className={inputCls(!!errors.customer_name)}
-                placeholder="ФИО или название организации"
-                value={form.customer_name}
-                onChange={e => set("customer_name", e.target.value)}
-                disabled={busy}
-              />
-            </Field>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Телефон">
-                <input
-                  type="tel"
-                  className={inputCls(false)}
-                  placeholder="+7 (___) ___-__-__"
-                  value={form.customer_phone}
-                  onChange={e => set("customer_phone", e.target.value)}
-                  disabled={busy}
-                />
-              </Field>
-
-              <Field label="Email" error={errors.customer_email}>
-                <input
-                  type="email"
-                  className={inputCls(!!errors.customer_email)}
-                  placeholder="example@domain.ru"
-                  value={form.customer_email}
-                  onChange={e => set("customer_email", e.target.value)}
-                  disabled={busy}
-                />
-              </Field>
-            </div>
-            {errors.customer_email && (
-              <p className="text-xs text-red-500 -mt-2">{errors.customer_email}</p>
-            )}
-          </FormCard>
-
-          {/* ── 4: Файлы ────────────────────────────────────────────── */}
-          <FormCard title="Прикреплённые документы" num="04">
+          {/* ── 3: Файлы ────────────────────────────────────────────── */}
+          <FormCard title="Прикреплённые документы" num="03">
             <p className="text-xs text-[#666666] -mt-1">
               PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — не более 50 МБ каждый
             </p>
@@ -679,6 +617,51 @@ export default function NewRequest() {
               className="hidden"
               onChange={onFileChange}
             />
+          </FormCard>
+
+          {/* ── 4: Контакты ─────────────────────────────────────────── */}
+          <FormCard title="Контактные данные" num="04">
+            <p className="text-xs text-[#666666] -mt-1">
+              Необходимы для связи с экспертом после подбора
+            </p>
+
+            <Field label="Ваше имя" required error={errors.customer_name}>
+              <input
+                type="text"
+                className={inputCls(!!errors.customer_name)}
+                placeholder="ФИО или название организации"
+                value={form.customer_name}
+                onChange={e => set("customer_name", e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Телефон">
+                <input
+                  type="tel"
+                  className={inputCls(false)}
+                  placeholder="+7 (___) ___-__-__"
+                  value={form.customer_phone}
+                  onChange={e => set("customer_phone", e.target.value)}
+                  disabled={busy}
+                />
+              </Field>
+
+              <Field label="Email" error={errors.customer_email}>
+                <input
+                  type="email"
+                  className={inputCls(!!errors.customer_email)}
+                  placeholder="example@domain.ru"
+                  value={form.customer_email}
+                  onChange={e => set("customer_email", e.target.value)}
+                  disabled={busy}
+                />
+              </Field>
+            </div>
+            {errors.customer_email && (
+              <p className="text-xs text-red-500 -mt-2">{errors.customer_email}</p>
+            )}
           </FormCard>
 
           {/* ── Submit ──────────────────────────────────────────────── */}

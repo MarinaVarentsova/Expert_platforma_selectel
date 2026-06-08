@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -1951,7 +1951,7 @@ function ExpertActionCard({ item, userId, userEmail, onDone }: {
   onDone: () => void;
 }) {
   if (item.action_type === "customer_selected_you") {
-    return <CustomerSelectedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} />;
+    return <CustomerSelectedCard item={item} onDone={onDone} />;
   }
   if (item.action_type === "you_are_approved_for_work") {
     return <YouAreApprovedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} />;
@@ -1978,6 +1978,40 @@ function ExpertActionCard({ item, userId, userEmail, onDone }: {
 
 // ─── customer_selected_you ────────────────────────────────────────────────────
 
+function CustomerSelectedCard({ item, onDone }: {
+  item: ActionItem;
+  onDone: () => void;
+}) {
+  const [, navigate] = useLocation();
+
+  async function handleGoToOrder() {
+    await resolveActionItem(item.id);
+    onDone();
+    navigate(`/requests/${item.request_id}`);
+  }
+
+  return (
+    <div className="bg-white border border-[#0F4C9A]/30 rounded-xl p-5 shadow-sm">
+      <ExpertActionItemHeader item={item} />
+      <div className="mt-3 bg-[#EEF4FF] rounded-xl px-4 py-3">
+        <p className="text-xs text-[#0F4C9A] leading-relaxed">
+          Заказчик выбрал вас для работы над этим заказом. Перейдите в заказ, чтобы принять решение.
+        </p>
+      </div>
+      <div className="mt-4">
+        <button
+          onClick={handleGoToOrder}
+          className="btn-primary text-xs py-1.5 px-4"
+        >
+          Перейти в заказ →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Shared types for YouAreApprovedCard / CustomerDeclinedDateCard ───────────
+
 type RequestDetails = {
   title: string;
   expertise_type: string | null;
@@ -1994,439 +2028,6 @@ type CustomerContact = {
   phone: string | null;
   email: string | null;
 };
-
-function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
-  item: ActionItem;
-  userId: string;
-  userEmail: string;
-  onDone: () => void;
-}) {
-  const [req, setReq] = useState<RequestDetails | null>(null);
-  const [reqLoading, setReqLoading] = useState(true);
-  const [custContact, setCustContact] = useState<CustomerContact | null>(null);
-  const [action, setAction] = useState<"idle" | "date" | "decline">("idle");
-  const [busy, setBusy] = useState(false);
-  const [startDate, setStartDate] = useState("");
-  const [comment, setComment] = useState("");
-  const [declineReason, setDeclineReason] = useState("not_my_profile");
-  const [declineComment, setDeclineComment] = useState("");
-  const [dirMap, setDirMap] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    supabase.from("palata_expertise_directions").select("id, name").eq("is_active", true)
-      .then(({ data }) => {
-        const m: Record<string, string> = {};
-        for (const d of data ?? []) m[d.id] = d.name;
-        setDirMap(m);
-      });
-  }, []);
-
-  useEffect(() => {
-    async function load() {
-      const { data: reqData } = await supabase
-        .from("palata_requests")
-        .select("title, expertise_type, expertise_direction_id, description, customer_id, requires_travel, status, region_id")
-        .eq("id", item.request_id)
-        .maybeSingle();
-      const r = reqData as RequestDetails | null;
-      setReq(r);
-
-      if (r?.customer_id) {
-        const [{ data: uData }, { data: cData }] = await Promise.all([
-          supabase.from("palata_users").select("full_name, phone").eq("id", r.customer_id).maybeSingle(),
-          supabase.from("palata_request_contacts")
-            .select("customer_phone, customer_email")
-            .eq("request_id", item.request_id)
-            .eq("expert_id", userId)
-            .maybeSingle(),
-        ]);
-        const u = uData as { full_name: string | null; phone: string | null } | null;
-        const c = cData as { customer_phone: string | null; customer_email: string | null } | null;
-        setCustContact({
-          name:  u?.full_name ?? null,
-          phone: c?.customer_phone ?? u?.phone ?? null,
-          email: c?.customer_email ?? null,
-        });
-      }
-      setReqLoading(false);
-    }
-    load();
-  }, [item.request_id, userId]);
-
-  async function getCustomerEmail(customerId: string): Promise<string | null> {
-    const { data } = await supabase.from("palata_users").select("email").eq("id", customerId).maybeSingle();
-    return (data as { email: string } | null)?.email ?? null;
-  }
-
-  async function getMatchId(): Promise<string | null> {
-    const { data } = await supabase.from("palata_request_matches")
-      .select("id").eq("request_id", item.request_id).eq("expert_id", userId).maybeSingle();
-    return (data as { id: string } | null)?.id ?? null;
-  }
-
-  const shortId = `#${item.request_id?.slice(0, 8).toUpperCase() ?? ""}`;
-
-  async function handleTakeWork() {
-    setBusy(true);
-    const now = new Date().toISOString();
-    const matchId = await getMatchId();
-
-    // 1. Update current expert's match → accepted_work
-    if (matchId) {
-      await supabase.from("palata_request_matches")
-        .update({ status: "accepted_work", responded_at: now })
-        .eq("id", matchId);
-    }
-
-    // 2. Find + close other active matches; store those explicitly selected by customer
-    const custId = item.customer_id ?? req?.customer_id ?? null;
-    const { data: otherMatchData } = await supabase
-      .from("palata_request_matches")
-      .select("id, expert_id, responded_at")
-      .eq("request_id", item.request_id)
-      .neq("expert_id", userId)
-      .not("status", "in", '("declined","closed_by_other_expert","withdrawn","completed")');
-    const otherMatches = (otherMatchData ?? []) as Array<{ id: string; expert_id: string; responded_at: string | null }>;
-    if (otherMatches.length > 0) {
-      await supabase.from("palata_request_matches")
-        .update({ status: "closed_by_other_expert" })
-        .in("id", otherMatches.map(m => m.id));
-    }
-
-    // 3. Request → in_work
-    await supabase.from("palata_requests")
-      .update({ status: "in_work", updated_at: now })
-      .eq("id", item.request_id);
-
-    // 4. Update palata_request_contacts for this expert
-    await supabase.from("palata_request_contacts")
-      .update({ expert_status: "accepted_work", expert_status_updated_at: now })
-      .eq("request_id", item.request_id)
-      .eq("expert_id", userId);
-
-    // 5. Resolve expert's action item; cancel others for this request
-    await resolveActionItem(item.id);
-    await cancelRequestActionItems(item.request_id!, item.id);
-
-    // 5b. Notify other experts who were explicitly selected by customer
-    for (const om of otherMatches.filter(m => m.responded_at != null)) {
-      await createActionItem({
-        request_id:          item.request_id,
-        expert_id:           om.expert_id,
-        customer_id:         custId,
-        assigned_to_user_id: om.expert_id,
-        assigned_role:       "expert",
-        action_type:         "other_expert_took_order",
-        title:               "На заказ назначен другой эксперт",
-        description:         `По заказу ${shortId} был выбран другой эксперт.`,
-        payload:             { request_id: item.request_id },
-      });
-    }
-
-    // 6. Action item for customer
-    if (custId) {
-      const custEmail = await getCustomerEmail(custId);
-      await createActionItem({
-        request_id:         item.request_id,
-        expert_id:          userId,
-        customer_id:        custId,
-        assigned_to_user_id: custId,
-        assigned_role:      "customer",
-        action_type:        "expert_started_work",
-        title:              "Эксперт взял заказ в работу",
-        description:        `Эксперт подтвердил готовность выполнить заказ ${shortId}`,
-        payload:            { expert_id: userId, expert_email: userEmail },
-      });
-      if (custEmail) {
-        await logEmailTestEvent(custId, custEmail, "expert_accepted_work",
-          "Эксперт принял ваш заказ в работу", { request_id: item.request_id });
-      }
-    }
-
-    // 7. Status + email events
-    await logStatusEvent(item.request_id!, "expert_selection", "in_work", "expert_accepted_work");
-
-    setBusy(false);
-    onDone();
-  }
-
-  async function handleCanStartFrom() {
-    if (!startDate) return;
-    setBusy(true);
-    const now = new Date().toISOString();
-    const matchId = await getMatchId();
-    const startFmt = new Date(startDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
-
-    // 1. Update match
-    if (matchId) {
-      await supabase.from("palata_request_matches")
-        .update({ status: "can_start_from", can_start_from: startDate, responded_at: now })
-        .eq("id", matchId);
-    }
-
-    // 2. Update palata_request_contacts
-    await supabase.from("palata_request_contacts")
-      .update({ expert_status: "can_start_from", expert_status_updated_at: now })
-      .eq("request_id", item.request_id)
-      .eq("expert_id", userId);
-
-    // 3. Resolve expert's action item
-    await resolveActionItem(item.id);
-
-    // 4. Action item for customer
-    const custId = item.customer_id ?? req?.customer_id ?? null;
-    if (custId) {
-      const custEmail = await getCustomerEmail(custId);
-      await createActionItem({
-        request_id:         item.request_id,
-        expert_id:          userId,
-        customer_id:        custId,
-        assigned_to_user_id: custId,
-        assigned_role:      "customer",
-        action_type:        "expert_can_start_from",
-        title:              "Эксперт предложил дату начала",
-        description:        `Эксперт может начать работу с ${startFmt}`,
-        payload:            { request_id: item.request_id, expert_id: userId, can_start_from: startDate, comment: comment || null },
-      });
-      if (custEmail) {
-        await logEmailTestEvent(custId, custEmail, "expert_can_start_from",
-          "Эксперт предложил дату начала работы", { request_id: item.request_id, can_start_from: startDate });
-      }
-    }
-
-    // 5. Status event
-    await logStatusEvent(item.request_id!, "expert_selection", "expert_selection", "expert_can_start_from");
-
-    setBusy(false);
-    onDone();
-  }
-
-  async function handleDecline() {
-    setBusy(true);
-    const now = new Date().toISOString();
-    const matchId = await getMatchId();
-
-    // 1. Update match
-    if (matchId) {
-      await supabase.from("palata_request_matches")
-        .update({ status: "declined", decline_reason: declineReason, decline_comment: declineComment || null, responded_at: now })
-        .eq("id", matchId);
-    }
-
-    // 2. Update palata_request_contacts
-    await supabase.from("palata_request_contacts")
-      .update({
-        expert_status:            "declined",
-        expert_status_updated_at: now,
-        failure_reason:           declineReason,
-        expert_comment:           declineComment || null,
-      })
-      .eq("request_id", item.request_id)
-      .eq("expert_id", userId);
-
-    // 3. Resolve expert's action item
-    await resolveActionItem(item.id);
-
-    // 4. Action item for customer
-    const custId = item.customer_id ?? req?.customer_id ?? null;
-    if (custId) {
-      const custEmail = await getCustomerEmail(custId);
-      await createActionItem({
-        request_id:         item.request_id,
-        expert_id:          userId,
-        customer_id:        custId,
-        assigned_to_user_id: custId,
-        assigned_role:      "customer",
-        action_type:        "expert_declined",
-        title:              "Эксперт отказался от заказа",
-        description:        `Эксперт отказался от заказа ${shortId}. Вы можете выбрать другого эксперта.`,
-        payload:            { request_id: item.request_id, expert_id: userId, decline_reason: declineReason, decline_comment: declineComment || null },
-      });
-      if (custEmail) {
-        await logEmailTestEvent(custId, custEmail, "expert_declined",
-          "Эксперт отказался от заказа", { request_id: item.request_id, reason: declineReason });
-      }
-    }
-
-    // 5. Status event
-    await logStatusEvent(item.request_id!, "expert_selection", "matching", "expert_declined");
-
-    // 6. If all matches are declined → trigger re-matching
-    try {
-      const { data: allMatches } = await supabase
-        .from("palata_request_matches")
-        .select("id, status")
-        .eq("request_id", item.request_id)
-        .not("status", "in", '("closed_by_other_expert","withdrawn")');
-
-      const allDeclined =
-        allMatches != null &&
-        allMatches.length > 0 &&
-        allMatches.every((m: { status: string }) =>
-          m.status === "declined" || m.status === "withdrawn",
-        );
-
-      if (allDeclined) {
-        const custId2 = item.customer_id ?? req?.customer_id ?? undefined;
-        await runMatching({
-          requestId:           item.request_id!,
-          expertiseDirectionId: req?.expertise_direction_id ?? null,
-          regionIds:           req?.region_id ? [req.region_id] : [],
-          requiresTravel:      req?.requires_travel ?? false,
-          customerId:          custId2 ?? undefined,
-        });
-      }
-    } catch { /* non-fatal */ }
-
-    setBusy(false);
-    onDone();
-  }
-
-  return (
-    <div className="bg-white border border-[#0F4C9A]/30 rounded-xl shadow-sm overflow-hidden">
-      <div className="p-5">
-        <ExpertActionItemHeader item={item} />
-
-        {/* Request details */}
-        {reqLoading ? (
-          <p className="text-xs text-[#666666] mt-3">Загрузка деталей заказа…</p>
-        ) : req ? (
-          <div className="mt-3 bg-[#F4F4F4] rounded-xl px-4 py-3 space-y-1.5">
-            <p className="text-[10px] font-mono text-[#666666]">{shortId}</p>
-            <p className="text-sm font-semibold text-[#111111]">{req.title}</p>
-            <div className="flex flex-wrap gap-1.5 mt-1">
-              {(req.expertise_direction_id || req.expertise_type) && (
-                <span className="text-[11px] text-[#0F4C9A] bg-[#0F4C9A]/10 px-1.5 py-0.5 rounded">
-                  {dirMap[req.expertise_direction_id ?? ""] ?? req.expertise_type ?? "—"}
-                </span>
-              )}
-            </div>
-            {req.description && (
-              <p className="text-xs text-[#666666] leading-relaxed mt-1.5 line-clamp-4">{req.description}</p>
-            )}
-          </div>
-        ) : null}
-
-        {/* Customer info */}
-        {custContact && (custContact.name || custContact.phone || custContact.email) && (
-          <div className="mt-3 px-4 py-3 bg-white border border-[#D0D0D0] rounded-xl">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-2">Заказчик</p>
-            {custContact.name && (
-              <p className="text-sm font-semibold text-[#111111]">{custContact.name}</p>
-            )}
-            {custContact.phone && (
-              <p className="text-xs text-[#666666] mt-1">Телефон: <span className="font-medium text-[#111111]">{custContact.phone}</span></p>
-            )}
-            {custContact.email && (
-              <p className="text-xs text-[#666666]">Email: <span className="font-medium text-[#111111]">{custContact.email}</span></p>
-            )}
-          </div>
-        )}
-
-        {/* Action buttons */}
-        {action === "idle" && (
-          <div className="flex flex-wrap gap-2 mt-4">
-            <button
-              disabled={busy}
-              onClick={handleTakeWork}
-              className="btn-primary text-xs py-1.5 px-4"
-            >
-              {busy ? "Сохранение…" : "Взять в работу"}
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => setAction("date")}
-              className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors"
-            >
-              Могу начать с даты
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => setAction("decline")}
-              className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-red-300 hover:text-red-600 transition-colors"
-            >
-              Отказаться
-            </button>
-          </div>
-        )}
-
-        {/* Date picker form */}
-        {action === "date" && (
-          <div className="mt-4 space-y-3 border-t border-[#D0D0D0] pt-3">
-            <p className="text-xs font-semibold text-[#002B5C]">Укажите дату готовности начать:</p>
-            <input
-              type="date"
-              className="text-sm border border-[#D0D0D0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/40 w-full"
-              value={startDate}
-              min={new Date().toISOString().split("T")[0]}
-              onChange={e => setStartDate(e.target.value)}
-            />
-            <textarea
-              rows={2}
-              placeholder="Комментарий (необязательно)"
-              className="w-full text-sm border border-[#D0D0D0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/40 resize-none"
-              value={comment}
-              onChange={e => setComment(e.target.value)}
-            />
-            <div className="flex gap-2">
-              <button
-                disabled={busy || !startDate}
-                onClick={handleCanStartFrom}
-                className="btn-primary text-xs py-1.5 px-4"
-              >
-                {busy ? "…" : "Подтвердить дату"}
-              </button>
-              <button
-                onClick={() => setAction("idle")}
-                className="px-3 py-1.5 text-xs text-[#666666] hover:text-[#111111] transition-colors"
-              >
-                Отмена
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Decline form */}
-        {action === "decline" && (
-          <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
-            <p className="text-xs font-semibold text-[#002B5C]">Причина отказа:</p>
-            <select
-              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300"
-              value={declineReason}
-              onChange={e => setDeclineReason(e.target.value)}
-            >
-              {Object.entries(DECLINE_LABEL).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
-            <textarea
-              rows={2}
-              placeholder="Комментарий (необязательно)"
-              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
-              value={declineComment}
-              onChange={e => setDeclineComment(e.target.value)}
-            />
-            <div className="flex gap-2">
-              <button
-                disabled={busy}
-                onClick={handleDecline}
-                className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
-              >
-                {busy ? "…" : "Подтвердить отказ"}
-              </button>
-              <button
-                onClick={() => setAction("idle")}
-                className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
-              >
-                Отмена
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── you_are_approved_for_work ────────────────────────────────────────────────
 

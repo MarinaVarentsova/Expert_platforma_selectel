@@ -1989,7 +1989,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           </div>
 
           {/* — 04: Контактные данные — */}
-          {(role !== "expert" || (myActiveMatch && CONTACTS_REVEALED.has(myActiveMatch.status))) && (r.customer_name || r.customer_phone || r.customer_email) && (
+          {(role !== "expert" || (myActiveMatch && (CONTACTS_REVEALED.has(myActiveMatch.status) || (myActiveMatch.status === "proposed" && !!myActiveMatch.responded_at)))) && (r.customer_name || r.customer_phone || r.customer_email) && (
             <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-3 shadow-sm">
               <div className="flex items-center gap-2.5">
                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-white text-[9px] font-bold flex items-center justify-center">

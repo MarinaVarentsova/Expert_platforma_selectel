@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { ClipboardList, Zap, Star, User, Briefcase, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrentUser } from "@/lib/authContext";
@@ -673,6 +673,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   const currentUser = useCurrentUser();
   const role = currentUser?.role ?? null;
   const userId = currentUser?.id ?? null;
+  const [, navigate] = useLocation();
 
   const { request: r, files, matches, contacts, expertProfiles,
           events, emailEvents, expertRatings, customerRatings, usersMap,
@@ -1032,6 +1033,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       }
       setMS(match.id, { kind: "idle" });
       onReload();
+      navigate("/expert?tab=requests");
     } catch (e: unknown) {
       setMS(match.id, { kind: "error", message: (e as Error).message ?? "Ошибка" });
     }
@@ -1080,6 +1082,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
       setMS(match.id, { kind: "idle" });
       onReload();
+      navigate("/expert?tab=requests");
     } catch (e: unknown) {
       setMS(match.id, { kind: "error", message: (e as Error).message ?? "Ошибка" });
     }
@@ -1139,6 +1142,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       if (payloads.length) notify(payloads);
       setMS(match.id, { kind: "idle" });
       onReload();
+      navigate("/expert?tab=requests");
     } catch (e: unknown) {
       setMS(match.id, { kind: "error", message: (e as Error).message ?? "Ошибка" });
     }

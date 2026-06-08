@@ -21,10 +21,7 @@ import {
 } from "@/lib/actionItems";
 
 // ─── Action inbox filter ──────────────────────────────────────────────────────
-// "customer_selected_you" is informational — the expert's kanban shows the selection.
-// It should NOT appear as a task in "Требуют действия".
-
-const EXPERT_INBOX_EXCLUDED: string[] = ["customer_selected_you"];
+const EXPERT_INBOX_EXCLUDED: string[] = [];
 
 function filterExpertActionItems(items: ActionItem[]): ActionItem[] {
   return items.filter(i => !EXPERT_INBOX_EXCLUDED.includes(i.action_type));
@@ -1890,6 +1887,7 @@ const ACTION_LABEL_EX: Record<string, { label: string; color: string }> = {
   you_are_approved_for_work:    { label: "Заказчик подтвердил дату", color: "text-[#002B5C] bg-[#D0D0D0]" },
   customer_declined_start_date: { label: "Заказчик отклонил дату",   color: "text-red-700 bg-red-50" },
   customer_cancelled_order:     { label: "Заказ отменён",            color: "text-slate-600 bg-slate-100" },
+  other_expert_took_order:      { label: "Назначен другой эксперт",  color: "text-orange-700 bg-orange-50" },
   experts_matched:              { label: "Подобраны эксперты",       color: "text-[#002B5C] bg-[#F4F4F4]" },
   expert_declined:              { label: "Эксперт отказался",        color: "text-red-700 bg-red-50" },
   expert_can_start_from:        { label: "Предложена дата",          color: "text-amber-700 bg-amber-50" },
@@ -1966,6 +1964,9 @@ function ExpertActionCard({ item, userId, userEmail, onDone }: {
   }
   if (item.action_type === "customer_cancelled_order") {
     return <CustomerCancelledCard item={item} onDone={onDone} />;
+  }
+  if (item.action_type === "other_expert_took_order") {
+    return <OtherExpertTookCard item={item} onDone={onDone} />;
   }
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
@@ -2077,12 +2078,20 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
         .eq("id", matchId);
     }
 
-    // 2. Close other experts' matches
-    await supabase.from("palata_request_matches")
-      .update({ status: "closed_by_other_expert" })
+    // 2. Find + close other active matches; store those explicitly selected by customer
+    const custId = item.customer_id ?? req?.customer_id ?? null;
+    const { data: otherMatchData } = await supabase
+      .from("palata_request_matches")
+      .select("id, expert_id, responded_at")
       .eq("request_id", item.request_id)
       .neq("expert_id", userId)
-      .not("status", "in", '("declined","closed_by_other_expert","withdrawn")');
+      .not("status", "in", '("declined","closed_by_other_expert","withdrawn","completed")');
+    const otherMatches = (otherMatchData ?? []) as Array<{ id: string; expert_id: string; responded_at: string | null }>;
+    if (otherMatches.length > 0) {
+      await supabase.from("palata_request_matches")
+        .update({ status: "closed_by_other_expert" })
+        .in("id", otherMatches.map(m => m.id));
+    }
 
     // 3. Request → in_work
     await supabase.from("palata_requests")
@@ -2099,8 +2108,22 @@ function CustomerSelectedCard({ item, userId, userEmail, onDone }: {
     await resolveActionItem(item.id);
     await cancelRequestActionItems(item.request_id!, item.id);
 
+    // 5b. Notify other experts who were explicitly selected by customer
+    for (const om of otherMatches.filter(m => m.responded_at != null)) {
+      await createActionItem({
+        request_id:          item.request_id,
+        expert_id:           om.expert_id,
+        customer_id:         custId,
+        assigned_to_user_id: om.expert_id,
+        assigned_role:       "expert",
+        action_type:         "other_expert_took_order",
+        title:               "На заказ назначен другой эксперт",
+        description:         `По заказу ${shortId} был выбран другой эксперт.`,
+        payload:             { request_id: item.request_id },
+      });
+    }
+
     // 6. Action item for customer
-    const custId = item.customer_id ?? req?.customer_id ?? null;
     if (custId) {
       const custEmail = await getCustomerEmail(custId);
       await createActionItem({
@@ -2498,12 +2521,20 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
         .eq("id", matchId);
     }
 
-    // 2. Other matches → closed_by_other_expert
-    await supabase.from("palata_request_matches")
-      .update({ status: "closed_by_other_expert" })
+    // 2. Find + close other active matches; store those explicitly selected by customer
+    const custId = custIdFromPayload ?? req?.customer_id ?? null;
+    const { data: otherMatchData2 } = await supabase
+      .from("palata_request_matches")
+      .select("id, expert_id, responded_at")
       .eq("request_id", item.request_id)
       .neq("expert_id", userId)
-      .not("status", "in", '("declined","closed_by_other_expert","withdrawn","customer_declined_start_date")');
+      .not("status", "in", '("declined","closed_by_other_expert","withdrawn","customer_declined_start_date","completed")');
+    const otherMatches2 = (otherMatchData2 ?? []) as Array<{ id: string; expert_id: string; responded_at: string | null }>;
+    if (otherMatches2.length > 0) {
+      await supabase.from("palata_request_matches")
+        .update({ status: "closed_by_other_expert" })
+        .in("id", otherMatches2.map(m => m.id));
+    }
 
     // 3. Request → in_work
     await supabase.from("palata_requests")
@@ -2520,8 +2551,22 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
     await resolveActionItem(item.id);
     await cancelRequestActionItems(item.request_id!, item.id);
 
+    // 5b. Notify other experts who were explicitly selected by customer
+    for (const om of otherMatches2.filter(m => m.responded_at != null)) {
+      await createActionItem({
+        request_id:          item.request_id,
+        expert_id:           om.expert_id,
+        customer_id:         custId,
+        assigned_to_user_id: om.expert_id,
+        assigned_role:       "expert",
+        action_type:         "other_expert_took_order",
+        title:               "На заказ назначен другой эксперт",
+        description:         `По заказу ${shortId} был выбран другой эксперт.`,
+        payload:             { request_id: item.request_id },
+      });
+    }
+
     // 6. Action item for customer: expert_started_work
-    const custId = custIdFromPayload ?? req?.customer_id ?? null;
     if (custId) {
       await createActionItem({
         request_id:          item.request_id,
@@ -2784,6 +2829,37 @@ function CustomerDeclinedDateCard({ item, onDone }: { item: ActionItem; onDone: 
           className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-800 transition-colors"
         >
           Понятно
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── other_expert_took_order ──────────────────────────────────────────────────
+
+function OtherExpertTookCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
+  const [done, setDone] = useState(false);
+
+  async function handleAck() {
+    await resolveActionItem(item.id);
+    setDone(true);
+    onDone();
+  }
+
+  if (done) return null;
+
+  return (
+    <div className="bg-white border border-orange-200 rounded-xl p-5 shadow-sm">
+      <ExpertActionItemHeader item={item} />
+      <div className="mt-3 bg-orange-50 rounded-xl px-4 py-3">
+        <p className="text-xs text-orange-800">{item.description}</p>
+      </div>
+      <div className="mt-4">
+        <button
+          onClick={handleAck}
+          className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-800 transition-colors"
+        >
+          Ознакомлен
         </button>
       </div>
     </div>

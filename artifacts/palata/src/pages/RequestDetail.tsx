@@ -864,16 +864,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .eq("id", match.id);
       if (me) throw me;
 
-      // 1b. Close all other proposed (not-yet-seen-by-expert) candidates
-      const otherProposedIds = matches
-        .filter(m => m.status === "proposed" && m.id !== match.id)
-        .map(m => m.id);
-      if (otherProposedIds.length > 0) {
-        await supabase.from("palata_request_matches")
-          .update({ status: "closed_by_other_expert" })
-          .in("id", otherProposedIds);
-      }
-
       // 2. Create / update palata_request_contacts.
       // Use only base columns (revealed_at, phones, emails) that exist in all
       // schema versions; contact_opened_at / expert_status require migration 020.
@@ -1591,8 +1581,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                       {m.responded_at && <Field label="Ответ дан">{fmtDate(m.responded_at)}</Field>}
                     </div>
 
-                    {/* Customer profile — visible when customer has selected this expert */}
-                    {CONTACTS_REVEALED.has(m.status) && customer && (
+                    {/* Customer profile — visible once customer has selected this expert */}
+                    {(CONTACTS_REVEALED.has(m.status) || (m.status === "proposed" && !!m.responded_at)) && customer && (
                       <div className="p-3 bg-[#EEF3FA] rounded-lg border border-[#C8D8EE] mb-4">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-[#0F4C9A] mb-2">
                           Заказчик
@@ -1999,7 +1989,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           </div>
 
           {/* — 04: Контактные данные — */}
-          {role !== "expert" && (r.customer_name || r.customer_phone || r.customer_email) && (
+          {(role !== "expert" || (myActiveMatch && CONTACTS_REVEALED.has(myActiveMatch.status))) && (r.customer_name || r.customer_phone || r.customer_email) && (
             <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-3 shadow-sm">
               <div className="flex items-center gap-2.5">
                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-white text-[9px] font-bold flex items-center justify-center">

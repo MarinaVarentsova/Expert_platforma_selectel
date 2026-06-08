@@ -12,6 +12,7 @@ export type ActionType =
   | "customer_approved_start_date"
   | "customer_declined_start_date"
   | "customer_cancelled_order"
+  | "other_expert_took_order"
   | "choose_another_expert"
   | "you_are_approved_for_work"
   | "manual_matching_required"

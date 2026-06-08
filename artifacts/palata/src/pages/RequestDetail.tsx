@@ -2056,8 +2056,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                           <p className="text-xs text-slate-400">Раунд {m.matching_round}</p>
                         </div>
                       </div>
-                      {/* Hide "Предложено" badge for customer — the select button below already signals actionability */}
-                      {(role !== "customer" || m.status !== "proposed") && (
+                      {/* Hide "Предложено" for customer when not yet selected; show it when customer already picked this expert */}
+                      {(role !== "customer" || m.status !== "proposed" || !!m.responded_at) && (
                         <span className={`shrink-0 inline-block rounded px-2 py-0.5 text-xs font-medium ${ms?.cls ?? "bg-slate-100 text-slate-500"}`}>
                           {ms?.label ?? m.status}
                         </span>

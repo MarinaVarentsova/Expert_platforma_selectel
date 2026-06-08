@@ -101,12 +101,12 @@ type MatchedExpert = {
 // ─── Kanban columns ───────────────────────────────────────────────────────────
 
 const COLUMNS = [
-  { id: "new",     label: "Новый",         dotColor: "bg-slate-400",  bgColor: "bg-white border-slate-200",         accent: "", statuses: ["draft", "new"] },
-  { id: "pending", label: "Идёт подбор",   dotColor: "bg-amber-400",  bgColor: "bg-amber-50/60 border-amber-200",   accent: "", statuses: ["pending", "matching"] },
-  { id: "match",   label: "Выбор эксперта",dotColor: "bg-[#0F4C9A]",  bgColor: "bg-[#F4F4F4] border-[#D0D0D0]",    accent: "", statuses: ["expert_selection"] },
-  { id: "working", label: "В работе",      dotColor: "bg-[#002B5C]",  bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]", accent: "", statuses: ["in_progress", "in_work"] },
-  { id: "done",    label: "Выполнен",      dotColor: "bg-emerald-400",bgColor: "bg-emerald-50/60 border-emerald-200",accent:"", statuses: ["completed"] },
-  { id: "closed",  label: "Неактуален",    dotColor: "bg-slate-300",  bgColor: "bg-slate-50 border-slate-200",      accent: "", statuses: ["cancelled", "failed", "declined"] },
+  { id: "new",     label: "Новый",          hint: "Заказ создан, подбор не запущен",       dotColor: "bg-slate-400",  bgColor: "bg-white border-slate-200",         accent: "", statuses: ["draft", "new"] },
+  { id: "pending", label: "Идёт подбор",   hint: "Система ищет подходящих экспертов",     dotColor: "bg-amber-400",  bgColor: "bg-amber-50/60 border-amber-200",   accent: "", statuses: ["pending", "matching"] },
+  { id: "match",   label: "Выбор эксперта",hint: "Эксперты найдены — выберите нужного",   dotColor: "bg-[#0F4C9A]",  bgColor: "bg-[#F4F4F4] border-[#D0D0D0]",    accent: "", statuses: ["expert_selection"] },
+  { id: "working", label: "В работе",      hint: "Эксперт принял заказ и ведёт работу",  dotColor: "bg-[#002B5C]",  bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]", accent: "", statuses: ["in_progress", "in_work"] },
+  { id: "done",    label: "Выполнен",      hint: "Работа завершена, оцените эксперта",    dotColor: "bg-emerald-400",bgColor: "bg-emerald-50/60 border-emerald-200",accent:"", statuses: ["completed"] },
+  { id: "closed",  label: "Неактуален",    hint: "Заказ закрыт или отменён",              dotColor: "bg-slate-300",  bgColor: "bg-slate-50 border-slate-200",      accent: "", statuses: ["cancelled", "failed", "declined"] },
 ];
 
 

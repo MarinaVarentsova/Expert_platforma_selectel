@@ -13,6 +13,7 @@ type KanbanBoardProps<T> = {
   columns: Array<{
     id: string;
     label: string;
+    hint?: string;
     accent: string;
     dotColor: string;
     bgColor: string;
@@ -30,9 +31,12 @@ export function KanbanBoard<T>({ columns, renderCard, emptyText = "Нет зая
 
           {/* Column header */}
           <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-xl border border-b-0 ${col.bgColor}`}>
-            <div className="flex items-center gap-2">
-              <span className={`status-dot ${col.dotColor}`} />
-              <span className="text-xs font-semibold text-slate-700">{col.label}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`status-dot shrink-0 ${col.dotColor}`} />
+              <div className="min-w-0">
+                <span className="text-xs font-semibold text-slate-700 block leading-tight">{col.label}</span>
+                {col.hint && <span className="text-[10px] text-slate-400 leading-tight block">{col.hint}</span>}
+              </div>
             </div>
             <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
               col.items.length > 0

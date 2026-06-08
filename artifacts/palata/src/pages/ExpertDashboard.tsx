@@ -132,12 +132,12 @@ const DECLINE_LABEL: Record<string, string> = {
 // ─── Kanban config ─────────────────────────────────────────────────────────────
 
 const COLUMNS = [
-  { id: "proposed",  label: "Новые предложения", accent: "", dotColor: "bg-amber-400",    bgColor: "bg-amber-50/60 border-amber-200",    statuses: ["proposed", "contacts_opened"] },
-  { id: "cantake",   label: "Могу взять",        accent: "", dotColor: "bg-[#0F4C9A]",   bgColor: "bg-[#F4F4F4] border-[#D0D0D0]",     statuses: ["can_start_from"] },
-  { id: "accepted",  label: "В работе",          accent: "", dotColor: "bg-[#002B5C]",   bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]",  statuses: ["accepted", "accepted_work"] },
-  { id: "completed", label: "Завершено",         accent: "", dotColor: "bg-emerald-400", bgColor: "bg-emerald-50/60 border-emerald-200", statuses: ["completed"] },
-  { id: "declined",  label: "Отказ / не взял",    accent: "", dotColor: "bg-slate-300",   bgColor: "bg-slate-50 border-slate-200",      statuses: ["declined", "withdrawn", "customer_declined_start_date"] },
-  { id: "missed",    label: "Не актуальный",      accent: "", dotColor: "bg-orange-300",  bgColor: "bg-orange-50/50 border-orange-200",  statuses: ["closed_by_other_expert"] },
+  { id: "proposed",  label: "Новые предложения", hint: "Примите решение по этим заказам",      accent: "", dotColor: "bg-amber-400",    bgColor: "bg-amber-50/60 border-amber-200",    statuses: ["proposed", "contacts_opened"] },
+  { id: "cantake",   label: "Могу взять",        hint: "Вы откликнулись, ждёте заказчика",    accent: "", dotColor: "bg-[#0F4C9A]",   bgColor: "bg-[#F4F4F4] border-[#D0D0D0]",     statuses: ["can_start_from"] },
+  { id: "accepted",  label: "В работе",          hint: "Заказчик выбрал вас, ведите работу",  accent: "", dotColor: "bg-[#002B5C]",   bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]",  statuses: ["accepted", "accepted_work"] },
+  { id: "completed", label: "Завершено",         hint: "Работа сдана, ожидайте оценки",       accent: "", dotColor: "bg-emerald-400", bgColor: "bg-emerald-50/60 border-emerald-200", statuses: ["completed"] },
+  { id: "declined",  label: "Отказ / не взял",   hint: "Вы отказались или заказ прошёл мимо", accent: "", dotColor: "bg-slate-300",   bgColor: "bg-slate-50 border-slate-200",      statuses: ["declined", "withdrawn", "customer_declined_start_date"] },
+  { id: "missed",    label: "Не актуальный",     hint: "Заказчик выбрал другого эксперта",    accent: "", dotColor: "bg-orange-300",  bgColor: "bg-orange-50/50 border-orange-200",  statuses: ["closed_by_other_expert"] },
 ];
 
 // ─── Main component ──────────────────────────────────────────────────────────

@@ -1904,11 +1904,11 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         </Card>
       )}
 
-      {/* ══ 5. ОПИСАНИЕ ══════════════════════════════════════════════════════ */}
-      {(r.description || r.materials_available) && (
-        <Card title="Описание заказа" collapsible defaultOpen={false}>
+      {/* ══ 5–6. ПОДРОБНЕЕ О ЗАКАЗЕ ═════════════════════════════════════════ */}
+      <Card title="Подробнее о заказе" collapsible defaultOpen={false} largeChevron>
+        <div className="space-y-5">
           {r.description && (
-            <div className={r.materials_available ? "mb-4" : ""}>
+            <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Описание ситуации</p>
               <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
             </div>
@@ -1919,35 +1919,64 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
               <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
             </div>
           )}
-        </Card>
-      )}
-
-      {/* ══ 6. ДОКУМЕНТЫ ════════════════════════════════════════════════════ */}
-      <Card title="Документы" count={files.length} collapsible defaultOpen={false}>
-        {files.length === 0 ? <Empty text="Файлы не загружены" /> : (
-          <div className="divide-y divide-slate-50 -mx-6 -mb-6">
-            {files.map(f => (
-              <div key={f.id} className="px-6 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
-                <span className="text-[10px] font-bold font-mono text-slate-400 bg-slate-100 rounded px-1.5 py-0.5 shrink-0">
-                  {mimeIcon(f.mime_type)}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800 truncate">{f.file_name}</p>
-                  <p className="text-xs text-slate-400">{fmtSize(f.size_bytes)} · {fmtDate(f.created_at)}</p>
-                </div>
-                {f.bucket_path && (
-                  <a
-                    href={filePublicUrl(f.bucket_path)}
-                    target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-[#0F4C9A] hover:text-[#002B5C] hover:underline shrink-0 transition-colors"
-                  >
-                    Скачать
-                  </a>
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+              Прикреплённые файлы
+              <span className="ml-1.5 text-slate-300 font-normal normal-case tracking-normal">{files.length}</span>
+            </p>
+            {files.length === 0 ? (
+              <p className="text-sm text-slate-400 italic">Файлы не загружены</p>
+            ) : (
+              <div className="divide-y divide-slate-100 -mx-1">
+                {files.map(f => (
+                  <div key={f.id} className="px-1 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors rounded">
+                    <span className="text-[10px] font-bold font-mono text-slate-400 bg-slate-100 rounded px-1.5 py-0.5 shrink-0">
+                      {mimeIcon(f.mime_type)}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 truncate">{f.file_name}</p>
+                      <p className="text-xs text-slate-400">{fmtSize(f.size_bytes)} · {fmtDate(f.created_at)}</p>
+                    </div>
+                    {f.bucket_path && (
+                      <a
+                        href={filePublicUrl(f.bucket_path)}
+                        target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-[#0F4C9A] hover:text-[#002B5C] hover:underline shrink-0 transition-colors"
+                      >
+                        Скачать
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {role !== "expert" && (r.customer_name || r.customer_phone || r.customer_email) && (
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Контактные данные</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {r.customer_name && (
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Имя заказчика</p>
+                    <p className="text-sm text-slate-700 font-medium">{r.customer_name}</p>
+                  </div>
+                )}
+                {r.customer_phone && (
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Телефон</p>
+                    <p className="text-sm text-slate-700 font-medium">{r.customer_phone}</p>
+                  </div>
+                )}
+                {r.customer_email && (
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Email</p>
+                    <p className="text-sm text-slate-700 font-medium">{r.customer_email}</p>
+                  </div>
                 )}
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </Card>
 
       {/* ══ 6. ПОДОБРАННЫЕ ЭКСПЕРТЫ (customer + admin) ══════════════════════ */}
@@ -2370,10 +2399,11 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
 // ─── Shared UI atoms ──────────────────────────────────────────────────────────
 
-function Card({ title, count, id, collapsible, defaultOpen = true, children }: {
-  title?: string; count?: number; id?: string; collapsible?: boolean; defaultOpen?: boolean; children: React.ReactNode
+function Card({ title, count, id, collapsible, defaultOpen = true, largeChevron, children }: {
+  title?: string; count?: number; id?: string; collapsible?: boolean; defaultOpen?: boolean; largeChevron?: boolean; children: React.ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const chevronSize = largeChevron ? "w-5 h-5" : "w-4 h-4";
   return (
     <div id={id} className="bg-white rounded-xl border border-slate-200 p-6">
       {title && (
@@ -2389,7 +2419,7 @@ function Card({ title, count, id, collapsible, defaultOpen = true, children }: {
           </div>
           {collapsible && (
             <span className="text-slate-400">
-              {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              {open ? <ChevronUp className={chevronSize} /> : <ChevronDown className={chevronSize} />}
             </span>
           )}
         </div>

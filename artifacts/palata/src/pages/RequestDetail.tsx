@@ -1570,6 +1570,48 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       {/* ══ 3. СТАТУС ЭКСПЕРТА ПО ЭТОМУ ЗАКАЗУ ══════════════════════════════ */}
       {role === "expert" && (
         <>
+          {/* Rate customer — shown at the top when match is completed */}
+          {myCompletedMatch && !hasRatedCustomer && (
+            <Card>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                <h2 className="text-sm font-semibold text-slate-700">Оценить заказчика</h2>
+              </div>
+              {ratingUI.kind === "done" ? (
+                <p className="text-sm text-emerald-600 font-medium">Оценка сохранена. Спасибо!</p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <button
+                        key={s}
+                        onClick={() => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, score: s })}
+                        className={`text-2xl transition-colors ${ratingUI.kind === "idle" && ratingUI.score >= s ? "text-amber-400" : "text-slate-200"}`}
+                      >★</button>
+                    ))}
+                    <span className="ml-2 text-sm text-slate-500 self-center">
+                      {ratingUI.kind === "idle" ? `${ratingUI.score} / 5` : ""}
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Комментарий (необязательно)"
+                    className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    value={ratingUI.kind === "idle" ? ratingUI.comment : ""}
+                    onChange={e => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, comment: e.target.value })}
+                  />
+                  <button
+                    className="btn-primary"
+                    onClick={handleRateCustomer}
+                    disabled={ratingUI.kind === "submitting"}
+                  >
+                    {ratingUI.kind === "submitting" ? "Сохранение…" : "Отправить оценку"}
+                  </button>
+                </div>
+              )}
+            </Card>
+          )}
+
           {myMatches.length === 0 ? (
             <Card>
               <p className="text-sm text-slate-400 italic">У вас нет матча по этому заказу</p>
@@ -1779,47 +1821,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             })
           )}
 
-          {/* Rate customer — after expert's match is completed */}
-          {myCompletedMatch && !hasRatedCustomer && (
-            <Card>
-              <div className="flex items-center gap-2 mb-4">
-                <span className="w-2 h-2 rounded-full bg-amber-400" />
-                <h2 className="text-sm font-semibold text-slate-700">Оценить заказчика</h2>
-              </div>
-              {ratingUI.kind === "done" ? (
-                <p className="text-sm text-emerald-600 font-medium">Оценка сохранена. Спасибо!</p>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map(s => (
-                      <button
-                        key={s}
-                        onClick={() => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, score: s })}
-                        className={`text-2xl transition-colors ${ratingUI.kind === "idle" && ratingUI.score >= s ? "text-amber-400" : "text-slate-200"}`}
-                      >★</button>
-                    ))}
-                    <span className="ml-2 text-sm text-slate-500 self-center">
-                      {ratingUI.kind === "idle" ? `${ratingUI.score} / 5` : ""}
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Комментарий (необязательно)"
-                    className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    value={ratingUI.kind === "idle" ? ratingUI.comment : ""}
-                    onChange={e => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, comment: e.target.value })}
-                  />
-                  <button
-                    className="btn-primary"
-                    onClick={handleRateCustomer}
-                    disabled={ratingUI.kind === "submitting"}
-                  >
-                    {ratingUI.kind === "submitting" ? "Сохранение…" : "Отправить оценку"}
-                  </button>
-                </div>
-              )}
-            </Card>
-          )}
         </>
       )}
 

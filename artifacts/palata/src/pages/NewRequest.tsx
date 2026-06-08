@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/authContext";
 import { notify } from "@/lib/notifyApi";
-import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check } from "lucide-react";
+import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check, ClipboardList, Zap, Star, User } from "lucide-react";
 
 
 const URGENCY_OPTIONS = [
@@ -360,16 +360,56 @@ export default function NewRequest() {
 
   return (
     <div className="min-h-[calc(100vh-56px)] bg-[#F4F4F4]">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
 
-        {/* Back */}
-        <button
-          onClick={() => navigate("/customer")}
-          className="inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#111111] mb-6 transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Личный кабинет
-        </button>
+      {/* ── Dashboard nav block ──────────────────────────────────────────── */}
+      <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-5">
+        <div className="max-w-screen-2xl mx-auto">
+          {/* User info + profile button */}
+          <div className="mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Личный кабинет заказчика</p>
+            <p className="text-lg font-bold text-slate-900 leading-tight">
+              {currentUser?.full_name ?? currentUser?.email ?? ""}
+            </p>
+            {currentUser?.email && currentUser?.full_name && (
+              <p className="text-xs text-slate-400 mt-0.5">{currentUser.email}</p>
+            )}
+            <button
+              onClick={() => navigate("/customer?tab=profile")}
+              className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border bg-[#0F4C9A] border-[#0F4C9A] text-white hover:bg-[#002B5C] hover:border-[#002B5C] transition-all"
+            >
+              <User className="w-3.5 h-3.5" />
+              Мой профиль
+            </button>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-1 border-b border-slate-200 overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 scrollbar-none">
+            <button
+              onClick={() => navigate("/customer?tab=requests")}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all rounded-full border-b-2 -mb-px border-transparent text-[#002B5C] hover:bg-[#0F4C9A]/10 hover:text-[#0F4C9A]"
+            >
+              <ClipboardList className="w-3.5 h-3.5" />
+              Мои заказы
+            </button>
+            <button
+              onClick={() => navigate("/customer?tab=actions")}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all rounded-full border-b-2 -mb-px border-transparent text-[#002B5C] hover:bg-[#0F4C9A]/10 hover:text-[#0F4C9A]"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              Требуют действия
+            </button>
+            <button
+              onClick={() => navigate("/customer?tab=rate")}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all rounded-full border-b-2 -mb-px border-transparent text-[#002B5C] hover:bg-[#0F4C9A]/10 hover:text-[#0F4C9A]"
+            >
+              <Star className="w-3.5 h-3.5" />
+              Оценить эксперта
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
 
         {/* Header */}
         <div className="mb-7">

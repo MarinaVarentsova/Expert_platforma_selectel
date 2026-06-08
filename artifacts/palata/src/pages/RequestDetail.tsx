@@ -1333,10 +1333,13 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
             {custUI.kind === "submitting" && <Spinner inline />}
 
-            {isOrderActive && custUI.kind === "idle" && (
+            {isOrderActive && !["in_work", "in_progress"].includes(r.status) && custUI.kind === "idle" && (
               <button className="btn-danger" onClick={() => handleOrderStatus("cancelled")}>
                 Сделать неактуальным
               </button>
+            )}
+            {(["in_work", "in_progress"].includes(r.status)) && custUI.kind === "idle" && (
+              <p className="text-xs text-slate-400 italic">Заказ в работе — отмена недоступна</p>
             )}
             {!isOrderActive && (
               <p className="text-xs text-slate-400 italic">Заказ завершён — действия недоступны</p>

@@ -2152,8 +2152,9 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
     await resolveActionItem(item.id);
     await cancelRequestActionItems(item.request_id!, item.id);
 
-    // 5b. Notify other experts who were explicitly selected by customer
-    for (const om of otherMatches2.filter(m => m.responded_at != null)) {
+    // 5b. Notify ALL other non-declined active experts
+    const orderLabel = req?.title ? `«${req.title}»` : shortId;
+    for (const om of otherMatches2) {
       await createActionItem({
         request_id:          item.request_id,
         expert_id:           om.expert_id,
@@ -2162,7 +2163,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
         assigned_role:       "expert",
         action_type:         "other_expert_took_order",
         title:               "На заказ назначен другой эксперт",
-        description:         `По заказу ${shortId} был выбран другой эксперт.`,
+        description:         `По заказу ${orderLabel} был выбран другой эксперт.`,
         payload:             { request_id: item.request_id },
       });
     }

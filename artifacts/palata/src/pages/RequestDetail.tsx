@@ -1092,24 +1092,49 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .update({ status: "accepted_work", responded_at: new Date().toISOString() })
         .eq("id", match.id);
       if (me) throw me;
-      const otherIds = matches
-        .filter(m => m.id !== match.id && ACTIVE_MATCH_STATUSES.has(m.status))
-        .map(m => m.id);
-      if (otherIds.length > 0) {
+      // Other active (non-declined) matches
+      const otherActiveMatches = matches.filter(m => m.id !== match.id && ACTIVE_MATCH_STATUSES.has(m.status));
+
+      // 2. Close other active matches → closed_by_other_expert
+      if (otherActiveMatches.length > 0) {
         await supabase.from("palata_request_matches")
-          .update({ status: "closed_by_other_expert" }).in("id", otherIds);
+          .update({ status: "closed_by_other_expert" })
+          .in("id", otherActiveMatches.map(m => m.id));
       }
+
+      // 3. Request → in_work
       const { error: re } = await supabase.from("palata_requests")
         .update({ status: "in_work", assigned_expert_id: match.expert_id }).eq("id", r.id);
       if (re) throw re;
+
+      // 4. Cancel ALL open action items for this request:
+      //    — customer's notifications from other experts
+      //    — declined experts' remaining items
+      //    — other experts' customer_selected_you / propose items
+      await cancelRequestActionItems(r.id);
+
+      // 5. Create "other expert took order" notification for each non-declined active expert
+      for (const om of otherActiveMatches) {
+        await createActionItem({
+          request_id:          r.id,
+          expert_id:           om.expert_id,
+          customer_id:         r.customer_id,
+          assigned_to_user_id: om.expert_id,
+          assigned_role:       "expert",
+          action_type:         "other_expert_took_order",
+          title:               "На заказ назначен другой эксперт",
+          description:         `По заказу «${r.title}» был выбран другой эксперт.`,
+          payload:             { request_id: r.id },
+        });
+      }
+
       await logEvent("request", r.id, r.status, "in_work", "Эксперт взял в работу");
       const takenExpert = usersMap[match.expert_id];
       const payloads: NotifyItem[] = [];
       if (customerEmail) payloads.push(mkNotify({ type: "request_in_progress", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: takenExpert?.full_name ?? undefined, currentStatus: "in_work" }));
-      for (const m of matches) {
-        if (m.id === match.id || !ACTIVE_MATCH_STATUSES.has(m.status)) continue;
-        const oe = usersMap[m.expert_id];
-        if (oe?.email) payloads.push(mkNotify({ type: "taken_by_other", recipientEmail: oe.email, recipientType: "expert", expertId: m.expert_id, expertName: oe.full_name ?? undefined }));
+      for (const om of otherActiveMatches) {
+        const oe = usersMap[om.expert_id];
+        if (oe?.email) payloads.push(mkNotify({ type: "taken_by_other", recipientEmail: oe.email, recipientType: "expert", expertId: om.expert_id, expertName: oe.full_name ?? undefined }));
       }
       if (payloads.length) notify(payloads);
       setMS(match.id, { kind: "idle" });

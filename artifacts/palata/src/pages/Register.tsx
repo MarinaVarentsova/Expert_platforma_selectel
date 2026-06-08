@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { runAllPendingMatching } from "@/lib/matching";
 import {
   ChevronLeft, Building2, GraduationCap, Check,
-  Eye, EyeOff,
+  Eye, EyeOff, FileText, X,
 } from "lucide-react";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { CertificateInputList } from "@/components/CertificateInputList";
@@ -70,6 +70,12 @@ export default function Register() {
       .order("sort_order")
       .then(({ data }) => setAllDirections(data ?? []));
   }, []);
+
+  // Consent checkboxes
+  const [consentPersonal, setConsentPersonal]   = useState(false);
+  const [consentMarketing, setConsentMarketing] = useState(false);
+  const [consentRules, setConsentRules]         = useState(false);
+  const [openDoc, setOpenDoc]                   = useState<"personal" | "rules" | null>(null);
 
   const [tripReady, setTripReady]         = useState(false);
   const [palataOk, setPalataOk]           = useState(false);
@@ -580,13 +586,74 @@ export default function Register() {
             </>
           )}
 
+          {/* ── Consent checkboxes ──────────────────────────────────────── */}
+          <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5 space-y-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666]">Согласия</p>
+
+            {/* 1. Personal data */}
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <div className={`mt-0.5 w-4 h-4 flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors ${consentPersonal ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300 group-hover:border-[#002B5C]"}`}>
+                {consentPersonal && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                <input type="checkbox" className="sr-only" checked={consentPersonal} onChange={e => setConsentPersonal(e.target.checked)} />
+              </div>
+              <span className="text-sm text-slate-700 leading-snug">
+                Я даю согласие на{" "}
+                <button
+                  type="button"
+                  onClick={() => setOpenDoc("personal")}
+                  className="text-[#002B5C] underline underline-offset-2 hover:text-[#0F4C9A] inline-flex items-center gap-0.5"
+                >
+                  обработку персональных данных
+                  <FileText className="w-3 h-3 ml-0.5" />
+                </button>
+                <span className="text-red-500 ml-0.5">*</span>
+              </span>
+            </label>
+
+            {/* 2. Marketing */}
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <div className={`mt-0.5 w-4 h-4 flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors ${consentMarketing ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300 group-hover:border-[#002B5C]"}`}>
+                {consentMarketing && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                <input type="checkbox" className="sr-only" checked={consentMarketing} onChange={e => setConsentMarketing(e.target.checked)} />
+              </div>
+              <span className="text-sm text-slate-500 leading-snug">
+                Я соглашаюсь на получение рекламных рассылок, звонков и сообщений
+                <span className="text-red-500 ml-0.5">*</span>
+              </span>
+            </label>
+
+            {/* 3. Platform rules */}
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <div className={`mt-0.5 w-4 h-4 flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors ${consentRules ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300 group-hover:border-[#002B5C]"}`}>
+                {consentRules && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                <input type="checkbox" className="sr-only" checked={consentRules} onChange={e => setConsentRules(e.target.checked)} />
+              </div>
+              <span className="text-sm text-slate-700 leading-snug">
+                Я ознакомлен с{" "}
+                <button
+                  type="button"
+                  onClick={() => setOpenDoc("rules")}
+                  className="text-[#002B5C] underline underline-offset-2 hover:text-[#0F4C9A] inline-flex items-center gap-0.5"
+                >
+                  правилами работы на платформе
+                  <FileText className="w-3 h-3 ml-0.5" />
+                </button>
+                <span className="text-red-500 ml-0.5">*</span>
+              </span>
+            </label>
+          </div>
+
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
               <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
 
-          <button type="submit" disabled={loading} className="w-full btn-primary py-3 disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={loading || !consentPersonal || !consentMarketing || !consentRules}
+            className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             {loading ? "Создание аккаунта…" : "Зарегистрироваться"}
           </button>
 
@@ -597,6 +664,50 @@ export default function Register() {
 
         </form>
       </div>
+
+      {/* ── Document modal ──────────────────────────────────────────────── */}
+      {openDoc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setOpenDoc(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#E0E0E0]">
+              <h2 className="text-sm font-bold text-[#111111]">
+                {openDoc === "personal"
+                  ? "Согласие на обработку персональных данных"
+                  : "Правила работы на платформе"}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setOpenDoc(null)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-8 flex flex-col items-center justify-center gap-3 text-center">
+              <FileText className="w-10 h-10 text-slate-300" />
+              <p className="text-base font-semibold text-slate-500">Документ в разработке</p>
+              <p className="text-sm text-slate-400 leading-relaxed max-w-xs">
+                Документ будет опубликован в ближайшее время. Вы сможете ознакомиться с ним здесь.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-[#E0E0E0]">
+              <button
+                type="button"
+                onClick={() => setOpenDoc(null)}
+                className="w-full btn-primary py-2.5"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

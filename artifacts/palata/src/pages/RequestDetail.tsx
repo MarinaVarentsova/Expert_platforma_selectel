@@ -908,7 +908,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         assigned_to_user_id: match.expert_id,
         assigned_role: "expert",
         action_type: "customer_selected_you",
-        title: "Вас выбрали по заказу",
+        title: `Вас выбрали по заказу «${r.title}»`,
         description: `Заказчик выбрал вас для связи по заказу #${shortId(r.id)}`,
         payload: {
           request_id: r.id,

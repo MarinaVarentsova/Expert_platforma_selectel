@@ -1906,30 +1906,50 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
       {/* ══ 5–6. ПОДРОБНЕЕ О ЗАКАЗЕ ═════════════════════════════════════════ */}
       <Card title="Подробнее о заказе" collapsible defaultOpen={false} largeChevron>
-        <div className="space-y-5">
-          {r.description && (
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Описание ситуации</p>
-              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
+        <div className="space-y-3">
+
+          {/* — Описание и материалы — */}
+          {(r.description || r.materials_available) && (
+            <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-4 shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-white text-[9px] font-bold flex items-center justify-center">
+                  01
+                </span>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-[#666666]">Описание и материалы</h3>
+              </div>
+              {r.description && (
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">Описание ситуации</p>
+                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.description}</p>
+                </div>
+              )}
+              {r.materials_available && (
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">Имеющиеся материалы</p>
+                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
+                </div>
+              )}
             </div>
           )}
-          {r.materials_available && (
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Имеющиеся материалы</p>
-              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{r.materials_available}</p>
+
+          {/* — Прикреплённые документы — */}
+          <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-3 shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-white text-[9px] font-bold flex items-center justify-center">
+                02
+              </span>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-[#666666]">Прикреплённые документы</h3>
+              {files.length > 0 && (
+                <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5 ml-0.5">{files.length}</span>
+              )}
             </div>
-          )}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
-              Прикреплённые файлы
-              <span className="ml-1.5 text-slate-300 font-normal normal-case tracking-normal">{files.length}</span>
-            </p>
+            <p className="text-xs text-[#666666]">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — не более 50 МБ каждый</p>
             {files.length === 0 ? (
               <p className="text-sm text-slate-400 italic">Файлы не загружены</p>
             ) : (
-              <div className="divide-y divide-slate-100 -mx-1">
+              <div className="divide-y divide-slate-100">
                 {files.map(f => (
-                  <div key={f.id} className="px-1 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors rounded">
+                  <div key={f.id} className="py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors rounded">
                     <span className="text-[10px] font-bold font-mono text-slate-400 bg-slate-100 rounded px-1.5 py-0.5 shrink-0">
                       {mimeIcon(f.mime_type)}
                     </span>
@@ -1951,10 +1971,17 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
               </div>
             )}
           </div>
+
+          {/* — Контактные данные — */}
           {role !== "expert" && (r.customer_name || r.customer_phone || r.customer_email) && (
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Контактные данные</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-3 shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-white text-[9px] font-bold flex items-center justify-center">
+                  03
+                </span>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-[#666666]">Контактные данные</h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {r.customer_name && (
                   <div>
                     <p className="text-xs text-slate-400 mb-0.5">Имя заказчика</p>
@@ -1976,6 +2003,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
               </div>
             </div>
           )}
+
         </div>
       </Card>
 
@@ -2404,6 +2432,7 @@ function Card({ title, count, id, collapsible, defaultOpen = true, largeChevron,
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const chevronSize = largeChevron ? "w-5 h-5" : "w-4 h-4";
+  const chevronColor = largeChevron ? "text-slate-600" : "text-slate-400";
   return (
     <div id={id} className="bg-white rounded-xl border border-slate-200 p-6">
       {title && (
@@ -2418,7 +2447,7 @@ function Card({ title, count, id, collapsible, defaultOpen = true, largeChevron,
             )}
           </div>
           {collapsible && (
-            <span className="text-slate-400">
+            <span className={chevronColor}>
               {open ? <ChevronUp className={chevronSize} /> : <ChevronDown className={chevronSize} />}
             </span>
           )}

@@ -44,6 +44,7 @@ type Match = {
     expertise_direction_id: string | null;
     urgency: string | null;
     customer_id: string | null;
+    status: string | null;
   } | null;
 };
 
@@ -270,7 +271,7 @@ export default function ExpertDashboard() {
       .from("palata_request_matches")
       .select(`
         id, request_id, status, matching_round, decline_reason, responded_at,
-        palata_requests ( title, expertise_direction_id, urgency, customer_id )
+        palata_requests ( title, expertise_direction_id, urgency, customer_id, status )
       `)
       .eq("expert_id", userId)
       .order("matching_round", { ascending: true })
@@ -369,6 +370,8 @@ export default function ExpertDashboard() {
     items: matchState.kind === "ok"
       ? matchState.rows.filter((r) => {
           if (!col.statuses.includes(r.status)) return false;
+          // Hide matches for cancelled requests
+          if (r.palata_requests?.status === "cancelled") return false;
           // Hide auto-matched "proposed" offers until customer explicitly selects
           // the expert (signalled by responded_at being set in handleSelectExpert).
           if (r.status === "proposed" && !r.responded_at) return false;

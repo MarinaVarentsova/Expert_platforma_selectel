@@ -18,6 +18,7 @@ import AdminEvents from "@/pages/AdminEvents";
 import AdminEmailEvents from "@/pages/AdminEmailEvents";
 import NewRequest from "@/pages/NewRequest";
 import RequestDetail from "@/pages/RequestDetail";
+import AuthCallback from "@/pages/AuthCallback";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -41,6 +42,7 @@ function Router() {
         <Route path="/admin/events" component={AdminEvents} />
         <Route path="/admin/email-events" component={AdminEmailEvents} />
         <Route path="/requests/:id" component={RequestDetail} />
+        <Route path="/auth/callback" component={AuthCallback} />
         <Route component={NotFound} />
       </Switch>
     </div>

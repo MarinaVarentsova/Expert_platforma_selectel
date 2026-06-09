@@ -198,11 +198,26 @@ export default function Register() {
     const { data, error: signUpErr } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: { data: meta },
+      options: {
+        data: meta,
+        emailRedirectTo: window.location.origin + "/auth/callback",
+      },
     });
 
     if (signUpErr) {
-      setError(signUpErr.message);
+      const msg = signUpErr.message;
+      console.error("[register] signUp error:", msg);
+      if (msg.includes("User already registered") || msg.includes("already registered")) {
+        setError("Пользователь с данной почтой уже зарегистрирован. Войдите в систему или восстановите пароль.");
+      } else if (msg.includes("Email rate limit") || msg.includes("rate limit")) {
+        setError("Слишком много попыток. Подождите немного и попробуйте снова.");
+      } else if (msg.includes("Invalid email") || msg.includes("invalid email")) {
+        setError("Введите корректный email-адрес.");
+      } else if (msg.includes("Password") || msg.includes("password")) {
+        setError("Пароль не соответствует требованиям. Используйте не менее 8 символов.");
+      } else {
+        setError("Не удалось создать аккаунт. Попробуйте ещё раз.");
+      }
       setLoading(false);
       return;
     }
@@ -307,13 +322,14 @@ export default function Register() {
             <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-5">
               <Check className="w-7 h-7 text-emerald-500" />
             </div>
-            <h2 className="text-xl font-bold text-[#111111] mb-2">Проверьте email</h2>
+            <h2 className="text-xl font-bold text-[#111111] mb-2">Спасибо за регистрацию</h2>
             <p className="text-sm text-[#666666] leading-relaxed mb-2">
-              Мы отправили письмо на{" "}
-              <span className="font-semibold text-[#111111]">{email}</span>.
+              На почту{" "}
+              <span className="font-semibold text-[#111111]">{email}</span>{" "}
+              отправлено письмо для подтверждения регистрации.
             </p>
             <p className="text-sm text-[#666666] leading-relaxed mb-6">
-              Перейдите по ссылке в письме, чтобы активировать аккаунт.
+              Перейдите по ссылке из письма, чтобы завершить регистрацию.
             </p>
             <Link href="/login">
               <button className="w-full btn-primary">Перейти на страницу входа</button>

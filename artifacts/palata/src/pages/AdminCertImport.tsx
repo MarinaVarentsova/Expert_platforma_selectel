@@ -287,17 +287,17 @@ export default function AdminCertImport() {
       const { error: truncErr } = await supabase.rpc("truncate_certificates_import");
       if (truncErr) throw new Error(`Очистка staging: ${truncErr.message}`);
 
-      // Phase 2: insert batches of 500
+      // Phase 2: insert via SECURITY DEFINER RPC (обходит RLS)
       setState({ kind: "importing", phase: "inserting", progress: 0 });
 
       const payload = rows.map(r => ({
-        certificate_number: r.certificate_number,
-        expert_full_name:   r.expert_full_name,
-        specialty_text:     r.specialty_text,
-        certificate_period: r.certificate_period || null,
-        codes:              r.codes              || null,
-        valid_from:         r.valid_from,
-        valid_to:           r.valid_to,
+        certificate_number: r.certificate_number ?? "",
+        expert_full_name:   r.expert_full_name   ?? "",
+        specialty_text:     r.specialty_text      ?? "",
+        certificate_period: r.certificate_period  ?? "",
+        codes:              r.codes               ?? "",
+        valid_from:         r.valid_from           ?? "",
+        valid_to:           r.valid_to             ?? "",
         certificate_status: r.certificate_status,
         load_status:        "Загружен",
       }));
@@ -305,9 +305,9 @@ export default function AdminCertImport() {
       const BATCH = 500;
       for (let i = 0; i < payload.length; i += BATCH) {
         const batch = payload.slice(i, i + BATCH);
-        const { error: insErr } = await supabase
-          .from("palata_certificates_import")
-          .insert(batch);
+        const { error: insErr } = await supabase.rpc("bulk_insert_certificates_import", {
+          p_rows: batch,
+        });
         if (insErr) throw new Error(`Вставка строк ${i + 1}–${i + batch.length}: ${insErr.message}`);
         setState({
           kind: "importing", phase: "inserting",

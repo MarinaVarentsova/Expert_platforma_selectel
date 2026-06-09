@@ -3,6 +3,7 @@ import healthRouter from "./health";
 import notifyRouter from "./notify";
 import matchRouter from "./match";
 import settingsRouter from "./settings";
+import aiDetectDirectionRouter from "./ai-detect-direction";
 
 const router: IRouter = Router();
 
@@ -10,5 +11,6 @@ router.use(healthRouter);
 router.use(notifyRouter);
 router.use(matchRouter);
 router.use(settingsRouter);
+router.use(aiDetectDirectionRouter);
 
 export default router;

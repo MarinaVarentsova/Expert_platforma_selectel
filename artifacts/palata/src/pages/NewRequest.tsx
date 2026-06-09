@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/authContext";
 import { notify } from "@/lib/notifyApi";
-import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check, ClipboardList, Zap, Star, User } from "lucide-react";
+import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check, ClipboardList, Zap, Star, User, Sparkles, AlertCircle } from "lucide-react";
 
 
 const URGENCY_OPTIONS = [
@@ -44,6 +44,17 @@ type SubmitState =
   | { kind: "submitting"; step: string }
   | { kind: "success"; requestId: string; title: string; matchedCount: number }
   | { kind: "error"; message: string };
+
+type AiStatus = "idle" | "detected" | "manual";
+
+type AiDetectResult = {
+  detected: boolean;
+  direction_id: string | null;
+  direction_name: string | null;
+  confidence: number;
+  reason: string;
+  matched_markers: string[];
+};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -97,6 +108,11 @@ export default function NewRequest() {
   const [errors, setErrors]   = useState<Partial<Record<keyof FormData, string>>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // AI direction detection state
+  const [aiStatus, setAiStatus]           = useState<AiStatus>("idle");
+  const [aiDetectedName, setAiDetectedName] = useState<string>("");
+  const [aiFailMessage, setAiFailMessage]   = useState<string>("");
+
   const [dirDropOpen, setDirDropOpen] = useState(false);
   const [dirSearch, setDirSearch]     = useState("");
   const dirDropRef                    = useRef<HTMLDivElement>(null);
@@ -118,11 +134,12 @@ export default function NewRequest() {
     setErrors(e => ({ ...e, [key]: undefined }));
   }
 
-  function validate(): boolean {
+  // Validate form fields. Direction is required only in manual mode.
+  function validate(requireDirection: boolean): boolean {
     const e: Partial<Record<keyof FormData, string>> = {};
     if (!form.title.trim() || form.title.trim().length < 3)
       e.title = "Введите название (минимум 3 символа)";
-    if (!form.expertise_direction_id)
+    if (requireDirection && !form.expertise_direction_id)
       e.expertise_direction_id = "Выберите направление экспертизы";
     if (!form.region_id)
       e.region_id = "Выберите регион";
@@ -151,11 +168,71 @@ export default function NewRequest() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!validate()) return;
+
+    // Direction is required only when already in manual mode
+    const requireDir = aiStatus === "manual";
+    if (!validate(requireDir)) return;
+
+    let resolvedDirectionId = form.expertise_direction_id;
+
+    // ── Step 1: AI direction detection (only if direction not yet set) ──────
+    if (!resolvedDirectionId) {
+      setState({ kind: "submitting", step: "Определяем направление экспертизы по описанию ситуации…" });
+
+      try {
+        const resp = await fetch("/api/ai-detect-direction", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            description: form.description.trim(),
+            availableDirections: directions,
+          }),
+        });
+
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const aiResult = await resp.json() as AiDetectResult;
+
+        console.log("[new-request] AI result:", {
+          detected: aiResult.detected,
+          direction_name: aiResult.direction_name,
+          confidence: aiResult.confidence,
+          matched_markers: aiResult.matched_markers,
+        });
+
+        if (aiResult.detected && aiResult.direction_id) {
+          // AI succeeded — set direction and proceed with order creation
+          resolvedDirectionId = aiResult.direction_id;
+          set("expertise_direction_id", aiResult.direction_id);
+          setAiStatus("detected");
+          setAiDetectedName(aiResult.direction_name ?? "");
+        } else {
+          // AI could not determine — show manual selector
+          const msg = "По вашему заказу мы не смогли определить направление экспертизы. Вы можете самостоятельно выбрать направление из предложенного списка.";
+          setAiStatus("manual");
+          setAiFailMessage(msg);
+          setState({ kind: "idle" });
+          return;
+        }
+      } catch (err: unknown) {
+        console.warn("[new-request] AI detect error:", (err as Error).message);
+        setAiStatus("manual");
+        setAiFailMessage("Не удалось автоматически определить направление экспертизы. Выберите направление вручную.");
+        setState({ kind: "idle" });
+        return;
+      }
+    }
+
+    // ── Safety guard: direction must be set before insert ────────────────────
+    if (!resolvedDirectionId) {
+      setErrors(errs => ({ ...errs, expertise_direction_id: "Выберите направление экспертизы" }));
+      setState({ kind: "idle" });
+      return;
+    }
+
+    // ── Step 2: Create order ─────────────────────────────────────────────────
     setState({ kind: "submitting", step: "Создание заказа…" });
 
     try {
-      // 1. Insert request
       const selectedRegionId = form.region_id || null;
       console.log("[new-request] selectedRegionId:", selectedRegionId);
 
@@ -163,7 +240,7 @@ export default function NewRequest() {
         status: "new",
         title: form.title.trim(),
         description: form.description.trim() || null,
-        expertise_direction_id: form.expertise_direction_id,
+        expertise_direction_id: resolvedDirectionId,
         region_id: selectedRegionId,
         urgency: form.urgency,
         requires_travel: form.requires_travel,
@@ -186,7 +263,7 @@ export default function NewRequest() {
       if (reqError) throw new Error(reqError.message);
       const requestId: string = reqData.id;
 
-      // 3. Upload files (if any)
+      // Upload files (if any)
       if (files.length > 0) {
         setState({ kind: "submitting", step: `Загрузка файлов (0 / ${files.length})…` });
         const uploads = files.map(async (file, idx) => {
@@ -217,7 +294,7 @@ export default function NewRequest() {
         await Promise.all(uploads);
       }
 
-      // 3. Status event: new request created
+      // Status event: new request created
       await supabase.from("palata_status_events").insert({
         entity_type: "request",
         entity_id: requestId,
@@ -227,13 +304,13 @@ export default function NewRequest() {
         note: "Заявка создана заказчиком через форму",
       });
 
-      // 4. Auto-matching
+      // Auto-matching
       setState({ kind: "submitting", step: "Подбор экспертов…" });
       let matchedCount = 0;
       try {
         const result = await runMatching({
           requestId,
-          expertiseDirectionId: form.expertise_direction_id || null,
+          expertiseDirectionId: resolvedDirectionId,
           regionIds: form.region_id ? [form.region_id] : [],
           requiresTravel: form.requires_travel,
           customerId: currentUserId ?? undefined,
@@ -243,14 +320,15 @@ export default function NewRequest() {
         console.warn("Matching skipped:", matchErr);
       }
 
-      // 5. Email notifications (fire-and-forget)
+      // Email notifications (fire-and-forget)
+      const directionName = directions.find(d => d.id === resolvedDirectionId)?.name ?? "—";
       if (form.customer_email.trim()) {
         notify({
           type: "request_created",
           requestId,
           requestShortId: requestId.slice(0, 8).toUpperCase(),
           requestTitle:   form.title.trim(),
-          expertiseType:  directions.find(d => d.id === form.expertise_direction_id)?.name ?? "—",
+          expertiseType:  directionName,
           region:         allRegions.find(r => r.id === form.region_id)?.name ?? "—",
           currentStatus:  "new",
           recipientEmail: form.customer_email.trim(),
@@ -279,7 +357,7 @@ export default function NewRequest() {
                 requestId,
                 requestShortId: requestId.slice(0, 8).toUpperCase(),
                 requestTitle:   form.title.trim(),
-                expertiseType:  directions.find(d => d.id === form.expertise_direction_id)?.name ?? "—",
+                expertiseType:  directionName,
                 region:         allRegions.find(r => r.id === form.region_id)?.name ?? "—",
                 currentStatus:  "new",
                 recipientEmail: u.email,
@@ -445,7 +523,26 @@ export default function NewRequest() {
               />
             </Field>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* ── AI direction status banners ── */}
+            {aiStatus === "detected" && (
+              <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50">
+                <Sparkles className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-emerald-800">Направление определено автоматически</p>
+                  <p className="text-sm text-emerald-700 mt-0.5">{aiDetectedName}</p>
+                </div>
+              </div>
+            )}
+
+            {aiStatus === "manual" && (
+              <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-800">{aiFailMessage}</p>
+              </div>
+            )}
+
+            {/* ── Direction dropdown (only in manual mode) ── */}
+            {aiStatus === "manual" && (
               <Field label="Направление экспертизы" required error={errors.expertise_direction_id}>
                 <div className="relative" ref={dirDropRef}>
                   <button
@@ -511,21 +608,22 @@ export default function NewRequest() {
                   )}
                 </div>
               </Field>
+            )}
 
-              <Field label="Регион" required error={errors.region_id}>
-                <select
-                  value={form.region_id}
-                  onChange={e => set("region_id", e.target.value)}
-                  disabled={busy}
-                  className={inputCls(!!errors.region_id)}
-                >
-                  <option value="">— выберите регион —</option>
-                  {allRegions.map(r => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-              </Field>
-            </div>
+            {/* ── Region ── */}
+            <Field label="Регион" required error={errors.region_id}>
+              <select
+                value={form.region_id}
+                onChange={e => set("region_id", e.target.value)}
+                disabled={busy}
+                className={inputCls(!!errors.region_id)}
+              >
+                <option value="">— выберите регион —</option>
+                {allRegions.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </Field>
 
             {/* Срочность */}
             <Field label="Срочность">
@@ -717,7 +815,7 @@ export default function NewRequest() {
                   {state.step}
                 </>
               ) : (
-                "Создать заказ"
+                aiStatus === "idle" ? "Создать заказ" : "Создать заказ"
               )}
             </button>
             <Link href="/customer">

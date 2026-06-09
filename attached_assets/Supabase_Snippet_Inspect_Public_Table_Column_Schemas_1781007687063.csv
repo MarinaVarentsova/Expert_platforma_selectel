@@ -1,0 +1,64 @@
+table_name,column_name,data_type,is_nullable,column_default
+palata_certificate_specialty_codes,id,uuid,NO,gen_random_uuid()
+palata_certificate_specialty_codes,certificate_id,uuid,NO,null
+palata_certificate_specialty_codes,specialty_code_id,uuid,NO,null
+palata_certificate_specialty_codes,created_at,timestamp with time zone,NO,now()
+palata_certificates,id,uuid,NO,gen_random_uuid()
+palata_certificates,certificate_number,text,NO,null
+palata_certificates,expert_full_name,text,NO,null
+palata_certificates,specialty_text,text,NO,null
+palata_certificates,certificate_period,text,NO,null
+palata_certificates,specialty_code,text,YES,null
+palata_certificates,specialty_code_id,uuid,YES,null
+palata_certificates,valid_from,date,YES,null
+palata_certificates,valid_to,date,YES,null
+palata_certificates,is_active,boolean,NO,true
+palata_certificates,source_file_name,text,YES,null
+palata_certificates,source_loaded_at,timestamp with time zone,NO,now()
+palata_certificates,created_at,timestamp with time zone,NO,now()
+palata_certificates,updated_at,timestamp with time zone,NO,now()
+palata_certificates_import,certificate_number,text,YES,null
+palata_certificates_import,expert_full_name,text,YES,null
+palata_certificates_import,specialty_text,text,YES,null
+palata_certificates_import,certificate_period,text,YES,null
+palata_certificates_import,codes,text,YES,null
+palata_certificates_import,directions,text,YES,null
+palata_certificates_import,valid_from,date,YES,null
+palata_certificates_import,valid_to,date,YES,null
+palata_certificates_import,certificate_status,text,YES,null
+palata_certificates_import,load_status,text,YES,null
+palata_expert_certificates,id,uuid,NO,gen_random_uuid()
+palata_expert_certificates,expert_id,uuid,NO,null
+palata_expert_certificates,certificate_number,text,NO,null
+palata_expert_certificates,status,text,NO,'pending'::text
+palata_expert_certificates,cert_valid_to,date,YES,null
+palata_expert_certificates,cert_expert_name,text,YES,null
+palata_expert_certificates,cert_direction_ids,ARRAY,YES,null
+palata_expert_certificates,created_at,timestamp with time zone,YES,now()
+palata_expert_certificates,updated_at,timestamp with time zone,YES,now()
+palata_expert_directions,id,uuid,NO,gen_random_uuid()
+palata_expert_directions,expert_id,uuid,NO,null
+palata_expert_directions,expertise_direction_id,uuid,NO,null
+palata_expert_directions,created_at,timestamp with time zone,NO,now()
+palata_expertise_directions,id,uuid,NO,gen_random_uuid()
+palata_expertise_directions,name,text,NO,null
+palata_expertise_directions,slug,text,NO,null
+palata_expertise_directions,sort_order,integer,YES,null
+palata_expertise_directions,is_active,boolean,NO,true
+palata_expertise_directions,created_at,timestamp with time zone,NO,now()
+palata_expertise_directions,updated_at,timestamp with time zone,NO,now()
+palata_specialty_codes,id,uuid,NO,gen_random_uuid()
+palata_specialty_codes,code,text,NO,null
+palata_specialty_codes,name,text,YES,null
+palata_specialty_codes,expertise_direction_id,uuid,NO,null
+palata_specialty_codes,is_active,boolean,NO,true
+palata_specialty_codes,created_at,timestamp with time zone,NO,now()
+palata_specialty_codes,updated_at,timestamp with time zone,NO,now()
+palata_users,id,uuid,NO,null
+palata_users,role,USER-DEFINED,NO,'customer'::palata_user_role
+palata_users,email,text,NO,null
+palata_users,full_name,text,YES,null
+palata_users,phone,text,YES,null
+palata_users,is_active,boolean,NO,true
+palata_users,created_at,timestamp with time zone,NO,now()
+palata_users,updated_at,timestamp with time zone,NO,now()

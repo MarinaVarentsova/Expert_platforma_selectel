@@ -7,19 +7,19 @@ import { useRequireRole } from "@/lib/useRequireRole";
 import {
   Upload, FileSpreadsheet, CheckCircle2, AlertCircle,
   Loader2, RefreshCw, AlertTriangle, X, Database,
-  Users, FileCheck, Clock,
+  Users, Clock,
 } from "lucide-react";
 
-// ─── Column name aliases ───────────────────────────────────────────────────────
+// ─── Column aliases (case-insensitive) ────────────────────────────────────────
 
 function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-const COL_CERT_NUMBER = ["номер документ", "номер документа", "№ документа", "номер сертификата", "№ сертификата"];
-const COL_FIO         = ["фио эксперта", "фио", "ф.и.о.", "ф.и.о. эксперта", "эксперт"];
-const COL_AREA        = ["область производства судебной экспертизы", "область экспертизы", "специализация", "направление"];
-const COL_VALID_TO    = ["срок действия сертификата", "действует до", "срок действия", "valid_to", "дата окончания"];
+const COL_CERT   = ["номер документ", "номер документа", "№ документа", "номер сертификата", "№ сертификата"];
+const COL_FIO    = ["фио эксперта", "фио", "ф.и.о.", "ф.и.о. эксперта", "эксперт"];
+const COL_AREA   = ["область производства судебной экспертизы", "область экспертизы", "специализация", "направление"];
+const COL_PERIOD = ["срок действия сертификата", "действует до", "срок действия", "valid_to", "дата окончания"];
 
 function findCol(headers: string[], aliases: string[]): number {
   return headers.findIndex(h => aliases.includes(normalizeHeader(h)));
@@ -27,32 +27,71 @@ function findCol(headers: string[], aliases: string[]): number {
 
 // ─── Date parsing ──────────────────────────────────────────────────────────────
 
-function parseDate(raw: unknown): string | null {
+function parseSingleDate(raw: unknown): string | null {
   if (raw === null || raw === undefined || raw === "") return null;
 
   if (typeof raw === "number") {
-    const date = XLSX.SSF.parse_date_code(raw);
-    if (!date) return null;
-    return `${date.y}-${String(date.m).padStart(2, "0")}-${String(date.d).padStart(2, "0")}`;
+    const d = XLSX.SSF.parse_date_code(raw);
+    if (!d) return null;
+    return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
   }
 
   const s = String(raw).trim();
   if (!s) return null;
 
   // DD.MM.YYYY or DD/MM/YYYY
-  const dotMatch = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
-  if (dotMatch) {
-    const [, d, m, y] = dotMatch;
-    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-  }
+  const dot = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+  if (dot) return `${dot[3]}-${dot[2].padStart(2, "0")}-${dot[1].padStart(2, "0")}`;
 
   // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
+  // native Date
   const dt = new Date(s);
   if (!isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
 
   return null;
+}
+
+/**
+ * Parse "Срок действия сертификата" — may be:
+ *  - A single date               → { validFrom: null, validTo: date }
+ *  - A range "01.01.2022 – 31.12.2024" → { validFrom, validTo }
+ *  - An Excel serial number      → { validFrom: null, validTo: date }
+ */
+function parsePeriod(raw: unknown): { validFrom: string | null; validTo: string | null; periodText: string } {
+  if (raw === null || raw === undefined || raw === "") {
+    return { validFrom: null, validTo: null, periodText: "" };
+  }
+
+  const periodText = String(raw).trim();
+
+  // Range: two dates separated by –, -, or /
+  const rangeMatch = periodText.match(
+    /^(\d{1,2}[./]\d{1,2}[./]\d{4})\s*[–\-\/]\s*(\d{1,2}[./]\d{1,2}[./]\d{4})$/,
+  );
+  if (rangeMatch) {
+    return {
+      validFrom: parseSingleDate(rangeMatch[1]),
+      validTo:   parseSingleDate(rangeMatch[2]),
+      periodText,
+    };
+  }
+
+  // Single date or Excel serial
+  return {
+    validFrom:  null,
+    validTo:    parseSingleDate(raw),
+    periodText: typeof raw === "number" ? "" : periodText,
+  };
+}
+
+/** Extract codes like "16.1", "7.3", "24.4" from specialty text */
+function extractCodes(text: string | null): string {
+  if (!text) return "";
+  const matches = [...text.matchAll(/(\d+\.\d+)/g)];
+  const unique = [...new Set(matches.map(m => m[1]))];
+  return unique.sort().join(",");
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -60,7 +99,10 @@ function parseDate(raw: unknown): string | null {
 type ParsedRow = {
   certificate_number: string | null;
   expert_full_name:   string | null;
-  expertise_area:     string | null;
+  specialty_text:     string | null;
+  certificate_period: string;
+  codes:              string;
+  valid_from:         string | null;
   valid_to:           string | null;
   certificate_status: "Активный" | "Истёкший";
   load_status:        "Загружен";
@@ -116,10 +158,10 @@ export default function AdminCertImport() {
   const { state: authState } = useAuth();
   const currentUser = authState.kind === "authenticated" ? authState.user : null;
 
-  const fileRef    = useRef<HTMLInputElement>(null);
-  const [state, setState]     = useState<PageState>({ kind: "idle" });
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [state, setState]       = useState<PageState>({ kind: "idle" });
   const [dragOver, setDragOver] = useState(false);
-  const [stats, setStats]     = useState<RegistryStats | null>(null);
+  const [stats, setStats]       = useState<RegistryStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
   // ── Load current registry stats ────────────────────────────────────────────
@@ -130,7 +172,6 @@ export default function AdminCertImport() {
       if (error) throw error;
       setStats(data as RegistryStats);
     } catch {
-      // table may not exist yet — show zeros
       setStats({ total: 0, active: 0, expired: 0, linked: 0, unlinked: 0, last_loaded_at: null });
     } finally {
       setStatsLoading(false);
@@ -159,18 +200,18 @@ export default function AdminCertImport() {
           return;
         }
 
-        const headers = (rawRows[0] as unknown[]).map(h => String(h ?? ""));
-        const colCert    = findCol(headers, COL_CERT_NUMBER);
-        const colFio     = findCol(headers, COL_FIO);
-        const colArea    = findCol(headers, COL_AREA);
-        const colValidTo = findCol(headers, COL_VALID_TO);
+        const headers  = (rawRows[0] as unknown[]).map(h => String(h ?? ""));
+        const colCert   = findCol(headers, COL_CERT);
+        const colFio    = findCol(headers, COL_FIO);
+        const colArea   = findCol(headers, COL_AREA);
+        const colPeriod = findCol(headers, COL_PERIOD);
 
         const missing: string[] = [];
-        if (colCert    === -1) missing.push("«Номер документ»");
-        if (colFio     === -1) missing.push("«ФИО эксперта»");
-        if (colValidTo === -1) missing.push("«Срок действия сертификата»");
+        if (colCert   === -1) missing.push("«Номер документ»");
+        if (colFio    === -1) missing.push("«ФИО эксперта»");
+        if (colPeriod === -1) missing.push("«Срок действия сертификата»");
 
-        if (missing.length > 0) {
+        if (missing.length) {
           setState({
             kind: "error",
             message: `Не найдены обязательные колонки: ${missing.join(", ")}.\nНайдено: ${headers.filter(Boolean).join(", ")}`,
@@ -185,20 +226,25 @@ export default function AdminCertImport() {
           const row = rawRows[i] as unknown[];
           if (row.every(c => c === "" || c === null || c === undefined)) continue;
 
-          const certNum = colCert    !== -1 ? String(row[colCert]    ?? "").trim() : null;
-          const fio     = colFio     !== -1 ? String(row[colFio]     ?? "").trim() : null;
-          const area    = colArea    !== -1 ? String(row[colArea]    ?? "").trim() : null;
-          const rawDate = colValidTo !== -1 ? row[colValidTo]                      : null;
+          const certNum     = colCert  !== -1 ? String(row[colCert]  ?? "").trim() : null;
+          const fio         = colFio   !== -1 ? String(row[colFio]   ?? "").trim() : null;
+          const areaRaw     = colArea  !== -1 ? String(row[colArea]  ?? "").trim() : null;
+          const periodRaw   = colPeriod !== -1 ? row[colPeriod]                    : null;
 
-          const validTo          = parseDate(rawDate);
-          const dateParseError   = rawDate !== "" && rawDate !== null && rawDate !== undefined && validTo === null;
+          const { validFrom, validTo, periodText } = parsePeriod(periodRaw);
+          const dateParseError = periodRaw !== "" && periodRaw !== null && periodRaw !== undefined && validTo === null;
+          const codes = extractCodes(areaRaw);
+
           const certStatus: "Активный" | "Истёкший" =
             validTo && validTo >= today ? "Активный" : "Истёкший";
 
           rows.push({
-            certificate_number: certNum || null,
-            expert_full_name:   fio     || null,
-            expertise_area:     area    || null,
+            certificate_number: certNum      || null,
+            expert_full_name:   fio          || null,
+            specialty_text:     areaRaw      || null,
+            certificate_period: periodText,
+            codes,
+            valid_from:         validFrom,
             valid_to:           validTo,
             certificate_status: certStatus,
             load_status:        "Загружен",
@@ -206,13 +252,12 @@ export default function AdminCertImport() {
           });
         }
 
-        if (rows.length === 0) {
+        if (!rows.length) {
           setState({ kind: "error", message: "В файле нет строк с данными (только заголовок)" });
           return;
         }
 
-        const summary = calcSummary(rows);
-        setState({ kind: "preview", rows, summary, fileName: file.name });
+        setState({ kind: "preview", rows, summary: calcSummary(rows), fileName: file.name });
       } catch (err: unknown) {
         setState({ kind: "error", message: `Ошибка разбора файла: ${(err as Error).message}` });
       }
@@ -238,32 +283,35 @@ export default function AdminCertImport() {
     setState({ kind: "importing", phase: "truncating" });
 
     try {
-      // Phase 1: Truncate
+      // Phase 1: truncate
       const { error: truncErr } = await supabase.rpc("truncate_certificates_import");
-      if (truncErr) throw new Error(`Очистка реестра: ${truncErr.message}`);
+      if (truncErr) throw new Error(`Очистка staging: ${truncErr.message}`);
 
-      // Phase 2: Insert in batches of 500
+      // Phase 2: insert batches of 500
       setState({ kind: "importing", phase: "inserting", progress: 0 });
-      const insertRows = rows.map(r => ({
+
+      const payload = rows.map(r => ({
         certificate_number: r.certificate_number,
         expert_full_name:   r.expert_full_name,
-        expertise_area:     r.expertise_area,
+        specialty_text:     r.specialty_text,
+        certificate_period: r.certificate_period || null,
+        codes:              r.codes              || null,
+        valid_from:         r.valid_from,
         valid_to:           r.valid_to,
         certificate_status: r.certificate_status,
         load_status:        "Загружен",
       }));
 
       const BATCH = 500;
-      for (let i = 0; i < insertRows.length; i += BATCH) {
-        const batch = insertRows.slice(i, i + BATCH);
+      for (let i = 0; i < payload.length; i += BATCH) {
+        const batch = payload.slice(i, i + BATCH);
         const { error: insErr } = await supabase
           .from("palata_certificates_import")
           .insert(batch);
         if (insErr) throw new Error(`Вставка строк ${i + 1}–${i + batch.length}: ${insErr.message}`);
-
         setState({
           kind: "importing", phase: "inserting",
-          progress: Math.round(((i + batch.length) / insertRows.length) * 100),
+          progress: Math.round(((i + batch.length) / payload.length) * 100),
         });
       }
 
@@ -275,16 +323,14 @@ export default function AdminCertImport() {
       });
 
       if (etlErr) {
-        // ETL failed but data is in import table — show partial success
-        console.error("[cert-import] ETL error:", etlErr.message);
         throw new Error(
-          `Данные загружены в реестр, но ETL-обработка завершилась ошибкой: ${etlErr.message}.\n` +
-          `Проверьте, что SQL-миграция supabase/cert_import_migration.sql выполнена в Supabase.`,
+          `Данные загружены в staging, но ETL-обработка завершилась ошибкой:\n${etlErr.message}\n\n` +
+          `Убедитесь, что supabase/cert_import_migration_v2.sql выполнена в Supabase.`,
         );
       }
 
       setState({ kind: "done", etl: etlData as EtlResult, fileName });
-      void loadStats(); // refresh registry stats
+      void loadStats();
     } catch (err: unknown) {
       setState({ kind: "error", message: (err as Error).message });
     }
@@ -303,39 +349,32 @@ export default function AdminCertImport() {
     <AdminLayout>
       <div className="max-w-5xl mx-auto px-6 py-10 space-y-8">
 
-        {/* ── Page header ── */}
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">
-            Импорт реестра
-          </p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Импорт реестра</p>
           <h1 className="text-2xl font-bold text-slate-900">Импорт сертификатов</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Каждый новый импорт полностью заменяет текущий реестр в import-таблице и обновляет
-            рабочие таблицы через ETL.
+            Каждый новый импорт полностью заменяет staging-таблицу и обновляет рабочие таблицы через ETL.
           </p>
         </div>
 
-        {/* ── Current registry stats ── */}
+        {/* ── Текущий реестр ── */}
         <RegistryStatsBlock stats={stats} loading={statsLoading} />
 
-        {/* ── Error ── */}
+        {/* ── Ошибка ── */}
         {state.kind === "error" && (
           <div className="p-4 rounded-xl border border-red-200 bg-red-50 flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
+            <div className="flex-1">
               <p className="text-sm font-semibold text-red-700">Ошибка</p>
               <p className="text-sm text-red-600 whitespace-pre-line mt-0.5">{state.message}</p>
-              <button
-                className="text-xs text-red-500 underline mt-2"
-                onClick={backToIdle}
-              >
+              <button className="text-xs text-red-500 underline mt-2" onClick={backToIdle}>
                 Попробовать снова
               </button>
             </div>
           </div>
         )}
 
-        {/* ── Upload zone ── */}
+        {/* ── Загрузка файла ── */}
         {showUpload && (
           <div
             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
@@ -358,58 +397,34 @@ export default function AdminCertImport() {
               Ожидаемые колонки: «Номер документ», «ФИО эксперта»,<br />
               «Область производства судебной экспертизы», «Срок действия сертификата»
             </p>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".xlsx,.xls"
-              className="hidden"
-              onChange={onFileChange}
-            />
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onFileChange} />
           </div>
         )}
 
-        {/* ── Parsing ── */}
-        {state.kind === "parsing" && (
-          <SpinnerBlock label="Разбираем файл…" />
-        )}
+        {state.kind === "parsing"   && <SpinnerBlock label="Разбираем файл…" />}
+        {state.kind === "importing" && <ImportingBlock phase={state.phase} progress={state.progress} />}
 
-        {/* ── Importing ── */}
-        {state.kind === "importing" && (
-          <ImportingBlock phase={state.phase} progress={state.progress} />
-        )}
-
-        {/* ── Preview ── */}
         {state.kind === "preview" && (
           <PreviewBlock
             rows={state.rows}
             summary={state.summary}
             fileName={state.fileName}
-            onConfirm={() =>
-              setState({ kind: "confirming", rows: state.rows, summary: state.summary, fileName: state.fileName })
-            }
+            onConfirm={() => setState({ kind: "confirming", rows: state.rows, summary: state.summary, fileName: state.fileName })}
             onCancel={backToIdle}
           />
         )}
 
-        {/* ── Confirming ── */}
         {state.kind === "confirming" && (
           <ConfirmDialog
             summary={state.summary}
             fileName={state.fileName}
             onConfirm={() => void runImport(state.rows, state.fileName)}
-            onCancel={() =>
-              setState({ kind: "preview", rows: state.rows, summary: state.summary, fileName: state.fileName })
-            }
+            onCancel={() => setState({ kind: "preview", rows: state.rows, summary: state.summary, fileName: state.fileName })}
           />
         )}
 
-        {/* ── Done ── */}
         {state.kind === "done" && (
-          <DoneBlock
-            etl={state.etl}
-            fileName={state.fileName}
-            onReset={backToIdle}
-          />
+          <DoneBlock etl={state.etl} fileName={state.fileName} onReset={backToIdle} />
         )}
 
       </div>
@@ -417,7 +432,7 @@ export default function AdminCertImport() {
   );
 }
 
-// ─── Registry stats block ──────────────────────────────────────────────────────
+// ─── Registry stats ────────────────────────────────────────────────────────────
 
 function RegistryStatsBlock({ stats, loading }: { stats: RegistryStats | null; loading: boolean }) {
   if (loading) {
@@ -425,8 +440,7 @@ function RegistryStatsBlock({ stats, loading }: { stats: RegistryStats | null; l
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
         <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">Текущий реестр</p>
         <div className="flex items-center gap-2 text-slate-400">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Загружаем статистику…</span>
+          <Loader2 className="w-4 h-4 animate-spin" /><span className="text-sm">Загружаем статистику…</span>
         </div>
       </div>
     );
@@ -435,11 +449,11 @@ function RegistryStatsBlock({ stats, loading }: { stats: RegistryStats | null; l
   const s = stats ?? { total: 0, active: 0, expired: 0, linked: 0, unlinked: 0, last_loaded_at: null };
 
   const items = [
-    { icon: Database, label: "Всего сертификатов", value: s.total,    color: "text-slate-800" },
-    { icon: CheckCircle2, label: "Активных",        value: s.active,  color: "text-emerald-700" },
-    { icon: Clock,        label: "Истёкших",         value: s.expired, color: "text-slate-500" },
-    { icon: Users,        label: "Привязано к экспертам", value: s.linked,   color: "text-[#0F4C9A]" },
-    { icon: AlertTriangle, label: "Ожидают регистрации", value: s.unlinked, color: s.unlinked > 0 ? "text-amber-600" : "text-slate-400" },
+    { icon: Database,       label: "Всего сертификатов",    value: s.total,    color: "text-slate-800" },
+    { icon: CheckCircle2,   label: "Активных",              value: s.active,   color: "text-emerald-700" },
+    { icon: Clock,          label: "Истёкших",              value: s.expired,  color: "text-slate-500" },
+    { icon: Users,          label: "Привязано к экспертам", value: s.linked,   color: "text-[#0F4C9A]" },
+    { icon: AlertTriangle,  label: "Ожидают регистрации",   value: s.unlinked, color: s.unlinked > 0 ? "text-amber-600" : "text-slate-400" },
   ];
 
   return (
@@ -449,43 +463,36 @@ function RegistryStatsBlock({ stats, loading }: { stats: RegistryStats | null; l
         {s.last_loaded_at && (
           <p className="text-xs text-slate-400">
             Последняя загрузка:{" "}
-            {new Date(s.last_loaded_at).toLocaleString("ru-RU", {
-              day: "2-digit", month: "2-digit", year: "numeric",
-              hour: "2-digit", minute: "2-digit",
-            })}
+            {new Date(s.last_loaded_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
           </p>
         )}
       </div>
-
-      {s.total === 0 ? (
-        <p className="text-sm text-slate-400 italic">Реестр пуст — загрузите первый файл</p>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-          {items.map(({ icon: Icon, label, value, color }) => (
-            <div key={label} className="flex items-start gap-2.5">
-              <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${color}`} />
-              <div>
-                <p className={`text-xl font-bold leading-none ${color}`}>{value}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">{label}</p>
+      {s.total === 0
+        ? <p className="text-sm text-slate-400 italic">Реестр пуст — загрузите первый файл</p>
+        : (
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            {items.map(({ icon: Icon, label, value, color }) => (
+              <div key={label} className="flex items-start gap-2.5">
+                <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${color}`} />
+                <div>
+                  <p className={`text-xl font-bold leading-none ${color}`}>{value}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">{label}</p>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
     </div>
   );
 }
 
-// ─── Preview block ─────────────────────────────────────────────────────────────
+// ─── Preview ───────────────────────────────────────────────────────────────────
 
 function PreviewBlock({
   rows, summary, fileName, onConfirm, onCancel,
 }: {
-  rows:      ParsedRow[];
-  summary:   PreviewSummary;
-  fileName:  string;
-  onConfirm: () => void;
-  onCancel:  () => void;
+  rows: ParsedRow[]; summary: PreviewSummary; fileName: string;
+  onConfirm: () => void; onCancel: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -493,34 +500,18 @@ function PreviewBlock({
         <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">
           Предварительный итог — {fileName}
         </p>
-        <PreviewSummaryGrid summary={summary} />
+        <SummaryGrid summary={summary} />
       </div>
 
-      {/* Warnings */}
       {(summary.dateErrors > 0 || summary.emptyCertNumber > 0 || summary.emptyFio > 0) && (
         <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 space-y-1.5">
-          <p className="text-xs font-semibold text-amber-800 mb-2">
-            Предупреждения — строки будут загружены, но с пометкой load_status
-          </p>
-          {summary.dateErrors > 0 && (
-            <p className="text-xs text-amber-700">
-              • {summary.dateErrors} строк с ошибкой даты → статус «Истёкший», valid_to = null
-            </p>
-          )}
-          {summary.emptyCertNumber > 0 && (
-            <p className="text-xs text-amber-700">
-              • {summary.emptyCertNumber} строк без номера сертификата
-            </p>
-          )}
-          {summary.emptyFio > 0 && (
-            <p className="text-xs text-amber-700">
-              • {summary.emptyFio} строк без ФИО → не будут привязаны к экспертам
-            </p>
-          )}
+          <p className="text-xs font-semibold text-amber-800 mb-1">Предупреждения</p>
+          {summary.dateErrors      > 0 && <p className="text-xs text-amber-700">• {summary.dateErrors} строк с ошибкой даты → valid_to = null, статус «Истёкший»</p>}
+          {summary.emptyCertNumber > 0 && <p className="text-xs text-amber-700">• {summary.emptyCertNumber} строк без номера сертификата</p>}
+          {summary.emptyFio        > 0 && <p className="text-xs text-amber-700">• {summary.emptyFio} строк без ФИО → не будут привязаны к экспертам</p>}
         </div>
       )}
 
-      {/* Action buttons */}
       <div className="flex items-center gap-3">
         <button
           onClick={onConfirm}
@@ -537,7 +528,6 @@ function PreviewBlock({
         </button>
       </div>
 
-      {/* Preview table */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <p className="text-xs font-bold uppercase tracking-widest text-slate-400 px-5 py-3 border-b border-slate-100">
           Предпросмотр (первые 20 строк)
@@ -546,7 +536,7 @@ function PreviewBlock({
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100 text-left">
-                {["#", "Номер документа", "ФИО эксперта", "Область экспертизы", "Срок действия", "Статус"].map(h => (
+                {["#", "Номер", "ФИО эксперта", "Область экспертизы", "Коды", "Срок действия", "Статус"].map(h => (
                   <th key={h} className="px-3 py-2.5 font-semibold text-slate-500">{h}</th>
                 ))}
               </tr>
@@ -555,16 +545,19 @@ function PreviewBlock({
               {rows.slice(0, 20).map((row, i) => (
                 <tr key={i} className={`border-b border-slate-50 ${row._dateParseError ? "bg-amber-50" : ""}`}>
                   <td className="px-3 py-2 text-slate-400">{i + 1}</td>
-                  <td className="px-3 py-2 font-mono text-slate-700">
+                  <td className="px-3 py-2 font-mono text-slate-700 whitespace-nowrap">
                     {row.certificate_number ?? <span className="text-slate-300 italic">пусто</span>}
                   </td>
-                  <td className="px-3 py-2 text-slate-700 max-w-[160px] truncate">
+                  <td className="px-3 py-2 text-slate-700 max-w-[150px] truncate">
                     {row.expert_full_name ?? <span className="text-slate-300 italic">пусто</span>}
                   </td>
                   <td className="px-3 py-2 text-slate-600 max-w-[180px] truncate">
-                    {row.expertise_area ?? "—"}
+                    {row.specialty_text ?? "—"}
                   </td>
-                  <td className={`px-3 py-2 font-mono ${row._dateParseError ? "text-amber-600" : "text-slate-700"}`}>
+                  <td className="px-3 py-2 font-mono text-slate-500 whitespace-nowrap">
+                    {row.codes || <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className={`px-3 py-2 font-mono whitespace-nowrap ${row._dateParseError ? "text-amber-600" : "text-slate-700"}`}>
                     {row.valid_to
                       ? new Date(row.valid_to + "T00:00:00").toLocaleDateString("ru-RU")
                       : <span className="text-amber-500 italic">ошибка даты</span>}
@@ -577,9 +570,7 @@ function PreviewBlock({
             </tbody>
           </table>
           {rows.length > 20 && (
-            <p className="text-xs text-slate-400 text-center py-3">
-              … и ещё {rows.length - 20} строк
-            </p>
+            <p className="text-xs text-slate-400 text-center py-3">… и ещё {rows.length - 20} строк</p>
           )}
         </div>
       </div>
@@ -587,16 +578,11 @@ function PreviewBlock({
   );
 }
 
-// ─── Confirmation dialog ───────────────────────────────────────────────────────
+// ─── Confirm dialog ────────────────────────────────────────────────────────────
 
 function ConfirmDialog({
   summary, fileName, onConfirm, onCancel,
-}: {
-  summary:   PreviewSummary;
-  fileName:  string;
-  onConfirm: () => void;
-  onCancel:  () => void;
-}) {
+}: { summary: PreviewSummary; fileName: string; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
@@ -617,13 +603,11 @@ function ConfirmDialog({
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
           <p className="text-sm text-amber-900 font-medium">
-            Загрузка нового файла полностью заменит текущий реестр сертификатов.
+            Загрузка нового файла полностью заменит текущий реестр в staging-таблице.
           </p>
           <p className="text-xs text-amber-700 mt-2 leading-relaxed">
-            После импорта будут обновлены таблицы:{" "}
-            <code className="font-mono">palata_certificates</code>,{" "}
-            <code className="font-mono">palata_expert_certificates</code>,{" "}
-            <code className="font-mono">palata_expert_directions</code>.
+            Рабочие таблицы будут обновлены через ETL (upsert, без удаления).
+            Matching, ЛК эксперта и заказчика не затрагиваются.
           </p>
         </div>
 
@@ -660,100 +644,86 @@ function ConfirmDialog({
   );
 }
 
-// ─── Importing block ───────────────────────────────────────────────────────────
+// ─── Importing progress ────────────────────────────────────────────────────────
 
 const PHASE_LABELS: Record<ImportPhase, string> = {
   truncating: "Очищаем предыдущий реестр…",
-  inserting:  "Загружаем строки в базу…",
+  inserting:  "Загружаем строки в staging…",
   processing: "Запускаем ETL-обработку…",
 };
 
 function ImportingBlock({ phase, progress }: { phase: ImportPhase; progress?: number }) {
   const steps: ImportPhase[] = ["truncating", "inserting", "processing"];
   const currentIdx = steps.indexOf(phase);
-
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
       <div className="flex items-center gap-3 mb-6">
         <Loader2 className="w-5 h-5 animate-spin text-[#0F4C9A]" />
         <p className="text-sm font-semibold text-slate-700">{PHASE_LABELS[phase]}</p>
       </div>
-
       <div className="space-y-3">
         {steps.map((step, idx) => {
-          const done    = idx < currentIdx;
-          const active  = idx === currentIdx;
-          const pending = idx > currentIdx;
+          const done   = idx < currentIdx;
+          const active = idx === currentIdx;
           return (
             <div key={step} className="flex items-center gap-3">
               <div className={[
-                "w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold transition-colors",
-                done    ? "bg-emerald-100 text-emerald-700" :
-                active  ? "bg-[#0F4C9A] text-white ring-2 ring-[#0F4C9A]/30" :
-                          "bg-slate-100 text-slate-400",
+                "w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold",
+                done   ? "bg-emerald-100 text-emerald-700"
+                       : active ? "bg-[#0F4C9A] text-white ring-2 ring-[#0F4C9A]/30"
+                                : "bg-slate-100 text-slate-400",
               ].join(" ")}>
                 {done ? "✓" : idx + 1}
               </div>
               <span className={[
                 "text-sm",
-                done    ? "text-emerald-700" :
-                active  ? "text-slate-900 font-medium" :
-                          "text-slate-400",
+                done ? "text-emerald-700" : active ? "text-slate-900 font-medium" : "text-slate-400",
               ].join(" ")}>
                 {PHASE_LABELS[step]}
               </span>
-              {active && pending === false && phase === "inserting" && progress !== undefined && (
+              {active && step === "inserting" && progress !== undefined && (
                 <span className="ml-auto text-xs text-slate-400 font-mono">{progress}%</span>
               )}
             </div>
           );
         })}
       </div>
-
       {phase === "inserting" && progress !== undefined && (
-        <div className="mt-5">
-          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-[#0F4C9A] rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+        <div className="mt-5 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-full bg-[#0F4C9A] rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
         </div>
       )}
     </div>
   );
 }
 
-// ─── Done block ────────────────────────────────────────────────────────────────
+// ─── Done ─────────────────────────────────────────────────────────────────────
 
 function DoneBlock({ etl, fileName, onReset }: { etl: EtlResult; fileName: string; onReset: () => void }) {
-  const sections: Array<{
-    title: string;
-    items: Array<{ label: string; value: number; color?: string }>;
-  }> = [
+  const sections = [
     {
-      title: "Загрузка в реестр",
+      title: "Загрузка в staging",
       items: [
         { label: "Всего строк",     value: etl.total },
-        { label: "Активных",        value: etl.active,        color: "text-emerald-700" },
-        { label: "Истёкших",        value: etl.expired,       color: "text-slate-500" },
-        { label: "Ошибок парсинга", value: etl.parse_errors,  color: etl.parse_errors > 0 ? "text-amber-600" : "text-slate-400" },
+        { label: "Активных",        value: etl.active,       color: "text-emerald-700" },
+        { label: "Истёкших",        value: etl.expired,      color: "text-slate-500" },
+        { label: "Ошибок парсинга", value: etl.parse_errors, color: etl.parse_errors > 0 ? "text-amber-600" : "text-slate-400" },
       ],
     },
     {
-      title: "Обновление рабочих таблиц",
+      title: "Рабочие таблицы",
       items: [
-        { label: "Записей в palata_certificates",        value: etl.certs_upserted },
-        { label: "Записей в palata_expert_certificates", value: etl.expert_certs_upserted, color: "text-[#0F4C9A]" },
-        { label: "Направлений в palata_expert_directions", value: etl.expert_dirs_upserted, color: "text-[#0F4C9A]" },
+        { label: "palata_certificates",        value: etl.certs_upserted },
+        { label: "palata_expert_certificates", value: etl.expert_certs_upserted, color: "text-[#0F4C9A]" },
+        { label: "palata_expert_directions",   value: etl.expert_dirs_upserted,  color: "text-[#0F4C9A]" },
       ],
     },
     {
       title: "Сопоставление с экспертами",
       items: [
-        { label: "Привязано к зарегистрированным экспертам", value: etl.linked_experts,   color: "text-emerald-700" },
-        { label: "Не найдено экспертов",                     value: etl.unlinked_experts, color: etl.unlinked_experts > 0 ? "text-amber-600" : "text-slate-400" },
-        { label: "Без определённого направления",            value: etl.no_direction,     color: etl.no_direction > 0 ? "text-amber-600" : "text-slate-400" },
+        { label: "Привязано",              value: etl.linked_experts,   color: "text-emerald-700" },
+        { label: "Не найдено",             value: etl.unlinked_experts, color: etl.unlinked_experts > 0 ? "text-amber-600" : "text-slate-400" },
+        { label: "Без направления",        value: etl.no_direction,     color: etl.no_direction > 0 ? "text-amber-600" : "text-slate-400" },
       ],
     },
   ];
@@ -769,16 +739,14 @@ function DoneBlock({ etl, fileName, onReset }: { etl: EtlResult; fileName: strin
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        {sections.map(section => (
-          <div key={section.title} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">{section.title}</p>
+        {sections.map(s => (
+          <div key={s.title} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">{s.title}</p>
             <div className="space-y-3">
-              {section.items.map(item => (
+              {s.items.map(item => (
                 <div key={item.label} className="flex items-center justify-between gap-2">
                   <span className="text-xs text-slate-500 leading-tight">{item.label}</span>
-                  <span className={`text-base font-bold flex-shrink-0 ${item.color ?? "text-slate-800"}`}>
-                    {item.value}
-                  </span>
+                  <span className={`text-base font-bold flex-shrink-0 ${item.color ?? "text-slate-800"}`}>{item.value}</span>
                 </div>
               ))}
             </div>
@@ -793,7 +761,7 @@ function DoneBlock({ etl, fileName, onReset }: { etl: EtlResult; fileName: strin
           </p>
           <p className="text-xs text-amber-700">
             Они сохранены в реестре со статусом «Ожидает регистрации эксперта».
-            При регистрации нового эксперта с совпадающим ФИО запустите повторный импорт — связь установится автоматически.
+            После регистрации эксперта с совпадающим ФИО достаточно запустить повторный импорт — связь установится автоматически.
           </p>
         </div>
       )}
@@ -809,7 +777,7 @@ function DoneBlock({ etl, fileName, onReset }: { etl: EtlResult; fileName: strin
   );
 }
 
-// ─── Shared sub-components ────────────────────────────────────────────────────
+// ─── Shared ────────────────────────────────────────────────────────────────────
 
 function SpinnerBlock({ label }: { label: string }) {
   return (
@@ -824,25 +792,22 @@ function StatusBadge({ status }: { status: "Активный" | "Истёкши�
   return (
     <span className={[
       "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold",
-      status === "Активный"
-        ? "bg-emerald-100 text-emerald-700"
-        : "bg-slate-100 text-slate-500",
+      status === "Активный" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500",
     ].join(" ")}>
       {status}
     </span>
   );
 }
 
-function PreviewSummaryGrid({ summary }: { summary: PreviewSummary }) {
+function SummaryGrid({ summary }: { summary: PreviewSummary }) {
   const items = [
-    { label: "Всего строк",    value: summary.total,           color: "text-slate-800" },
-    { label: "Активных",       value: summary.active,          color: "text-emerald-700" },
-    { label: "Истёкших",       value: summary.expired,         color: "text-slate-500" },
-    { label: "Ошибок даты",    value: summary.dateErrors,      color: summary.dateErrors > 0 ? "text-amber-600" : "text-slate-400" },
-    { label: "Без номера",     value: summary.emptyCertNumber, color: summary.emptyCertNumber > 0 ? "text-amber-600" : "text-slate-400" },
-    { label: "Без ФИО",        value: summary.emptyFio,        color: summary.emptyFio > 0 ? "text-amber-600" : "text-slate-400" },
+    { label: "Всего строк",  value: summary.total,           color: "text-slate-800" },
+    { label: "Активных",     value: summary.active,          color: "text-emerald-700" },
+    { label: "Истёкших",     value: summary.expired,         color: "text-slate-500" },
+    { label: "Ошибок даты",  value: summary.dateErrors,      color: summary.dateErrors      > 0 ? "text-amber-600" : "text-slate-400" },
+    { label: "Без номера",   value: summary.emptyCertNumber, color: summary.emptyCertNumber > 0 ? "text-amber-600" : "text-slate-400" },
+    { label: "Без ФИО",      value: summary.emptyFio,        color: summary.emptyFio        > 0 ? "text-amber-600" : "text-slate-400" },
   ];
-
   return (
     <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
       {items.map(item => (

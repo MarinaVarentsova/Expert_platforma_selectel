@@ -16,6 +16,7 @@ import AdminSettings from "@/pages/AdminSettings";
 import AdminActionItems from "@/pages/AdminActionItems";
 import AdminEvents from "@/pages/AdminEvents";
 import AdminEmailEvents from "@/pages/AdminEmailEvents";
+import AdminCertImport from "@/pages/AdminCertImport";
 import NewRequest from "@/pages/NewRequest";
 import RequestDetail from "@/pages/RequestDetail";
 import AuthCallback from "@/pages/AuthCallback";
@@ -42,6 +43,7 @@ function Router() {
         <Route path="/admin/action-items" component={AdminActionItems} />
         <Route path="/admin/events" component={AdminEvents} />
         <Route path="/admin/email-events" component={AdminEmailEvents} />
+        <Route path="/admin/cert-import" component={AdminCertImport} />
         <Route path="/requests/:id" component={RequestDetail} />
         <Route path="/auth/callback" component={AuthCallback} />
         <Route path="/reset-password" component={ResetPassword} />

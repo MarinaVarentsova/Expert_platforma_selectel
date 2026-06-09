@@ -1,10 +1,11 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, BarChart3, Users, Settings, Activity, CalendarClock, Mail } from "lucide-react";
+import { LayoutDashboard, BarChart3, Users, Settings, Activity, CalendarClock, Mail, FileUp } from "lucide-react";
 
 const TABS = [
   { to: "/admin",               label: "Все заказы",    Icon: LayoutDashboard, exact: true },
   { to: "/admin/metrics",       label: "Метрики",       Icon: BarChart3,       exact: false },
   { to: "/admin/experts",       label: "Эксперты",      Icon: Users,           exact: false },
+  { to: "/admin/cert-import",   label: "Сертификаты",   Icon: FileUp,          exact: false },
   { to: "/admin/action-items",  label: "Action Items",  Icon: Activity,        exact: false },
   { to: "/admin/events",        label: "События",       Icon: CalendarClock,   exact: false },
   { to: "/admin/email-events",  label: "Email Events",  Icon: Mail,            exact: false },

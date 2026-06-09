@@ -123,6 +123,29 @@ export default function Register() {
 
     setLoading(true);
 
+    // ── Email duplicate check (before creating anything in Auth) ──────────
+    {
+      const { data: existingUser } = await supabase
+        .from("palata_users")
+        .select("id")
+        .eq("email", email.trim().toLowerCase())
+        .maybeSingle();
+      if (existingUser) {
+        setError("Пользователь с данной почтой уже зарегистрирован. Войдите в систему или восстановите пароль.");
+        setLoading(false);
+        return;
+      }
+    }
+
+    // ── Clear stale refresh token if present ──────────────────────────────
+    {
+      const { error: sessionErr } = await supabase.auth.getSession();
+      if (sessionErr?.message?.includes("Refresh Token")) {
+        console.warn("[register] stale session, clearing:", sessionErr.message);
+        await supabase.auth.signOut().catch(() => {});
+      }
+    }
+
     // ── Pre-verify certs for expert before signUp ──────────────────────────
     let preVerified: (CertResult | null)[] = [...certResults];
     let verifiedCerts: CertResult[]        = [];
@@ -222,6 +245,19 @@ export default function Register() {
       return;
     }
 
+    // PKCE + email confirmation: data.user may be null, data.session is always null.
+    // Any signUp without a session → email confirmation is required → success screen.
+    if (!data.session) {
+      const dirIds   = mergeDirectionIds(verifiedCerts);
+      const dirNames = dirIds.map(id => allDirections.find(d => d.id === id)?.name ?? id);
+      setRegisteredDirNames(dirNames);
+      setCertWarnings(newCertWarnings);
+      setStep("success");
+      setLoading(false);
+      return;
+    }
+
+    // Immediate login path (email confirmation disabled, e.g. local dev)
     if (!data.user) {
       setError("Произошла ошибка. Попробуйте ещё раз.");
       setLoading(false);
@@ -303,15 +339,6 @@ export default function Register() {
       navigate(role === "customer" ? "/customer" : "/expert");
       return;
     }
-
-    // Email-confirmation path: store pre-verified data for success screen
-    const dirIds   = mergeDirectionIds(verifiedCerts);
-    const dirNames = dirIds.map(id => allDirections.find(d => d.id === id)?.name ?? id);
-    setRegisteredDirNames(dirNames);
-    setCertWarnings(newCertWarnings);
-
-    setStep("success");
-    setLoading(false);
   }
 
   if (step === "success") {

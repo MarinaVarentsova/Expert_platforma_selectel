@@ -15,20 +15,47 @@ export default function AuthCallback() {
 
   useEffect(() => {
     async function handleCallback() {
-      // PKCE flow: exchange code for session
       const params = new URLSearchParams(window.location.search);
-      const code = params.get("code");
 
+      // Handle error params (expired / invalid link)
+      const errorParam = params.get("error");
+      const errorCode  = params.get("error_code");
+      if (errorParam) {
+        console.error("[auth/callback] URL error:", errorParam, errorCode);
+        if (errorCode === "otp_expired" || errorParam === "access_denied") {
+          setError(
+            "Ссылка подтверждения недействительна или истекла. " +
+            "Зарегистрируйтесь повторно или запросите новое письмо."
+          );
+        } else {
+          setError("Произошла ошибка при подтверждении email. Попробуйте зарегистрироваться повторно.");
+        }
+        return;
+      }
+
+      // PKCE flow: exchange code for session
+      const code = params.get("code");
       if (code) {
         const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeErr) {
           console.error("[auth/callback] exchangeCodeForSession:", exchangeErr.message);
-          setError("Ссылка недействительна или уже использована. Попробуйте войти вручную.");
+          if (
+            exchangeErr.message.includes("expired") ||
+            exchangeErr.message.includes("invalid") ||
+            exchangeErr.message.includes("already used")
+          ) {
+            setError(
+              "Ссылка подтверждения недействительна или истекла. " +
+              "Зарегистрируйтесь повторно или запросите новое письмо."
+            );
+          } else {
+            setError("Не удалось подтвердить email. Попробуйте войти вручную.");
+          }
           return;
         }
       }
 
-      // Get session (after exchange or from implicit hash)
+      // Get session (after exchange or from hash)
       const { data: { session } } = await supabase.auth.getSession();
 
       if (!session) {
@@ -45,7 +72,7 @@ export default function AuthCallback() {
 
       if (userErr || !palataUser) {
         console.error("[auth/callback] palata_users lookup:", userErr?.message);
-        // DB trigger may not have fired yet — retry once after a short delay
+        // DB trigger may not have run yet — retry once after a short delay
         await new Promise(r => setTimeout(r, 1500));
         const { data: retryUser } = await supabase
           .from("palata_users")

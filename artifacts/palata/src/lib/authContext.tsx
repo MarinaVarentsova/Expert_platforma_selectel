@@ -60,7 +60,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error("[auth] getSession error:", error.message);
+        if (error.message.includes("Refresh Token") || error.message.includes("refresh_token")) {
+          supabase.auth.signOut().catch(() => {});
+        }
+        setState({ kind: "unauthenticated" });
+        return;
+      }
       applySession(session);
     });
 

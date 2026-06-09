@@ -1,0 +1,2 @@
+- [Cert import schema](cert-import-schema.md) — Supabase tables, ETL function, SQL migration path
+- [Auth context pattern](auth-context.md) — useAuth() returns { state, signIn, signOut }; user in state.user only when state.kind === "authenticated"

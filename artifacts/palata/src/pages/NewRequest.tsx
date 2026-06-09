@@ -116,6 +116,7 @@ export default function NewRequest() {
   const [dirDropOpen, setDirDropOpen] = useState(false);
   const [dirSearch, setDirSearch]     = useState("");
   const dirDropRef                    = useRef<HTMLDivElement>(null);
+  const aiWarnRef                     = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!dirDropOpen) return;
@@ -128,6 +129,13 @@ export default function NewRequest() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [dirDropOpen]);
+
+  // Прокрутить к предупреждению, когда ИИ не смог определить направление
+  useEffect(() => {
+    if (aiStatus === "manual" && aiWarnRef.current) {
+      aiWarnRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [aiStatus]);
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm(f => ({ ...f, [key]: value }));
@@ -535,7 +543,7 @@ export default function NewRequest() {
             )}
 
             {aiStatus === "manual" && (
-              <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50">
+              <div ref={aiWarnRef} className="flex items-start gap-3 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50">
                 <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-800">{aiFailMessage}</p>
               </div>

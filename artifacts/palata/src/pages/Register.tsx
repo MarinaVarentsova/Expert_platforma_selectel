@@ -120,6 +120,10 @@ export default function Register() {
     if (!fullName.trim()) { setError("Введите ФИО"); return; }
     if (password.length < 8) { setError("Пароль должен быть не менее 8 символов"); return; }
     if (password !== confirmPwd) { setError("Пароли не совпадают"); return; }
+    if (role === "expert" && regionIds.length === 0) {
+      setError("Укажите хотя бы один регион работы.");
+      return;
+    }
 
     setLoading(true);
 
@@ -563,12 +567,17 @@ export default function Register() {
             <>
               {/* Регионы работы */}
               <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Регионы работы</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">
+                  Регионы работы <span className="text-red-500">*</span>
+                </p>
                 <RegionMultiSelect
                   selectedIds={regionIds}
                   onChange={setRegionIds}
                   placeholder="Выберите регионы работы…"
                 />
+                {regionIds.length === 0 && (
+                  <p className="mt-1.5 text-xs text-slate-400">Укажите хотя бы один регион</p>
+                )}
               </div>
 
               {/* Статус и реестры */}

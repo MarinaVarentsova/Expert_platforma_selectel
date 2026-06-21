@@ -10,6 +10,7 @@ interface Props {
   onVerify: (idx: number) => void;
   onAdd: () => void;
   onRemove: (idx: number) => void;
+  allowRemove?: boolean;
   inputClass?: string;
 }
 
@@ -92,6 +93,7 @@ export function CertificateInputList({
   onVerify,
   onAdd,
   onRemove,
+  allowRemove = true,
   inputClass,
 }: Props) {
   const ic = inputClass ?? defaultInputClass;
@@ -117,7 +119,7 @@ export function CertificateInputList({
             >
               {verifying[idx] ? "…" : "Проверить"}
             </button>
-            {numbers.length > 1 && (
+            {allowRemove && numbers.length > 1 && (
               <button
                 type="button"
                 onClick={() => onRemove(idx)}

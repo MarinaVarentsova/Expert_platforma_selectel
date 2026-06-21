@@ -1229,6 +1229,18 @@ function ProfileView({
     setSaveErr(null);
     setCertWarnMsgs([]);
 
+    // 0. Validate required fields
+    if (!fullName.trim()) {
+      setSaveErr("Введите ФИО.");
+      setSaving(false);
+      return;
+    }
+    if (regs.length === 0) {
+      setSaveErr("Укажите хотя бы один регион работы.");
+      setSaving(false);
+      return;
+    }
+
     // 1. Re-verify any unverified certs
     const finalResults = [...certResults];
     for (let i = 0; i < certNumbers.length; i++) {
@@ -1391,12 +1403,17 @@ function ProfileView({
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Регионы работы</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
+            Регионы работы <span className="text-red-500">*</span>
+          </p>
           <RegionMultiSelect
             selectedIds={regs}
             onChange={setRegs}
             placeholder="Выберите регионы работы…"
           />
+          {regs.length === 0 && (
+            <p className="mt-1.5 text-xs text-slate-400">Укажите хотя бы один регион</p>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-4">
@@ -1440,6 +1457,7 @@ function ProfileView({
                   onVerify={verifyCert}
                   onAdd={addCert}
                   onRemove={removeCert}
+                  allowRemove={false}
                 />
               </div>
             ) : (

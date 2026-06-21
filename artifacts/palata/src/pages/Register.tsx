@@ -215,6 +215,14 @@ export default function Register() {
         // palata_expert_regions rows even when email confirmation is required
         // and the React state is gone by the time the user clicks the link.
         region_ids:                       regionIds,
+        // Persist verified cert results so ExpertDashboard can write them to DB
+        // after email confirmation (when session is null and we can't write to DB here).
+        verified_certs:                   verifiedCerts.map(r => ({
+          number:       r.number,
+          directionIds: r.directionIds,
+          validTo:      r.validTo ?? null,
+          expertName:   r.expertName ?? null,
+        })),
       });
     }
 

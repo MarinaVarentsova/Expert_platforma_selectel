@@ -1095,17 +1095,88 @@ function ProfileView({
           setRegionNames(ids.map(id => nm[id] ?? id));
         }
       });
-    supabase.from("palata_expert_certificates")
-      .select("certificate_number, status, cert_valid_to, cert_direction_ids")
-      .eq("expert_id", userId)
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          setCertNumbers(data.map((c: { certificate_number: string }) => c.certificate_number));
-          setCertResultsS(data.map(() => null));
-          setCertVerifying(data.map(() => false));
-        }
-      });
   }, [userId]);
+
+  // Load certs separately (depends on allDirections for auto-heal fallback)
+  useEffect(() => {
+    if (!userId || !allDirections.length) return;
+
+    async function loadAndAutoHeal() {
+      const { data } = await supabase
+        .from("palata_expert_certificates")
+        .select("certificate_number, status, cert_valid_to, cert_direction_ids")
+        .eq("expert_id", userId);
+
+      if (data && data.length > 0) {
+        setCertNumbers(data.map((c: { certificate_number: string }) => c.certificate_number));
+        setCertResultsS(data.map(() => null));
+        setCertVerifying(data.map(() => false));
+        return;
+      }
+
+      // No certs in DB — try to restore from auth metadata (for users registered via email confirmation)
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      type MetaCert = { number: string; directionIds: string[]; validTo: string | null; expertName: string | null };
+      const metaCerts = (authUser?.user_metadata?.verified_certs ?? []) as MetaCert[];
+
+      if (metaCerts.length > 0) {
+        const { error: insErr } = await supabase.from("palata_expert_certificates").insert(
+          metaCerts.map(r => ({
+            expert_id:          userId,
+            certificate_number: r.number,
+            status:             "verified" as const,
+            cert_valid_to:      r.validTo,
+            cert_expert_name:   r.expertName,
+            cert_direction_ids: r.directionIds,
+          }))
+        );
+        if (!insErr) {
+          const allDirIds = [...new Set(metaCerts.flatMap(r => r.directionIds))];
+          if (allDirIds.length > 0) {
+            await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
+            await supabase.from("palata_expert_directions").insert(
+              allDirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
+            );
+            setDirIds(allDirIds);
+          }
+          setCertNumbers(metaCerts.map(r => r.number));
+          setCertResultsS(metaCerts.map(() => null));
+          setCertVerifying(metaCerts.map(() => false));
+        }
+        return;
+      }
+
+      // Fallback for existing experts whose metadata has no verified_certs:
+      // re-verify using the cert number stored in their profile
+      if (p.palata_registry_verified && p.palata_registry_number) {
+        const result = await verifyCertificate(p.palata_registry_number, allDirections, user.full_name ?? "");
+        if (result?.status === "verified") {
+          const { error: insErr } = await supabase.from("palata_expert_certificates").insert({
+            expert_id:          userId,
+            certificate_number: result.number,
+            status:             "verified" as const,
+            cert_valid_to:      result.validTo ?? null,
+            cert_expert_name:   result.expertName ?? null,
+            cert_direction_ids: result.directionIds,
+          });
+          if (!insErr) {
+            if (result.directionIds.length > 0) {
+              await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
+              await supabase.from("palata_expert_directions").insert(
+                result.directionIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
+              );
+              setDirIds(result.directionIds);
+            }
+            setCertNumbers([result.number]);
+            setCertResultsS([null]);
+            setCertVerifying([false]);
+          }
+        }
+      }
+    }
+
+    loadAndAutoHeal();
+  }, [userId, allDirections.length]);
   const [tripReady, setTripReady]     = useState(p.business_trip_ready);
   const [accepts, setAccepts]         = useState(p.accepts_requests);
   const [palataOk, setPalataOk]       = useState(p.palata_registry_verified);

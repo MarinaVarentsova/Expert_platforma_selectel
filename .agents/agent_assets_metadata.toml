@@ -6,3 +6,9 @@ id = "pbX6jWakJyc8KRHibmhSY"
 uri = "file://artifacts/palata-promo/public/audio/bg_music.mp3"
 type = "audio"
 title = "background music energetic from start"
+
+[[outputs]]
+id = "Dl9HfhwoMIVCJnl0jRwDu"
+uri = "file://docs/knowledge_base.md"
+type = "text"
+title = "База знаний — Палата судебных экспертов"

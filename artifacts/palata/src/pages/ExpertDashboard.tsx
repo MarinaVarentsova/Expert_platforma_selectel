@@ -452,6 +452,7 @@ export default function ExpertDashboard() {
           <User className="w-3.5 h-3.5" />
           Мой профиль
         </button>
+        <PlatformStatusBadge />
       </div>
 
       {/* Tabs */}
@@ -1017,8 +1018,6 @@ function MarketTab({ userId, profile, allDirections }: {
           </div>
         );
       })}
-
-      <PlatformStatusBadge />
     </div>
   );
 }

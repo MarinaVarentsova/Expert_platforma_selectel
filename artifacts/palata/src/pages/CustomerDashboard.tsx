@@ -378,6 +378,7 @@ export default function CustomerDashboard() {
               <User className="w-3.5 h-3.5" />
               Мой профиль
             </button>
+            <PlatformStatusBadge />
           </div>
           <div className="flex items-center gap-2 flex-wrap sm:flex-shrink-0">
             <Link href="/customer/new-request">
@@ -545,8 +546,6 @@ export default function CustomerDashboard() {
           )}
         </>
       )}
-
-      <PlatformStatusBadge />
     </div>
   );
 }

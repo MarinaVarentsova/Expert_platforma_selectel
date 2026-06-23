@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { LayoutDashboard, BarChart3, Users, Settings, Activity, CalendarClock, Mail, FileUp } from "lucide-react";
+import { PlatformStatusBadge } from "@/components/PlatformStatusBadge";
 
 const TABS = [
   { to: "/admin",               label: "Все заказы",    Icon: LayoutDashboard, exact: true },
@@ -27,9 +28,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="bg-white border-b border-[#D0D0D0]">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between pt-4 pb-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666]">
-              Панель управления
-            </p>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666]">
+                Панель управления
+              </p>
+              <PlatformStatusBadge />
+            </div>
             <div className="flex items-center gap-1.5 pb-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[10px] text-[#666666] font-medium">Live</span>

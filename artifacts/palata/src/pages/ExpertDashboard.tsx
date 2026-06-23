@@ -2343,19 +2343,17 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
   async function handleDecline() {
     setBusy(true);
     const now = new Date().toISOString();
-    const matchId = await getMatchId();
 
-    // 1. Match → declined
-    if (matchId) {
-      await supabase.from("palata_request_matches")
-        .update({
-          status: "declined",
-          decline_reason: declineReason,
-          decline_comment: declineComment || null,
-          responded_at: now,
-        })
-        .eq("id", matchId);
-    }
+    // 1. Match → declined (direct update, no intermediate matchId fetch)
+    await supabase.from("palata_request_matches")
+      .update({
+        status: "declined",
+        decline_reason: declineReason,
+        decline_comment: declineComment || null,
+        responded_at: now,
+      })
+      .eq("request_id", item.request_id)
+      .eq("expert_id", userId);
 
     // 2. Contact record → declined
     await supabase.from("palata_request_contacts")

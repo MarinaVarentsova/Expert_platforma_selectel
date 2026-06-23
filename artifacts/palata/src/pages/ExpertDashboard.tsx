@@ -381,6 +381,14 @@ export default function ExpertDashboard() {
     return () => document.removeEventListener("visibilitychange", handleVisible);
   }, [guard.status]);
 
+  useEffect(() => {
+    if (guard.status !== "ok") return;
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") reloadActionItems();
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [guard.status]);
+
   if (guard.status === "loading" || guard.status === "redirecting") {
     return <LoadingScreen />;
   }

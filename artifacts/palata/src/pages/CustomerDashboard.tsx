@@ -296,9 +296,23 @@ export default function CustomerDashboard() {
     });
   }, [guard.status]);
 
+  function reloadRequests() {
+    if (guard.status !== "ok") return;
+    const userId = guard.user.id;
+    supabase
+      .from("palata_requests")
+      .select("id, title, status, expertise_type, expertise_direction_id, matching_round, urgency, created_at")
+      .eq("customer_id", userId)
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (!error) setRequestState({ kind: "ok", rows: (data as Request[]) ?? [] });
+      });
+  }
+
   function reloadActionItems() {
     if (guard.status !== "ok") return;
     loadOpenActionItems(guard.user.id).then(items => setActionItems(filterCustomerActionItems(items)));
+    reloadRequests();
   }
 
   function reloadProfile() {
@@ -313,6 +327,14 @@ export default function CustomerDashboard() {
         if (!error) setProfileState({ kind: "ok", profile: data as CustomerProfile | null });
       });
   }
+
+  useEffect(() => {
+    function handleVisible() {
+      if (document.visibilityState === "visible") reloadActionItems();
+    }
+    document.addEventListener("visibilitychange", handleVisible);
+    return () => document.removeEventListener("visibilitychange", handleVisible);
+  }, [guard.status]);
 
   if (guard.status === "loading" || guard.status === "redirecting") {
     return <LoadingScreen />;

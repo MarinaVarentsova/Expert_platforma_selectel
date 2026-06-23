@@ -319,9 +319,26 @@ export default function ExpertDashboard() {
     return () => clearTimeout(bgTimer);
   }, [guard.status]);
 
+  function reloadMatches() {
+    if (guard.status !== "ok") return;
+    const userId = guard.user.id;
+    supabase
+      .from("palata_request_matches")
+      .select(`
+        id, request_id, status, matching_round, decline_reason, responded_at,
+        palata_requests ( title, expertise_direction_id, urgency, customer_id, status )
+      `)
+      .eq("expert_id", userId)
+      .order("matching_round", { ascending: true })
+      .then(({ data, error }) => {
+        if (!error) setMatchState({ kind: "ok", rows: (data as unknown as Match[]) ?? [] });
+      });
+  }
+
   function reloadActionItems() {
     if (guard.status !== "ok") return;
     loadOpenActionItems(guard.user.id).then(items => setActionItems(filterExpertActionItems(items)));
+    reloadMatches();
   }
 
   function reloadProfile() {
@@ -355,6 +372,14 @@ export default function ExpertDashboard() {
         setDocsState({ kind: "ok", docs: (data ?? []) as ExpertDocument[] });
       });
   }
+
+  useEffect(() => {
+    function handleVisible() {
+      if (document.visibilityState === "visible") reloadActionItems();
+    }
+    document.addEventListener("visibilitychange", handleVisible);
+    return () => document.removeEventListener("visibilitychange", handleVisible);
+  }, [guard.status]);
 
   if (guard.status === "loading" || guard.status === "redirecting") {
     return <LoadingScreen />;
@@ -2510,6 +2535,12 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
 
 function CustomerDeclinedDateCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
   const [done, setDone] = useState(false);
+  const [reqTitle, setReqTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.from("palata_requests").select("title").eq("id", item.request_id).single()
+      .then(({ data }) => { if (data) setReqTitle((data as { title: string }).title); });
+  }, [item.request_id]);
 
   async function handleAck() {
     await resolveActionItem(item.id);
@@ -2522,11 +2553,13 @@ function CustomerDeclinedDateCard({ item, onDone }: { item: ActionItem; onDone: 
   return (
     <div className="bg-white border border-red-200 rounded-xl p-5 shadow-sm">
       <ExpertActionItemHeader item={item} />
-      <div className="mt-3 bg-red-50 rounded-xl px-4 py-3 space-y-1">
+      {reqTitle && (
+        <p className="mt-2 text-sm font-semibold text-slate-800 truncate">«{reqTitle}»</p>
+      )}
+      <div className="mt-3 bg-red-50 rounded-xl px-4 py-3">
         <p className="text-xs text-red-700 font-medium">
           Заказчик не согласился с предложенной вами датой начала. Заявка отклонена.
         </p>
-        <p className="text-xs text-slate-500">{item.description}</p>
       </div>
       <div className="mt-4">
         <button
@@ -2544,6 +2577,12 @@ function CustomerDeclinedDateCard({ item, onDone }: { item: ActionItem; onDone: 
 
 function OtherExpertTookCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
   const [done, setDone] = useState(false);
+  const [reqTitle, setReqTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.from("palata_requests").select("title").eq("id", item.request_id).single()
+      .then(({ data }) => { if (data) setReqTitle((data as { title: string }).title); });
+  }, [item.request_id]);
 
   async function handleAck() {
     await resolveActionItem(item.id);
@@ -2556,8 +2595,11 @@ function OtherExpertTookCard({ item, onDone }: { item: ActionItem; onDone: () =>
   return (
     <div className="bg-white border border-orange-200 rounded-xl p-5 shadow-sm">
       <ExpertActionItemHeader item={item} />
+      {reqTitle && (
+        <p className="mt-2 text-sm font-semibold text-slate-800 truncate">«{reqTitle}»</p>
+      )}
       <div className="mt-3 bg-orange-50 rounded-xl px-4 py-3">
-        <p className="text-xs text-orange-800">{item.description}</p>
+        <p className="text-xs text-orange-800">По этому заказу был выбран другой эксперт.</p>
       </div>
       <div className="mt-4">
         <button

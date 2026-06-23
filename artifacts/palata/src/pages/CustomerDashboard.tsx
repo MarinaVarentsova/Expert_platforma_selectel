@@ -1048,6 +1048,14 @@ function ExpertDeclinedCard({ item, onDone }: {
   onDone: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [reqTitle, setReqTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.from("palata_requests").select("title").eq("id", item.request_id).maybeSingle()
+      .then(({ data }) => { if (data) setReqTitle((data as { title: string }).title); });
+  }, [item.request_id]);
+
+  const expertName = (item.payload?.expert_name as string | null) ?? null;
 
   async function handleAck() {
     setBusy(true);
@@ -1055,18 +1063,14 @@ function ExpertDeclinedCard({ item, onDone }: {
     onDone();
   }
 
-  const declineReason = (item.payload?.decline_reason as string | null) ?? null;
-  const expertName    = (item.payload?.expert_name as string | null) ?? null;
-
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
       <ActionItemHeader item={item} />
-      <p className="text-sm text-slate-600 mt-2">{item.description}</p>
+      <p className="text-sm text-slate-600 mt-2">
+        Эксперт не может взять заказ{reqTitle ? ` «${reqTitle}»` : ""}. Выберите другого эксперта.
+      </p>
       {expertName && (
         <p className="text-xs text-slate-400 mt-1">Эксперт: {expertName}</p>
-      )}
-      {declineReason && (
-        <p className="text-xs text-slate-500 mt-1 italic">Причина: {declineReason}</p>
       )}
       <div className="mt-4">
         <button
@@ -1478,20 +1482,12 @@ function ExpertCanStartCard({ item, userId, onDone }: {
       <div className="p-5">
         <ActionItemHeader item={item} />
 
-        {/* Request details */}
-        {loading ? (
-          <p className="text-xs text-[#666666] mt-3">Загрузка…</p>
-        ) : (
-          <div className="mt-3 bg-[#F4F4F4] rounded-xl px-4 py-3 space-y-1">
-            <p className="text-[10px] font-mono text-[#666666]">{shortId}</p>
-            {reqTitle && <p className="text-sm font-semibold text-[#111111]">{reqTitle}</p>}
-            {reqStatus && (
-              <span className="inline-block text-[10px] text-[#666666] bg-[#D0D0D0] px-1.5 py-0.5 rounded">
-                {REQUEST_STATUS_LABEL[reqStatus] ?? reqStatus}
-              </span>
-            )}
-          </div>
-        )}
+        {/* Request title in description */}
+        <p className="text-sm text-slate-600 mt-2">
+          {loading
+            ? "Загрузка…"
+            : `Эксперт предложил дату начала работы по заказу${reqTitle ? ` «${reqTitle}»` : ""}.`}
+        </p>
 
         {/* Expert proposal */}
         <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 space-y-1.5">

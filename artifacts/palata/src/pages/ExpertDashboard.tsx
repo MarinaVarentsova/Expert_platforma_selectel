@@ -2601,11 +2601,10 @@ function OtherExpertTookCard({ item, onDone }: { item: ActionItem; onDone: () =>
   return (
     <div className="bg-white border border-orange-200 rounded-xl p-5 shadow-sm">
       <ExpertActionItemHeader item={item} />
-      {reqTitle && (
-        <p className="mt-2 text-sm font-semibold text-slate-800 truncate">«{reqTitle}»</p>
-      )}
       <div className="mt-3 bg-orange-50 rounded-xl px-4 py-3">
-        <p className="text-xs text-orange-800">По этому заказу был выбран другой эксперт.</p>
+        <p className="text-xs text-orange-800">
+          На заказ{reqTitle ? ` «${reqTitle}»` : ""} назначен другой эксперт.
+        </p>
       </div>
       <div className="mt-4">
         <button

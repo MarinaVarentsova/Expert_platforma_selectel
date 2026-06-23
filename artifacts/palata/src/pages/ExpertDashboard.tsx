@@ -577,6 +577,9 @@ export default function ExpertDashboard() {
           userId={user.id}
           profile={profileState.kind === "ok" ? profileState.profile : null}
           allDirections={allDirections}
+          liveMatchStatuses={matchState.kind === "ok"
+            ? Object.fromEntries(matchState.rows.map(r => [r.request_id, r.status]))
+            : undefined}
         />
       )}
 
@@ -648,10 +651,11 @@ function getMarketBadge(status: string | undefined): MarketBadge {
 
 type SortBy = "rating_desc" | "date_desc" | "date_asc";
 
-function MarketTab({ userId, profile, allDirections }: {
+function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
   userId: string;
   profile: ExpertProfile | null;
   allDirections: Array<{ id: string; name: string }>;
+  liveMatchStatuses?: Record<string, string>;
 }) {
   const [state, setState] = useState<MarketState>({ kind: "loading" });
   const [filterDirection, setFilterDirection] = useState("");
@@ -837,7 +841,10 @@ function MarketTab({ userId, profile, allDirections }: {
   const dirsMap = Object.fromEntries(allDirs.map(d => [d.id, d.name]));
   const regsMap = Object.fromEntries(allRegs.map(r => [r.id, r.name]));
 
-  const myMatchStatuses = state.kind === "ok" ? state.myMatchStatuses : {};
+  const baseStatuses = state.kind === "ok" ? state.myMatchStatuses : {};
+  const myMatchStatuses = liveMatchStatuses
+    ? { ...baseStatuses, ...liveMatchStatuses }
+    : baseStatuses;
 
   const filtered = state.kind === "ok" ? state.orders
     .filter(o => {
@@ -2393,22 +2400,38 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     // waiting for the async reloadMatches() that fires in onDone().
     if (item.request_id) onMatchDeclined(item.request_id);
 
-    // 2. Contact record → declined
-    await supabase.from("palata_request_contacts")
-      .update({
-        expert_status:            "declined",
-        expert_status_updated_at: now,
-        failure_reason:           declineReason,
-        expert_comment:           declineComment || null,
-      })
+    // 2. Contact record → declined (upsert: record may not exist yet if the
+    //    expert came via the date-approval flow rather than manual selection)
+    const custId = custIdFromPayload ?? req?.customer_id ?? null;
+    const declineContactPayload = {
+      expert_status:            "declined",
+      expert_status_updated_at: now,
+      failure_reason:           declineReason,
+      expert_comment:           declineComment || null,
+    };
+    const { data: existingContact } = await supabase
+      .from("palata_request_contacts")
+      .select("id")
       .eq("request_id", item.request_id)
-      .eq("expert_id", userId);
+      .eq("expert_id", userId)
+      .maybeSingle();
+    if (existingContact) {
+      await supabase.from("palata_request_contacts")
+        .update(declineContactPayload)
+        .eq("id", (existingContact as { id: string }).id);
+    } else if (custId) {
+      await supabase.from("palata_request_contacts").insert({
+        request_id:  item.request_id,
+        expert_id:   userId,
+        customer_id: custId,
+        ...declineContactPayload,
+      });
+    }
 
     // 3. Resolve expert's action item
     await resolveActionItem(item.id);
 
     // 4. Action item for customer: expert_declined
-    const custId = custIdFromPayload ?? req?.customer_id ?? null;
     if (custId) {
       await createActionItem({
         request_id:          item.request_id,

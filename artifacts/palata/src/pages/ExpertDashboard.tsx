@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { PlatformStatusBadge } from "@/components/PlatformStatusBadge";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -452,7 +451,6 @@ export default function ExpertDashboard() {
           <User className="w-3.5 h-3.5" />
           Мой профиль
         </button>
-        <PlatformStatusBadge />
       </div>
 
       {/* Tabs */}

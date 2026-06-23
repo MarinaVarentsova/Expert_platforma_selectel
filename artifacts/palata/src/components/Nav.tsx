@@ -3,6 +3,7 @@ import { LogOut, ChevronDown, Menu, X } from "lucide-react";
 import { useAuth } from "@/lib/authContext";
 import type { PalataRole } from "@/lib/authContext";
 import { useState, useRef, useEffect } from "react";
+import { PlatformStatusBadge } from "@/components/PlatformStatusBadge";
 
 type NavLink = { to: string; label: string };
 
@@ -121,12 +122,13 @@ export default function Nav() {
               <div className="relative hidden lg:block" ref={menuRef}>
                 <button
                   onClick={() => setMenuOpen(v => !v)}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white border border-[#D0D0D0] text-[#002B5C] font-medium hover:border-[#0F4C9A] hover:shadow-sm transition-all"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white border border-[#D0D0D0] text-[#002B5C] font-medium hover:border-[#0F4C9A] hover:shadow-sm transition-all w-full"
                 >
                   <RoleAvatar role={user.role} />
                   <span className="max-w-[128px] truncate">{user.full_name ?? user.email}</span>
                   <ChevronDown className={["w-3 h-3 text-[#666666] transition-transform", menuOpen ? "rotate-180" : ""].join(" ")} />
                 </button>
+                <PlatformStatusBadge />
 
                 {menuOpen && (
                   <div className="absolute right-0 top-full mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-[#D0D0D0] py-1 z-50">

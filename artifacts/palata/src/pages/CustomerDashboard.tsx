@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, useSearch } from "wouter";
-import { PlatformStatusBadge } from "@/components/PlatformStatusBadge";
 import { supabase } from "@/lib/supabaseClient";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
@@ -378,21 +377,12 @@ export default function CustomerDashboard() {
               <User className="w-3.5 h-3.5" />
               Мой профиль
             </button>
-            <PlatformStatusBadge />
-          </div>
-          <div className="flex items-center gap-2 flex-wrap sm:flex-shrink-0">
-            <Link href="/customer/new-request">
-              <button className="btn-primary inline-flex items-center gap-2">
-                <PlusCircle className="w-4 h-4" />
-                Создать заказ
-              </button>
-            </Link>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-slate-200 overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 scrollbar-none">
+      <div className="flex items-center gap-1 mb-6 border-b border-slate-200 overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6 scrollbar-none">
         <TabButton active={tab === "requests"} onClick={() => setTab("requests")}>
           <ClipboardList className="w-3.5 h-3.5" />
           Мои заказы
@@ -415,6 +405,14 @@ export default function CustomerDashboard() {
             </span>
           )}
         </TabButton>
+        <div className="ml-auto flex-shrink-0 pb-px">
+          <Link href="/customer/new-request">
+            <button className="btn-primary inline-flex items-center gap-1.5 text-xs py-1.5 px-3">
+              <PlusCircle className="w-3.5 h-3.5" />
+              Создать заказ
+            </button>
+          </Link>
+        </div>
       </div>
 
       {/* Tab: Requests */}

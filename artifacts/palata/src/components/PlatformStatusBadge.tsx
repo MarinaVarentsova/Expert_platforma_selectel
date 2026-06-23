@@ -3,14 +3,12 @@ export const APP_STATUS  = "рабочий";
 export const APP_VERSION = "V1.1.0";
 export const APP_MODE    = "тестовый";
 
-// ─── Inline block shown under the user name button ─────────────────────────
+// ─── One-line badge shown under the ФИО button in the navbar ───────────────
 
 export function PlatformStatusBadge() {
   return (
-    <div className="mt-3 inline-flex flex-col gap-0.5 text-[11px] text-slate-400 leading-snug">
-      <span><span className="text-slate-500 font-medium">Статус:</span> {APP_STATUS}</span>
-      <span><span className="text-slate-500 font-medium">Версия:</span> {APP_VERSION}</span>
-      <span><span className="text-slate-500 font-medium">Режим:</span> {APP_MODE}</span>
-    </div>
+    <p className="text-[10px] text-[#999] text-right leading-none mt-1 whitespace-nowrap select-none">
+      Статус: {APP_STATUS}&nbsp;·&nbsp;Режим: {APP_MODE}
+    </p>
   );
 }

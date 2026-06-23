@@ -405,14 +405,12 @@ export default function CustomerDashboard() {
             </span>
           )}
         </TabButton>
-        <div className="ml-auto flex-shrink-0 pb-px">
-          <Link href="/customer/new-request">
-            <button className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-full bg-[#CC2222] text-white hover:bg-[#a81c1c] active:bg-[#8e1717] transition-colors shadow-sm">
-              <PlusCircle className="w-3.5 h-3.5" />
-              Создать заказ
-            </button>
-          </Link>
-        </div>
+        <Link href="/customer/new-request" className="flex-shrink-0 pb-px">
+          <button className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-full bg-[#CC2222] text-white hover:bg-[#a81c1c] active:bg-[#8e1717] transition-colors shadow-sm">
+            <PlusCircle className="w-3.5 h-3.5" />
+            Создать заказ
+          </button>
+        </Link>
       </div>
 
       {/* Tab: Requests */}

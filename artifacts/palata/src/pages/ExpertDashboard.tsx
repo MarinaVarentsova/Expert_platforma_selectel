@@ -319,26 +319,46 @@ export default function ExpertDashboard() {
     return () => clearTimeout(bgTimer);
   }, [guard.status]);
 
-  function reloadMatches() {
-    if (guard.status !== "ok") return;
+  function reloadMatches(): Promise<void> {
+    if (guard.status !== "ok") return Promise.resolve();
     const userId = guard.user.id;
-    supabase
-      .from("palata_request_matches")
-      .select(`
-        id, request_id, status, matching_round, decline_reason, responded_at,
-        palata_requests ( title, expertise_direction_id, urgency, customer_id, status )
-      `)
-      .eq("expert_id", userId)
-      .order("matching_round", { ascending: true })
-      .then(({ data, error }) => {
-        if (!error) setMatchState({ kind: "ok", rows: (data as unknown as Match[]) ?? [] });
-      });
+    return Promise.resolve(
+      supabase
+        .from("palata_request_matches")
+        .select(`
+          id, request_id, status, matching_round, decline_reason, responded_at,
+          palata_requests ( title, expertise_direction_id, urgency, customer_id, status )
+        `)
+        .eq("expert_id", userId)
+        .order("matching_round", { ascending: true })
+        .then(({ data, error }) => {
+          if (!error) setMatchState({ kind: "ok", rows: (data as unknown as Match[]) ?? [] });
+        }),
+    );
   }
 
   function reloadActionItems() {
     if (guard.status !== "ok") return;
-    loadOpenActionItems(guard.user.id).then(items => setActionItems(filterExpertActionItems(items)));
-    reloadMatches();
+    Promise.all([
+      loadOpenActionItems(guard.user.id).then(items => setActionItems(filterExpertActionItems(items))),
+      reloadMatches(),
+    ]);
+  }
+
+  // Optimistic update: immediately mark match as declined in local state so the
+  // kanban switches columns without waiting for the async Supabase reload.
+  function handleMatchDeclined(requestId: string) {
+    setMatchState(prev => {
+      if (prev.kind !== "ok") return prev;
+      return {
+        kind: "ok",
+        rows: prev.rows.map(r =>
+          r.request_id === requestId
+            ? { ...r, status: "declined" as Match["status"] }
+            : r,
+        ),
+      };
+    });
   }
 
   function reloadProfile() {
@@ -545,6 +565,7 @@ export default function ExpertDashboard() {
               userId={user.id}
               userEmail={user.email}
               onDone={reloadActionItems}
+              onMatchDeclined={handleMatchDeclined}
             />
           )}
         </div>
@@ -2050,11 +2071,12 @@ function ExpertActionItemHeader({ item }: { item: ActionItem }) {
   );
 }
 
-function ExpertActionInbox({ items, userId, userEmail, onDone }: {
+function ExpertActionInbox({ items, userId, userEmail, onDone, onMatchDeclined }: {
   items: ActionItem[];
   userId: string;
   userEmail: string;
   onDone: () => void;
+  onMatchDeclined: (requestId: string) => void;
 }) {
   if (items.length === 0) {
     return (
@@ -2074,23 +2096,24 @@ function ExpertActionInbox({ items, userId, userEmail, onDone }: {
   return (
     <div className="max-w-2xl space-y-4">
       {items.map(item => (
-        <ExpertActionCard key={item.id} item={item} userId={userId} userEmail={userEmail} onDone={onDone} />
+        <ExpertActionCard key={item.id} item={item} userId={userId} userEmail={userEmail} onDone={onDone} onMatchDeclined={onMatchDeclined} />
       ))}
     </div>
   );
 }
 
-function ExpertActionCard({ item, userId, userEmail, onDone }: {
+function ExpertActionCard({ item, userId, userEmail, onDone, onMatchDeclined }: {
   item: ActionItem;
   userId: string;
   userEmail: string;
   onDone: () => void;
+  onMatchDeclined: (requestId: string) => void;
 }) {
   if (item.action_type === "customer_selected_you") {
     return <CustomerSelectedCard item={item} onDone={onDone} />;
   }
   if (item.action_type === "you_are_approved_for_work") {
-    return <YouAreApprovedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} />;
+    return <YouAreApprovedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} onMatchDeclined={onMatchDeclined} />;
   }
   if (item.action_type === "customer_approved_start_date") {
     return <CustomerApprovedCard item={item} onDone={onDone} />;
@@ -2167,11 +2190,12 @@ type CustomerContact = {
 
 // ─── you_are_approved_for_work ────────────────────────────────────────────────
 
-function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
+function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }: {
   item: ActionItem;
   userId: string;
   userEmail: string;
   onDone: () => void;
+  onMatchDeclined: (requestId: string) => void;
 }) {
   const payload    = item.payload ?? {};
   const canStartFrom = ((payload.can_start_from ?? payload.start_date) as string | null) ?? null;
@@ -2354,6 +2378,10 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
       })
       .eq("request_id", item.request_id)
       .eq("expert_id", userId);
+
+    // Optimistic UI: immediately move the kanban card to "Отказ" without
+    // waiting for the async reloadMatches() that fires in onDone().
+    if (item.request_id) onMatchDeclined(item.request_id);
 
     // 2. Contact record → declined
     await supabase.from("palata_request_contacts")

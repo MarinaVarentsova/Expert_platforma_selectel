@@ -2257,7 +2257,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
       .select("id, expert_id, responded_at")
       .eq("request_id", item.request_id)
       .neq("expert_id", userId)
-      .not("status", "in", "(declined,closed_by_other_expert,withdrawn,customer_declined_start_date,completed)");
+      .not("status", "in", "(declined,closed_by_other_expert,withdrawn,completed)");
     const otherMatches2 = (otherMatchData2 ?? []) as Array<{ id: string; expert_id: string; responded_at: string | null }>;
     if (otherMatches2.length > 0) {
       await supabase.from("palata_request_matches")

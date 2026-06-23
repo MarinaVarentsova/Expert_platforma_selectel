@@ -1482,12 +1482,10 @@ function ExpertCanStartCard({ item, userId, onDone }: {
       <div className="p-5">
         <ActionItemHeader item={item} />
 
-        {/* Request title in description */}
-        <p className="text-sm text-slate-600 mt-2">
-          {loading
-            ? "Загрузка…"
-            : `Эксперт предложил дату начала работы по заказу${reqTitle ? ` «${reqTitle}»` : ""}.`}
-        </p>
+        {/* Request name as subtitle under header */}
+        {!loading && reqTitle && (
+          <p className="text-sm text-slate-600 mt-1">работы по заказу «{reqTitle}»</p>
+        )}
 
         {/* Expert proposal */}
         <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 space-y-1.5">

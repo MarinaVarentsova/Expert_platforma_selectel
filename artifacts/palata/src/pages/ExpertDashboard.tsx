@@ -2458,23 +2458,9 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     <div className="bg-white border border-[#0F4C9A]/40 rounded-xl shadow-sm overflow-hidden">
       <div className="p-5">
         <ExpertActionItemHeader item={item} />
-
-        {/* Request details */}
-        {reqLoading ? (
-          <p className="text-xs text-[#666666] mt-3">Загрузка деталей заказа…</p>
-        ) : req ? (
-          <div className="mt-3 bg-[#F4F4F4] rounded-xl px-4 py-3 space-y-1.5">
-            <p className="text-[10px] font-mono text-[#666666]">{shortId}</p>
-            <p className="text-sm font-semibold text-[#111111]">{req.title}</p>
-            <div className="flex flex-wrap gap-1.5 mt-1">
-              {(req.expertise_direction_id || req.expertise_type) && (
-                <span className="text-[11px] text-[#0F4C9A] bg-[#0F4C9A]/10 px-1.5 py-0.5 rounded">
-                  {dirMap[req.expertise_direction_id ?? ""] ?? req.expertise_type ?? "—"}
-                </span>
-              )}
-            </div>
-          </div>
-        ) : null}
+        {!reqLoading && req?.title && (
+          <p className="text-sm text-slate-600 mt-1">«{req.title}»</p>
+        )}
 
         {/* Approved start date */}
         {startFmt && (
@@ -2588,7 +2574,7 @@ function CustomerDeclinedDateCard({ item, onDone }: { item: ActionItem; onDone: 
     <div className="bg-white border border-red-200 rounded-xl p-5 shadow-sm">
       <ExpertActionItemHeader item={item} />
       {reqTitle && (
-        <p className="mt-2 text-sm font-semibold text-slate-800 truncate">«{reqTitle}»</p>
+        <p className="text-sm text-slate-600 mt-1">по заказу «{reqTitle}»</p>
       )}
       <div className="mt-3 bg-red-50 rounded-xl px-4 py-3">
         <p className="text-xs text-red-700 font-medium">

@@ -2439,26 +2439,23 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
 
     let updateResult;
     if (matchId) {
-      // Update by primary key (same pattern as handleTakeWork — avoids composite filter)
+      // Update by primary key — no .select() (same pattern as handleTakeWork which works)
       updateResult = await supabase
         .from("palata_request_matches")
         .update(updatePayload)
-        .eq("id", matchId)
-        .select();
+        .eq("id", matchId);
     } else {
-      // Fallback: try composite key anyway
+      // Fallback: composite key
       updateResult = await supabase
         .from("palata_request_matches")
         .update(updatePayload)
         .eq("request_id", item.request_id)
-        .eq("expert_id", userId)
-        .select();
+        .eq("expert_id", userId);
     }
 
     console.log("[expert-decline] update result", {
-      data: updateResult?.data,
       error: updateResult?.error,
-      count: updateResult?.count,
+      status: updateResult?.status,
     });
 
     // Optimistic UI: immediately move the kanban card to "Отказ" without
@@ -2468,11 +2465,10 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     // 2. Contact record → declined (upsert: record may not exist yet if the
     //    expert came via the date-approval flow rather than manual selection)
     const custId = custIdFromPayload ?? req?.customer_id ?? null;
+    // Only columns confirmed to exist in palata_request_contacts schema
     const declineContactPayload = {
       expert_status:            "declined",
       expert_status_updated_at: now,
-      failure_reason:           declineReason,
-      expert_comment:           declineComment || null,
     };
     const { data: existingContact } = await supabase
       .from("palata_request_contacts")

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearch } from "wouter";
+import { PlatformStatusBadge } from "@/components/PlatformStatusBadge";
 import { supabase } from "@/lib/supabaseClient";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
@@ -544,6 +545,8 @@ export default function CustomerDashboard() {
           )}
         </>
       )}
+
+      <PlatformStatusBadge />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { PlatformStatusBadge } from "@/components/PlatformStatusBadge";
 import { supabase } from "@/lib/supabaseClient";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import AdminLayout from "@/components/AdminLayout";
@@ -212,6 +213,8 @@ export default function AdminDashboard() {
         {/* ── Certs tab ────────────────────────────────────────── */}
         {activeTab === "certs" && <CertsTab />}
       </div>
+
+      <PlatformStatusBadge />
     </AdminLayout>
   );
 }

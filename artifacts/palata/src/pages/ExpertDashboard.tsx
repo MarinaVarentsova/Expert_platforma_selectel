@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
+import { PlatformStatusBadge } from "@/components/PlatformStatusBadge";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -1016,6 +1017,8 @@ function MarketTab({ userId, profile, allDirections }: {
           </div>
         );
       })}
+
+      <PlatformStatusBadge />
     </div>
   );
 }

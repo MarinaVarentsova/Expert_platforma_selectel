@@ -636,7 +636,7 @@ function MarketTab({ userId, profile, allDirections }: {
     const { data: rawOrders, error } = await supabase
       .from("palata_requests")
       .select("id, title, status, expertise_direction_id, region_id, requires_travel, description, created_at, customer_id")
-      .not("status", "in", `(${HIDDEN_STATUSES.map(s => `"${s}"`).join(",")})`)
+      .not("status", "in", `(${HIDDEN_STATUSES.join(",")})`)
       .order("created_at", { ascending: false })
       .limit(200);
 
@@ -2232,7 +2232,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
       .select("id, expert_id, responded_at")
       .eq("request_id", item.request_id)
       .neq("expert_id", userId)
-      .not("status", "in", '("declined","closed_by_other_expert","withdrawn","customer_declined_start_date","completed")');
+      .not("status", "in", "(declined,closed_by_other_expert,withdrawn,customer_declined_start_date,completed)");
     const otherMatches2 = (otherMatchData2 ?? []) as Array<{ id: string; expert_id: string; responded_at: string | null }>;
     if (otherMatches2.length > 0) {
       await supabase.from("palata_request_matches")
@@ -2370,7 +2370,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone }: {
         .from("palata_request_matches")
         .select("id, status")
         .eq("request_id", item.request_id)
-        .not("status", "in", '("closed_by_other_expert","withdrawn")');
+        .not("status", "in", "(closed_by_other_expert,withdrawn)");
 
       const allDeclined =
         allMatches != null &&

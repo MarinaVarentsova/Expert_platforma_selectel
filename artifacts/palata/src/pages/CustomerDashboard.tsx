@@ -1417,6 +1417,17 @@ function ExpertCanStartCard({ item, userId, onDone }: {
 
   async function handleApprove() {
     if (!expertId) return;
+
+    // Guard: request may have been approved by another expert while page was open
+    const { data: reqCheck } = await supabase
+      .from("palata_requests").select("status").eq("id", item.request_id).maybeSingle();
+    if ((reqCheck as { status: string } | null)?.status === "in_work") {
+      setBlockedByInWork(true);
+      await resolveActionItem(item.id);
+      onDone();
+      return;
+    }
+
     setBusy("approve");
 
     // 1. Close customer's action item — request stays in expert_selection

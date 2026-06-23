@@ -636,6 +636,7 @@ const MATCH_STATUS_LABEL: Record<string, string> = {
   accepted_work: "В работе",
   declined: "Вы отказались",
   withdrawn: "Отозвано",
+  closed_by_other_expert: "Назначен другой эксперт",
 };
 
 type MarketBadge = { label: string; cls: string } | null;

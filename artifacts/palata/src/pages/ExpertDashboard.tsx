@@ -668,6 +668,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
   const [takeDates, setTakeDates] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
   const [certErrors, setCertErrors] = useState<Record<string, boolean>>({});
+  const [blockedOrders, setBlockedOrders] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -779,6 +780,14 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
     setSubmitting(p => ({ ...p, [order.id]: true }));
     setCertErrors(p => ({ ...p, [order.id]: false }));
     try {
+      // ── Guard: request may have been taken while the page was open ──
+      const { data: reqCheck } = await supabase
+        .from("palata_requests").select("status").eq("id", order.id).maybeSingle();
+      if ((reqCheck as { status: string } | null)?.status === "in_work") {
+        setBlockedOrders(p => ({ ...p, [order.id]: true }));
+        return;
+      }
+
       // ── Certificate check: expert must have a valid verified cert for this direction ──
       if (order.expertise_direction_id) {
         const today = new Date().toISOString().slice(0, 10);
@@ -1022,7 +1031,12 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
                   </p>
                 )}
 
-                {canRespond && (
+                {canRespond && blockedOrders[order.id] && (
+                  <div className="border-t border-slate-100 pt-3">
+                    <p className="text-sm text-slate-500">На заказ уже назначен эксперт.</p>
+                  </div>
+                )}
+                {canRespond && !blockedOrders[order.id] && (
                   <div className="border-t border-slate-100 pt-3 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Могу взять с</label>

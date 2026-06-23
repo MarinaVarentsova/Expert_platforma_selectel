@@ -1099,6 +1099,7 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
   const [selectedExpertId, setSelectedExpertId] = useState<string | null>(null);
   const [slugMap, setSlugMap] = useState<Record<string, string>>({});
   const [dismissing, setDismissing] = useState(false);
+  const [blockedByInWork, setBlockedByInWork] = useState(false);
 
   useEffect(() => {
     supabase.from("palata_expertise_directions").select("slug, name").eq("is_active", true)
@@ -1193,6 +1194,14 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
   }, [item.request_id]);
 
   async function handleSelect(expert: MatchedExpert) {
+    // Guard: request may have been taken while the customer's page was open
+    const { data: reqCheck } = await supabase
+      .from("palata_requests").select("status").eq("id", item.request_id).maybeSingle();
+    if ((reqCheck as { status: string } | null)?.status === "in_work") {
+      setBlockedByInWork(true);
+      return;
+    }
+
     // Optimistic: immediately mark as selected so button deactivates before any network call
     setSelectedExpertId(expert.expert_id);
     setSelecting(expert.expert_id);
@@ -1309,7 +1318,13 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
         </div>
       </div>
 
-      {expanded && (
+      {blockedByInWork && (
+        <div className="border-t border-slate-100 bg-slate-50/50 px-5 py-4">
+          <p className="text-sm text-slate-500">На заказ уже назначен эксперт.</p>
+        </div>
+      )}
+
+      {!blockedByInWork && expanded && (
         <div className="border-t border-slate-100 bg-slate-50/50 p-4 space-y-3">
           {loading && <div className="flex items-center gap-2 text-xs text-slate-400 py-4"><div className="h-3.5 w-3.5 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />Загрузка экспертов…</div>}
           {!loading && experts.length === 0 && (

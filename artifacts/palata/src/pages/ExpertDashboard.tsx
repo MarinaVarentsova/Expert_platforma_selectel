@@ -1073,6 +1073,7 @@ function ProfileView({
   const [certResults, setCertResultsS]    = useState<(CertResult | null)[]>([null]);
   const [certVerifying, setCertVerifying] = useState<boolean[]>([false]);
   const [certWarnMsgs, setCertWarnMsgs]   = useState<string[]>([]);
+  const [certsLoaded, setCertsLoaded]     = useState(false);
 
   const PALATA_URL = "палатаэкспертов.рф";
 
@@ -1088,11 +1089,24 @@ function ProfileView({
       .eq("expert_id", userId)
       .then(async ({ data }) => {
         const ids = (data ?? []).map((r: { region_id: string }) => r.region_id);
-        setRegs(ids);
         if (ids.length > 0) {
+          setRegs(ids);
           const { data: rd } = await supabase.from("palata_regions").select("id, name").in("id", ids);
           const nm = Object.fromEntries((rd ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
           setRegionNames(ids.map(id => nm[id] ?? id));
+        } else {
+          // Auto-heal: restore regions from auth metadata (email-confirmation registration path)
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          const metaRegionIds = (authUser?.user_metadata?.region_ids ?? []) as string[];
+          if (metaRegionIds.length > 0) {
+            await supabase.from("palata_expert_regions").insert(
+              metaRegionIds.map(rid => ({ expert_id: userId, region_id: rid }))
+            );
+            setRegs(metaRegionIds);
+            const { data: rd } = await supabase.from("palata_regions").select("id, name").in("id", metaRegionIds);
+            const nm = Object.fromEntries((rd ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
+            setRegionNames(metaRegionIds.map(id => nm[id] ?? id));
+          }
         }
       });
   }, [userId]);
@@ -1175,7 +1189,7 @@ function ProfileView({
       }
     }
 
-    loadAndAutoHeal();
+    loadAndAutoHeal().finally(() => setCertsLoaded(true));
   }, [userId, allDirections.length]);
   const [tripReady, setTripReady]     = useState(p.business_trip_ready);
   const [accepts, setAccepts]         = useState(p.accepts_requests);
@@ -1592,8 +1606,8 @@ function ProfileView({
       {/* Right column */}
       <div className="xl:col-span-2 flex flex-col gap-4">
 
-        {/* No active certs warning */}
-        {certNumbers.filter(n => n.trim()).length === 0 && (
+        {/* No active certs warning — only after certs have finished loading/healing */}
+        {certsLoaded && certNumbers.filter(n => n.trim()).length === 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
             <p className="text-sm text-amber-800 leading-relaxed">
               У вас нет действующих сертификатов. Вы не участвуете в подборе заказов.

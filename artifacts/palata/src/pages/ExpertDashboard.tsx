@@ -2400,16 +2400,66 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     setBusy(true);
     const now = new Date().toISOString();
 
-    // 1. Match → declined (direct update, no intermediate matchId fetch)
-    await supabase.from("palata_request_matches")
-      .update({
-        status: "declined",
-        decline_reason: declineReason,
-        decline_comment: declineComment || null,
-        responded_at: now,
-      })
+    // DIAGNOSTIC: log params before update
+    console.log("[expert-decline] click", {
+      requestId: item.request_id,
+      expertId: userId,
+      declineReason,
+    });
+
+    // 1. Match → declined: first read the match to confirm it exists and get ID
+    const { data: matchRow, error: matchFetchErr } = await supabase
+      .from("palata_request_matches")
+      .select("id, status, expert_id")
       .eq("request_id", item.request_id)
-      .eq("expert_id", userId);
+      .eq("expert_id", userId)
+      .maybeSingle();
+
+    console.log("[expert-decline] match lookup", { matchRow, matchFetchErr });
+
+    const matchId = (matchRow as { id: string } | null)?.id ?? null;
+
+    if (!matchId) {
+      console.warn("[expert-decline] no match row found — update will be skipped");
+    }
+
+    const updatePayload = {
+      status: "declined",
+      decline_reason: declineReason,
+      decline_comment: declineComment || null,
+      responded_at: now,
+    };
+    console.log("[expert-decline] update payload", {
+      table: "palata_request_matches",
+      matchId,
+      expertId: userId,
+      requestId: item.request_id,
+      updatePayload,
+    });
+
+    let updateResult;
+    if (matchId) {
+      // Update by primary key (same pattern as handleTakeWork — avoids composite filter)
+      updateResult = await supabase
+        .from("palata_request_matches")
+        .update(updatePayload)
+        .eq("id", matchId)
+        .select();
+    } else {
+      // Fallback: try composite key anyway
+      updateResult = await supabase
+        .from("palata_request_matches")
+        .update(updatePayload)
+        .eq("request_id", item.request_id)
+        .eq("expert_id", userId)
+        .select();
+    }
+
+    console.log("[expert-decline] update result", {
+      data: updateResult?.data,
+      error: updateResult?.error,
+      count: updateResult?.count,
+    });
 
     // Optimistic UI: immediately move the kanban card to "Отказ" without
     // waiting for the async reloadMatches() that fires in onDone().

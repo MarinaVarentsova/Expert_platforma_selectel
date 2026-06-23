@@ -2426,7 +2426,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     const updatePayload = {
       status: "declined",
       decline_reason: declineReason,
-      decline_comment: declineComment || null,
+      decline_note: declineComment || null,
       responded_at: now,
     };
     console.log("[expert-decline] update payload", {

@@ -1358,6 +1358,7 @@ function ExpertCanStartCard({ item, userId, onDone }: {
   const [loading, setLoading]       = useState(true);
   const [busy, setBusy]             = useState<"approve" | "decline" | null>(null);
   const [done, setDone]             = useState(false);
+  const [blockedByInWork, setBlockedByInWork] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -1376,6 +1377,16 @@ function ExpertCanStartCard({ item, userId, onDone }: {
       const r = reqData as { title: string; status: string } | null;
       setReqTitle(r?.title ?? null);
       setReqStatus(r?.status ?? null);
+
+      // Guard: if request is already in_work, auto-resolve this action item
+      if (r?.status === "in_work") {
+        setBlockedByInWork(true);
+        await resolveActionItem(item.id);
+        setLoading(false);
+        onDone();
+        return;
+      }
+
       const e = expertData as { full_name: string | null; email: string } | null;
       if (e?.full_name) setExpertName(e.full_name);
       if (e?.email) setExpertEmail(prev => prev ?? e!.email);
@@ -1476,6 +1487,15 @@ function ExpertCanStartCard({ item, userId, onDone }: {
   }
 
   if (done) return null;
+
+  if (blockedByInWork) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+        <ActionItemHeader item={item} />
+        <p className="text-sm text-slate-400 mt-2">На заказ уже назначен эксперт.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white border border-amber-200 rounded-xl shadow-sm overflow-hidden">

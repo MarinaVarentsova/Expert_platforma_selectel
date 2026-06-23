@@ -2209,6 +2209,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
   const [declineReason, setDeclineReason] = useState("not_my_profile");
   const [declineComment, setDeclineComment] = useState("");
   const [dirMap, setDirMap]     = useState<Record<string, string>>({});
+  const [blockedByInWork, setBlockedByInWork] = useState(false);
 
   useEffect(() => {
     supabase.from("palata_expertise_directions").select("id, name").eq("is_active", true)
@@ -2228,6 +2229,15 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
         .maybeSingle();
       const r = reqData as RequestDetails | null;
       setReq(r);
+
+      // Guard: if another expert already took the job, auto-resolve this item
+      if (r?.status === "in_work") {
+        setBlockedByInWork(true);
+        await resolveActionItem(item.id);
+        onDone();
+        setReqLoading(false);
+        return;
+      }
 
       const custId = custIdFromPayload ?? r?.customer_id ?? null;
       if (custId) {
@@ -2452,6 +2462,15 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
 
     setBusy(false);
     onDone();
+  }
+
+  if (blockedByInWork) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+        <ExpertActionItemHeader item={item} />
+        <p className="text-sm text-slate-400 mt-2">На заказ уже назначен эксперт.</p>
+      </div>
+    );
   }
 
   return (

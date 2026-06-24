@@ -2430,7 +2430,6 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
       customerId:   custId,
       requestTitle: req?.title ?? null,
       actionItemId: item.id,         // resolveActionItem вызывается внутри
-      updateContacts: true,
       runRematch:   true,
     });
     if (error) {

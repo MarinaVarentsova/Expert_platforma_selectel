@@ -3,26 +3,16 @@ import {
   createActionItem,
   resolveActionItem,
   logStatusEvent,
-  logEmailTestEvent,
 } from "./actionItems";
 import { runMatching } from "./matching";
 
 const DECLINE_LABEL_RU: Record<string, string> = {
-  busy:                  "Занят",
-  not_my_profile:        "Не мой профиль",
-  not_competent:         "Вне компетенции",
-  location:              "Регион не подходит",
-  conflict:              "Конфликт интересов",
-  conditions:            "Условия не подходят",
-  timeline:              "Не подходит срок",
-  no_travel:             "Нет возможности выезда",
-  insufficient_docs:     "Недостаточно документов",
-  no_contact:            "Заказчик не выходит на связь",
-  other:                 "Другое",
-  customer_cancelled:    "Не актуальный",
-  customer_declined_date:"Не устроил срок заказчика",
-  out_of_region:         "Не работает в регионе",
-  not_my_specialization: "Не моя специализация",
+  busy:          "Занят",
+  not_competent: "Вне компетенции",
+  location:      "Регион не подходит",
+  conflict:      "Конфликт интересов",
+  conditions:    "Условия не подходят",
+  other:         "Другое",
 };
 
 export interface DeclineRequestParams {
@@ -40,8 +30,6 @@ export interface DeclineRequestParams {
   requestTitle?: string | null;
   /** Action item id to mark resolved after decline (dashboard only) */
   actionItemId?: string | null;
-  /** Whether to update/insert palata_request_contacts (default true) */
-  updateContacts?: boolean;
   /** Whether to trigger re-matching if all experts declined (default true) */
   runRematch?: boolean;
 }
@@ -57,7 +45,6 @@ export async function declineRequest(
     expertName = null,
     requestTitle = null,
     actionItemId = null,
-    updateContacts = true,
     runRematch = true,
   } = params;
 
@@ -78,8 +65,6 @@ export async function declineRequest(
     if (!matchId) return { error: "Match record not found" };
 
     // 2. Update match → declined
-    // Non-blocking: log error but continue so the action item always gets resolved
-    // and the customer is always notified even if RLS/constraint blocks the status update.
     const { error: matchErr } = await supabase
       .from("palata_request_matches")
       .update({
@@ -90,12 +75,7 @@ export async function declineRequest(
       })
       .eq("id", matchId);
     if (matchErr) {
-      console.error("[declineRequest] match update failed", {
-        matchId,
-        requestId,
-        expertId,
-        matchErr,
-      });
+      return { error: matchErr.message };
     }
 
     // 3. Resolve customer id if not provided
@@ -109,32 +89,17 @@ export async function declineRequest(
         (reqRow as { customer_id: string } | null)?.customer_id ?? null;
     }
 
-    // 4. Update palata_request_contacts timestamp only — expert_status enum
-    //    does not include "declined", so we only touch expert_status_updated_at.
-    if (updateContacts) {
-      const { data: existing } = await supabase
-        .from("palata_request_contacts")
-        .select("id")
-        .eq("request_id", requestId)
-        .eq("expert_id", expertId)
-        .maybeSingle();
-      if (existing) {
-        await supabase
-          .from("palata_request_contacts")
-          .update({ expert_status_updated_at: now })
-          .eq("id", (existing as { id: string }).id);
-      }
-    }
-
-    // 5. Resolve action item (dashboard only)
+    // 4. Resolve action item (dashboard only)
     if (actionItemId) {
       await resolveActionItem(actionItemId);
     }
 
-    // 6. Notify customer via action item + email event
+    // 5. Notify customer via action item
     if (customerId) {
       const declineLabel = DECLINE_LABEL_RU[reason] ?? reason;
-      const orderRef = requestTitle ? `вашем заказе «${requestTitle}»` : "вашем заказе";
+      const orderRef = requestTitle
+        ? `вашем заказе «${requestTitle}»`
+        : "вашем заказе";
       await createActionItem({
         request_id: requestId,
         expert_id: expertId,
@@ -154,32 +119,12 @@ export async function declineRequest(
           decline_note: note || null,
         },
       });
-
-      const { data: custUser } = await supabase
-        .from("palata_users")
-        .select("email")
-        .eq("id", customerId)
-        .maybeSingle();
-      const custEmail = (custUser as { email: string } | null)?.email ?? null;
-      if (custEmail) {
-        await logEmailTestEvent(
-          customerId,
-          custEmail,
-          "expert_declined",
-          "Эксперт отказался от заказа",
-          {
-            request_id: requestId,
-            decline_reason: declineLabel,
-            decline_note: note || null,
-          },
-        );
-      }
     }
 
-    // 7. Log request-level status event
+    // 6. Log request-level status event
     await logStatusEvent(requestId, "expert_selection", "matching", "expert_declined");
 
-    // 8. Re-matching if every active expert has now declined
+    // 7. Re-matching if every active expert has now declined
     if (runRematch) {
       try {
         const { data: allMatches } = await supabase

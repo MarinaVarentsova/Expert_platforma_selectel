@@ -1054,7 +1054,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       customerId: r.customer_id ?? null,
       expertName,
       requestTitle: r.title ?? null,
-      updateContacts: true,
       runRematch: true,
     });
     if (error) {

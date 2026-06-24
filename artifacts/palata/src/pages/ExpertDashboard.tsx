@@ -112,21 +112,20 @@ type DocsState =
 // ─── Lookup tables ────────────────────────────────────────────────────────────
 
 
-const DECLINE_LABEL: Record<string, string> = {
-  busy:              "Занят",
-  not_my_profile:    "Не мой профиль",
-  not_competent:     "Вне компетенции",
-  location:          "Регион не подходит",
-  conflict:          "Конфликт интересов",
-  conditions:        "Условия не подходят",
-  timeline:          "Не подходит срок",
-  no_travel:         "Нет возможности выезда",
-  insufficient_docs: "Недостаточно документов",
-  no_contact:        "Заказчик не выходит на связь",
-  other:             "Другое",
-  customer_cancelled:       "Не актуальный",
-  customer_declined_date:   "Не устроил срок заказчика",
-};
+// Валидные значения enum palata_decline_reason — те же что в RequestDetail
+const DECLINE_REASONS: { value: string; label: string }[] = [
+  { value: "busy",          label: "Занят" },
+  { value: "not_competent", label: "Вне компетенции" },
+  { value: "location",      label: "Регион не подходит" },
+  { value: "conflict",      label: "Конфликт интересов" },
+  { value: "conditions",    label: "Условия не подходят" },
+  { value: "other",         label: "Другое" },
+];
+
+// Используется только для отображения сохранённого decline_reason в карточках канбана
+const DECLINE_LABEL: Record<string, string> = Object.fromEntries(
+  DECLINE_REASONS.map(r => [r.value, r.label])
+);
 
 // ─── Kanban config ─────────────────────────────────────────────────────────────
 
@@ -2516,8 +2515,8 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
               value={declineReason}
               onChange={e => setDeclineReason(e.target.value)}
             >
-              {Object.entries(DECLINE_LABEL).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
+              {DECLINE_REASONS.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </select>
             <textarea

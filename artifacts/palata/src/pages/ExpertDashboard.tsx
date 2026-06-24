@@ -2397,11 +2397,10 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
   // ── «Отказаться» ─────────────────────────────────────────────────────────────
 
   async function handleDecline() {
-    if (!item.request_id) return;
     setBusy(true);
     const custId = custIdFromPayload ?? req?.customer_id ?? null;
     const { error } = await declineRequest({
-      requestId: item.request_id,
+      requestId: item.request_id!,
       expertId: userId,
       reason: declineReason,
       note: declineComment,

@@ -1194,10 +1194,13 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
   }, [item.request_id]);
 
   async function handleSelect(expert: MatchedExpert) {
-    // Guard: request may have been taken while the customer's page was open
+    // Fresh DB check — guard against stale UI when another expert already took the work
+    console.log("[choose-expert] fresh assigned check", { requestId: item.request_id, expertId: expert.expert_id });
     const { data: reqCheck } = await supabase
       .from("palata_requests").select("status").eq("id", item.request_id).maybeSingle();
-    if ((reqCheck as { status: string } | null)?.status === "in_work") {
+    const freshStatus = (reqCheck as { status: string } | null)?.status;
+    if (freshStatus === "in_work" || freshStatus === "completed" || freshStatus === "cancelled") {
+      console.log("[choose-expert] blocked because request already assigned", { freshStatus });
       setBlockedByInWork(true);
       return;
     }

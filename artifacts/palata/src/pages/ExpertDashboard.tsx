@@ -662,7 +662,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
   const [filterDirection, setFilterDirection] = useState("");
   const [filterRegion, setFilterRegion] = useState("");
   const [filterTravel, setFilterTravel] = useState<"all" | "remote" | "travel">("all");
-  const [filterMyStatus, setFilterMyStatus] = useState<"all" | "new" | "responded" | "declined">("all");
+  const [filterMyStatus, setFilterMyStatus] = useState<"all" | "new" | "responded">("all");
   const [sortBy, setSortBy] = useState<SortBy>("rating_desc");
   const allDirs = allDirections;
   const [allRegs, setAllRegs] = useState<Array<{ id: string; name: string }>>([]);
@@ -863,9 +863,9 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
       if (filterTravel === "remote" && o.requires_travel) return false;
       if (filterTravel === "travel" && !o.requires_travel) return false;
       const ms = myMatchStatuses[o.id];
+      if (ms === "declined" || ms === "withdrawn") return false;
       if (filterMyStatus === "new" && ms && ms !== "proposed") return false;
       if (filterMyStatus === "responded" && ms !== "can_start_from") return false;
-      if (filterMyStatus === "declined" && ms !== "declined" && ms !== "withdrawn") return false;
       return true;
     })
     .slice()
@@ -917,13 +917,12 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
         </select>
         <select
           value={filterMyStatus}
-          onChange={e => setFilterMyStatus(e.target.value as "all" | "new" | "responded" | "declined")}
+          onChange={e => setFilterMyStatus(e.target.value as "all" | "new" | "responded")}
           className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30"
         >
           <option value="all">Мой статус: все</option>
           <option value="new">Новые (без действий)</option>
           <option value="responded">Вы откликнулись</option>
-          <option value="declined">Вы отказались</option>
         </select>
         <select
           value={sortBy}

@@ -831,10 +831,23 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   async function handleSelectExpert(match: Match) {
     if (!userId) return;
-    // Optimistic: hide button immediately so UI responds at once
     setSelectedMatchId(match.id);
     setCustUI({ kind: "submitting" });
     try {
+      // ── Fresh DB check: ensure no other expert is already in work (stale UI guard) ──
+      const { data: inWorkMatches } = await supabase
+        .from("palata_request_matches")
+        .select("id")
+        .eq("request_id", r.id)
+        .eq("status", "accepted_work")
+        .limit(1);
+      if (inWorkMatches && inWorkMatches.length > 0) {
+        setSelectedMatchId(null);
+        setCustUI({ kind: "error", message: "На заказ уже назначен эксперт" });
+        onReload();
+        return;
+      }
+
       // ── Certificate check: expert must have a valid cert for this direction ──
       if (r.expertise_direction_id) {
         const today = new Date().toISOString().slice(0, 10);

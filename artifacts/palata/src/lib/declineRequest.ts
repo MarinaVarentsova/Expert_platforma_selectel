@@ -109,12 +109,9 @@ export async function declineRequest(
         (reqRow as { customer_id: string } | null)?.customer_id ?? null;
     }
 
-    // 4. Update / insert palata_request_contacts (only valid columns)
+    // 4. Update palata_request_contacts timestamp only — expert_status enum
+    //    does not include "declined", so we only touch expert_status_updated_at.
     if (updateContacts) {
-      const contactPayload = {
-        expert_status: "declined",
-        expert_status_updated_at: now,
-      };
       const { data: existing } = await supabase
         .from("palata_request_contacts")
         .select("id")
@@ -124,15 +121,8 @@ export async function declineRequest(
       if (existing) {
         await supabase
           .from("palata_request_contacts")
-          .update(contactPayload)
+          .update({ expert_status_updated_at: now })
           .eq("id", (existing as { id: string }).id);
-      } else if (customerId) {
-        await supabase.from("palata_request_contacts").insert({
-          request_id: requestId,
-          expert_id: expertId,
-          customer_id: customerId,
-          ...contactPayload,
-        });
       }
     }
 

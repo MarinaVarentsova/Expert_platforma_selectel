@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
-import { declineRequest } from "@/lib/declineRequest";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -2228,10 +2227,13 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
   const [custContact, setCustContact] = useState<CustomerContact | null>(null);
   const [action, setAction]     = useState<"idle" | "decline">("idle");
   const [busy, setBusy]         = useState(false);
-  const [declineReason, setDeclineReason] = useState("not_my_profile");
+  const [declineReason, setDeclineReason] = useState("busy");
   const [declineComment, setDeclineComment] = useState("");
   const [dirMap, setDirMap]     = useState<Record<string, string>>({});
   const [blockedByInWork, setBlockedByInWork] = useState(false);
+  const [loadedMatchId, setLoadedMatchId]   = useState<string | null>(null);
+  const [loadedMatchStatus, setLoadedMatchStatus] = useState<string | null>(null);
+  const [declineError, setDeclineError]     = useState<string | null>(null);
 
   useEffect(() => {
     supabase.from("palata_expertise_directions").select("id, name").eq("is_active", true)
@@ -2244,13 +2246,31 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
 
   useEffect(() => {
     async function load() {
-      const { data: reqData } = await supabase
-        .from("palata_requests")
-        .select("title, expertise_type, expertise_direction_id, description, customer_id, requires_travel, status, region_id")
-        .eq("id", item.request_id)
-        .maybeSingle();
+      const [{ data: reqData }, { data: matchData }] = await Promise.all([
+        supabase
+          .from("palata_requests")
+          .select("title, expertise_type, expertise_direction_id, description, customer_id, requires_travel, status, region_id")
+          .eq("id", item.request_id)
+          .maybeSingle(),
+        // Load match exactly like RequestDetail does: only filter by request_id,
+        // no expert_id filter — same query pattern that makes "Не могу взять" work.
+        supabase
+          .from("palata_request_matches")
+          .select("id, status")
+          .eq("request_id", item.request_id)
+          .eq("expert_id", userId)
+          .order("matching_round", { ascending: false })
+          .order("proposed_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
       const r = reqData as RequestDetails | null;
+      const m = matchData as { id: string; status: string } | null;
       setReq(r);
+      if (m) {
+        setLoadedMatchId(m.id);
+        setLoadedMatchStatus(m.status);
+      }
 
       // Guard: if another expert already took the job, auto-resolve this item
       if (r?.status === "in_work") {
@@ -2289,6 +2309,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     return (data as { email: string } | null)?.email ?? null;
   }
 
+  // Used by handleTakeWork only
   async function getMatchId(): Promise<string | null> {
     const { data } = await supabase.from("palata_request_matches")
       .select("id").eq("request_id", item.request_id).eq("expert_id", userId).maybeSingle();
@@ -2394,25 +2415,107 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     onDone();
   }
 
-  // ── «Отказаться» ─────────────────────────────────────────────────────────────
+  // ── «Отказаться» — точно как «Не могу взять» в RequestDetail ─────────────────
 
   async function handleDecline() {
+    if (!loadedMatchId) return;
     setBusy(true);
-    const custId = custIdFromPayload ?? req?.customer_id ?? null;
-    const { error } = await declineRequest({
-      requestId: item.request_id!,
-      expertId: userId,
-      reason: declineReason,
-      note: declineComment,
-      customerId: custId,
-      requestTitle: req?.title ?? null,
-      actionItemId: item.id,
-      updateContacts: true,
-      runRematch: true,
-    });
-    if (!error && item.request_id) onMatchDeclined(item.request_id);
-    setBusy(false);
-    onDone();
+    setDeclineError(null);
+    try {
+      const now = new Date().toISOString();
+
+      // 1. Match → declined (идентично RequestDetail.handleDecline)
+      const { error: matchErr } = await supabase
+        .from("palata_request_matches")
+        .update({
+          status: "declined",
+          decline_reason: declineReason,
+          decline_note: declineComment || null,
+          responded_at: now,
+        })
+        .eq("id", loadedMatchId);
+      if (matchErr) throw matchErr;
+
+      // 2. Resolve action item (только в dashboard — в RequestDetail его нет)
+      await resolveActionItem(item.id);
+
+      // 3. Уведомить заказчика — идентично RequestDetail
+      const custId = custIdFromPayload ?? req?.customer_id ?? null;
+      if (custId) {
+        const DECLINE_LABEL_RU: Record<string, string> = {
+          busy:                  "Занят",
+          out_of_region:         "Не работает в регионе",
+          not_my_specialization: "Не моя специализация",
+          other:                 "Другое",
+          not_my_profile:        "Не мой профиль",
+          not_competent:         "Вне компетенции",
+          location:              "Регион не подходит",
+          conflict:              "Конфликт интересов",
+          conditions:            "Условия не подходят",
+          timeline:              "Не подходит срок",
+          no_travel:             "Нет возможности выезда",
+          insufficient_docs:     "Недостаточно документов",
+          no_contact:            "Заказчик не выходит на связь",
+          customer_cancelled:    "Не актуальный",
+          customer_declined_date:"Не устроил срок заказчика",
+        };
+        const declineLabel = DECLINE_LABEL_RU[declineReason] ?? declineReason;
+        const orderRef = req?.title ? `вашем заказе «${req.title}»` : "вашем заказе";
+        await createActionItem({
+          request_id:          item.request_id,
+          expert_id:           userId,
+          customer_id:         custId,
+          assigned_to_user_id: custId,
+          assigned_role:       "customer",
+          action_type:         "expert_declined",
+          title:               "Эксперт отказался от заказа",
+          description:         `Эксперт отказался от участия в ${orderRef}.`,
+          payload: {
+            request_id:    item.request_id,
+            expert_id:     userId,
+            decline_reason: declineLabel,
+            decline_note:  declineComment || null,
+          },
+        });
+
+        const custEmail = await getCustomerEmail(custId);
+        if (custEmail) {
+          await logEmailTestEvent(custId, custEmail, "expert_declined",
+            "Эксперт отказался от заказа",
+            { request_id: item.request_id, decline_reason: declineLabel });
+        }
+      }
+
+      // 4. Re-matching если все эксперты отказались
+      try {
+        const { data: allMatches } = await supabase
+          .from("palata_request_matches")
+          .select("id, status")
+          .eq("request_id", item.request_id)
+          .not("status", "in", "(closed_by_other_expert,withdrawn)");
+        const allDeclined =
+          Array.isArray(allMatches) &&
+          allMatches.length > 0 &&
+          allMatches.every((m: { status: string }) =>
+            m.status === "declined" || m.status === "withdrawn",
+          );
+        if (allDeclined && req) {
+          await runMatching({
+            requestId:            item.request_id!,
+            expertiseDirectionId: req.expertise_direction_id ?? null,
+            regionIds:            req.region_id ? [req.region_id] : [],
+            requiresTravel:       req.requires_travel ?? false,
+            customerId:           req.customer_id ?? undefined,
+          });
+        }
+      } catch { /* non-fatal */ }
+
+      if (item.request_id) onMatchDeclined(item.request_id);
+      onDone();
+    } catch (e: unknown) {
+      setDeclineError((e as { message?: string })?.message ?? "Ошибка при отказе");
+      setBusy(false);
+    }
   }
 
   if (blockedByInWork) {
@@ -2499,16 +2602,19 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
               value={declineComment}
               onChange={e => setDeclineComment(e.target.value)}
             />
+            {declineError && (
+              <p className="text-xs text-red-600">{declineError}</p>
+            )}
             <div className="flex gap-2">
               <button
-                disabled={busy}
+                disabled={busy || !loadedMatchId}
                 onClick={handleDecline}
                 className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
               >
                 {busy ? "…" : "Подтвердить отказ"}
               </button>
               <button
-                onClick={() => setAction("idle")}
+                onClick={() => { setAction("idle"); setDeclineError(null); }}
                 className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
               >
                 Отмена

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
+import { declineRequest } from "@/lib/declineRequest";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -2396,153 +2397,21 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
   // ── «Отказаться» ─────────────────────────────────────────────────────────────
 
   async function handleDecline() {
+    if (!item.request_id) return;
     setBusy(true);
-    const now = new Date().toISOString();
-
-    // DIAGNOSTIC: log params before update
-    console.log("[expert-decline] click", {
-      requestId: item.request_id,
-      expertId: userId,
-      declineReason,
-    });
-
-    // 1. Match → declined: first read the match to confirm it exists and get ID
-    const { data: matchRow, error: matchFetchErr } = await supabase
-      .from("palata_request_matches")
-      .select("id, status, expert_id")
-      .eq("request_id", item.request_id)
-      .eq("expert_id", userId)
-      .maybeSingle();
-
-    console.log("[expert-decline] match lookup", { matchRow, matchFetchErr });
-
-    const matchId = (matchRow as { id: string } | null)?.id ?? null;
-
-    if (!matchId) {
-      console.warn("[expert-decline] no match row found — update will be skipped");
-    }
-
-    const updatePayload = {
-      status: "declined",
-      decline_reason: declineReason,
-      decline_note: declineComment || null,
-      responded_at: now,
-    };
-    console.log("[expert-decline] update payload", {
-      table: "palata_request_matches",
-      matchId,
-      expertId: userId,
-      requestId: item.request_id,
-      updatePayload,
-    });
-
-    let updateResult;
-    if (matchId) {
-      // Update by primary key — no .select() (same pattern as handleTakeWork which works)
-      updateResult = await supabase
-        .from("palata_request_matches")
-        .update(updatePayload)
-        .eq("id", matchId);
-    } else {
-      // Fallback: composite key
-      updateResult = await supabase
-        .from("palata_request_matches")
-        .update(updatePayload)
-        .eq("request_id", item.request_id)
-        .eq("expert_id", userId);
-    }
-
-    console.log("[expert-decline] update result", {
-      error: updateResult?.error,
-      status: updateResult?.status,
-    });
-
-    // Optimistic UI: immediately move the kanban card to "Отказ" without
-    // waiting for the async reloadMatches() that fires in onDone().
-    if (item.request_id) onMatchDeclined(item.request_id);
-
-    // 2. Contact record → declined (upsert: record may not exist yet if the
-    //    expert came via the date-approval flow rather than manual selection)
     const custId = custIdFromPayload ?? req?.customer_id ?? null;
-    // Only columns confirmed to exist in palata_request_contacts schema
-    const declineContactPayload = {
-      expert_status:            "declined",
-      expert_status_updated_at: now,
-    };
-    const { data: existingContact } = await supabase
-      .from("palata_request_contacts")
-      .select("id")
-      .eq("request_id", item.request_id)
-      .eq("expert_id", userId)
-      .maybeSingle();
-    if (existingContact) {
-      await supabase.from("palata_request_contacts")
-        .update(declineContactPayload)
-        .eq("id", (existingContact as { id: string }).id);
-    } else if (custId) {
-      await supabase.from("palata_request_contacts").insert({
-        request_id:  item.request_id,
-        expert_id:   userId,
-        customer_id: custId,
-        ...declineContactPayload,
-      });
-    }
-
-    // 3. Resolve expert's action item
-    await resolveActionItem(item.id);
-
-    // 4. Action item for customer: expert_declined
-    if (custId) {
-      await createActionItem({
-        request_id:          item.request_id,
-        expert_id:           userId,
-        customer_id:         custId,
-        assigned_to_user_id: custId,
-        assigned_role:       "customer",
-        action_type:         "expert_declined",
-        title:               "Эксперт отказался от заказа",
-        description:         `Эксперт не может взять заказ ${shortId} в работу. Выберите другого эксперта.`,
-        payload:             { expert_id: userId, decline_reason: declineReason },
-      });
-
-      const custEmail = await getCustomerEmail(custId);
-      if (custEmail) {
-        await logEmailTestEvent(custId, custEmail, "expert_declined",
-          "Эксперт отказался от заказа",
-          { request_id: item.request_id, decline_reason: declineReason });
-      }
-    }
-
-    // 5. Events
-    await logStatusEvent(item.request_id!, "expert_selection", "matching", "expert_declined");
-
-    // 6. Re-matching if all experts declined
-    try {
-      const { data: allMatches } = await supabase
-        .from("palata_request_matches")
-        .select("id, status")
-        .eq("request_id", item.request_id)
-        .not("status", "in", "(closed_by_other_expert,withdrawn)");
-
-      const allDeclined =
-        allMatches != null &&
-        allMatches.length > 0 &&
-        allMatches.every((m: { status: string }) =>
-          m.status === "declined" || m.status === "withdrawn",
-        );
-
-      if (allDeclined) {
-        const custId2 = custIdFromPayload ?? req?.customer_id ?? undefined;
-        await runMatching({
-          requestId:           item.request_id!,
-          expertiseDirectionId: req?.expertise_direction_id ?? null,
-          regionIds:           req?.region_id ? [req.region_id] : [],
-          requiresTravel:      req?.requires_travel ?? false,
-          customerId:          custId2 ?? undefined,
-        });
-      }
-    } catch { /* non-fatal */ }
-
+    const { error } = await declineRequest({
+      requestId: item.request_id,
+      expertId: userId,
+      reason: declineReason,
+      note: declineComment,
+      customerId: custId,
+      requestTitle: req?.title ?? null,
+      actionItemId: item.id,
+      updateContacts: true,
+      runRematch: true,
+    });
+    if (!error && item.request_id) onMatchDeclined(item.request_id);
     setBusy(false);
     onDone();
   }

@@ -78,6 +78,8 @@ export async function declineRequest(
     if (!matchId) return { error: "Match record not found" };
 
     // 2. Update match → declined
+    // Non-blocking: log error but continue so the action item always gets resolved
+    // and the customer is always notified even if RLS/constraint blocks the status update.
     const { error: matchErr } = await supabase
       .from("palata_request_matches")
       .update({
@@ -87,7 +89,14 @@ export async function declineRequest(
         responded_at: now,
       })
       .eq("id", matchId);
-    if (matchErr) throw matchErr;
+    if (matchErr) {
+      console.error("[declineRequest] match update failed", {
+        matchId,
+        requestId,
+        expertId,
+        matchErr,
+      });
+    }
 
     // 3. Resolve customer id if not provided
     if (!customerId) {

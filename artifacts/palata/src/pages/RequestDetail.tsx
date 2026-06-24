@@ -2157,8 +2157,9 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                       </div>
                     )}
 
-                    {/* Customer: Выбрать эксперта — shown when request is in expert_selection and match is selectable */}
-                    {role === "customer" && isOrderActive && r.status === "expert_selection" && CUSTOMER_CAN_SELECT.has(m.status) && selectedMatchId !== m.id && (
+                    {/* Customer: Выбрать эксперта — shown when request is in expert_selection and match is selectable.
+                        selectedMatchId === null guard hides ALL buttons once any expert is chosen (prevents double-select). */}
+                    {role === "customer" && isOrderActive && r.status === "expert_selection" && CUSTOMER_CAN_SELECT.has(m.status) && selectedMatchId === null && (
                       <div className="px-4 py-3 bg-[#F4F4F4] border-t border-[#D0D0D0]">
                         {custUI.kind === "submitting" && selectedMatchId === null ? (
                           <div className="flex items-center gap-2 text-sm text-[#666666]">

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
+import { declineRequest } from "@/lib/declineRequest";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -2415,107 +2416,31 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     onDone();
   }
 
-  // ── «Отказаться» — точно как «Не могу взять» в RequestDetail ─────────────────
+  // ── «Отказаться» — вызывает ту же функцию declineRequest, что и «Не могу взять»
 
   async function handleDecline() {
-    if (!loadedMatchId) return;
     setBusy(true);
     setDeclineError(null);
-    try {
-      const now = new Date().toISOString();
-
-      // 1. Match → declined (идентично RequestDetail.handleDecline)
-      const { error: matchErr } = await supabase
-        .from("palata_request_matches")
-        .update({
-          status: "declined",
-          decline_reason: declineReason,
-          decline_note: declineComment || null,
-          responded_at: now,
-        })
-        .eq("id", loadedMatchId);
-      if (matchErr) throw matchErr;
-
-      // 2. Resolve action item (только в dashboard — в RequestDetail его нет)
-      await resolveActionItem(item.id);
-
-      // 3. Уведомить заказчика — идентично RequestDetail
-      const custId = custIdFromPayload ?? req?.customer_id ?? null;
-      if (custId) {
-        const DECLINE_LABEL_RU: Record<string, string> = {
-          busy:                  "Занят",
-          out_of_region:         "Не работает в регионе",
-          not_my_specialization: "Не моя специализация",
-          other:                 "Другое",
-          not_my_profile:        "Не мой профиль",
-          not_competent:         "Вне компетенции",
-          location:              "Регион не подходит",
-          conflict:              "Конфликт интересов",
-          conditions:            "Условия не подходят",
-          timeline:              "Не подходит срок",
-          no_travel:             "Нет возможности выезда",
-          insufficient_docs:     "Недостаточно документов",
-          no_contact:            "Заказчик не выходит на связь",
-          customer_cancelled:    "Не актуальный",
-          customer_declined_date:"Не устроил срок заказчика",
-        };
-        const declineLabel = DECLINE_LABEL_RU[declineReason] ?? declineReason;
-        const orderRef = req?.title ? `вашем заказе «${req.title}»` : "вашем заказе";
-        await createActionItem({
-          request_id:          item.request_id,
-          expert_id:           userId,
-          customer_id:         custId,
-          assigned_to_user_id: custId,
-          assigned_role:       "customer",
-          action_type:         "expert_declined",
-          title:               "Эксперт отказался от заказа",
-          description:         `Эксперт отказался от участия в ${orderRef}.`,
-          payload: {
-            request_id:    item.request_id,
-            expert_id:     userId,
-            decline_reason: declineLabel,
-            decline_note:  declineComment || null,
-          },
-        });
-
-        const custEmail = await getCustomerEmail(custId);
-        if (custEmail) {
-          await logEmailTestEvent(custId, custEmail, "expert_declined",
-            "Эксперт отказался от заказа",
-            { request_id: item.request_id, decline_reason: declineLabel });
-        }
-      }
-
-      // 4. Re-matching если все эксперты отказались
-      try {
-        const { data: allMatches } = await supabase
-          .from("palata_request_matches")
-          .select("id, status")
-          .eq("request_id", item.request_id)
-          .not("status", "in", "(closed_by_other_expert,withdrawn)");
-        const allDeclined =
-          Array.isArray(allMatches) &&
-          allMatches.length > 0 &&
-          allMatches.every((m: { status: string }) =>
-            m.status === "declined" || m.status === "withdrawn",
-          );
-        if (allDeclined && req) {
-          await runMatching({
-            requestId:            item.request_id!,
-            expertiseDirectionId: req.expertise_direction_id ?? null,
-            regionIds:            req.region_id ? [req.region_id] : [],
-            requiresTravel:       req.requires_travel ?? false,
-            customerId:           req.customer_id ?? undefined,
-          });
-        }
-      } catch { /* non-fatal */ }
-
-      if (item.request_id) onMatchDeclined(item.request_id);
-      onDone();
-    } catch (e: unknown) {
-      setDeclineError((e as { message?: string })?.message ?? "Ошибка при отказе");
+    const custId = custIdFromPayload ?? req?.customer_id ?? null;
+    const { error } = await declineRequest({
+      requestId:    item.request_id!,
+      expertId:     userId,
+      reason:       declineReason,
+      note:         declineComment,
+      matchId:      loadedMatchId,   // передаём ID, загруженный при монтировании
+      customerId:   custId,
+      requestTitle: req?.title ?? null,
+      actionItemId: item.id,         // resolveActionItem вызывается внутри
+      updateContacts: true,
+      runRematch:   true,
+    });
+    if (error) {
+      setDeclineError(error);
       setBusy(false);
+      return;
     }
+    if (item.request_id) onMatchDeclined(item.request_id);
+    onDone();
   }
 
   if (blockedByInWork) {

@@ -834,14 +834,18 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setSelectedMatchId(match.id);
     setCustUI({ kind: "submitting" });
     try {
-      // ── Fresh DB check: ensure no other expert is already in work (stale UI guard) ──
-      const { data: inWorkMatches } = await supabase
-        .from("palata_request_matches")
-        .select("id")
-        .eq("request_id", r.id)
-        .eq("status", "accepted_work")
-        .limit(1);
-      if (inWorkMatches && inWorkMatches.length > 0) {
+      // ── Fresh DB check: re-read request status from DB (stale UI guard) ──
+      // handleTakeWork sets palata_requests.status → "in_work" when expert takes work,
+      // so checking the request status is the most reliable signal regardless of match RLS.
+      console.log("[choose-expert] fresh assigned check", { requestId: r.id, matchId: match.id });
+      const { data: freshReq } = await supabase
+        .from("palata_requests")
+        .select("status")
+        .eq("id", r.id)
+        .maybeSingle();
+      const freshStatus = (freshReq as { status: string } | null)?.status;
+      if (freshStatus === "in_work" || freshStatus === "completed" || freshStatus === "cancelled") {
+        console.log("[choose-expert] blocked because request already assigned", { freshStatus });
         setSelectedMatchId(null);
         setCustUI({ kind: "error", message: "На заказ уже назначен эксперт" });
         onReload();

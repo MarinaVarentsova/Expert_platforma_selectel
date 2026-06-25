@@ -844,6 +844,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       if (alreadyInWork && alreadyInWork.length > 0) {
         setSelectedMatchId(null);
         setCustUI({ kind: "error", message: "На заказ уже назначен эксперт" });
+        await onReload();
         return;
       }
 

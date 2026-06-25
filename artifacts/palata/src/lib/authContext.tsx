@@ -51,11 +51,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState({ kind: "unauthenticated" });
       return;
     }
-    const user = await fetchPalataUser(session.user.id);
+
+    // ── Diagnostic: step 4 — profile loading ─────────────────────────────
+    console.log("[login] profile loading");
+    const t0 = Date.now();
+    const profileTimer = setTimeout(() => {
+      console.warn("[login] WARNING", { stage: "profile loading", elapsedMs: Date.now() - t0 });
+    }, 5000);
+
+    let user: PalataUser | null;
+    try {
+      user = await fetchPalataUser(session.user.id);
+    } catch (err) {
+      clearTimeout(profileTimer);
+      console.error("[login] ERROR", { stage: "profile loading", error: err });
+      setState({ kind: "unauthenticated" });
+      return;
+    }
+    clearTimeout(profileTimer);
+
+    // ── Diagnostic: step 5 — profile loaded ──────────────────────────────
+    console.log("[login] profile loaded", {
+      role: user?.role ?? null,
+      userId: session.user.id,
+      error: user ? null : "no profile found",
+    });
+
     if (!user) {
       setState({ kind: "unauthenticated" });
       return;
     }
+
+    // ── Diagnostic: step 6 — role resolved ───────────────────────────────
+    console.log("[login] role resolved", { role: user.role });
     setState({ kind: "authenticated", session, user });
   }, []);
 

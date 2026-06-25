@@ -27,9 +27,17 @@ export default function Login() {
   const { state, signIn } = useAuth();
   const [, navigate] = useLocation();
 
+  // ── Diagnostic: unmount ───────────────────────────────────────────────────
+  useEffect(() => {
+    return () => { console.log("[login] unmounted"); };
+  }, []);
+
   useEffect(() => {
     if (state.kind === "authenticated") {
-      navigate(ROLE_DESTINATIONS[state.user.role] ?? "/");
+      const url = ROLE_DESTINATIONS[state.user.role] ?? "/";
+      console.log("[login] redirect", { url });
+      navigate(url);
+      console.log("[login] redirect finished");
     }
   }, [state, navigate]);
 
@@ -38,10 +46,43 @@ export default function Login() {
     if (!email.trim() || !password) return;
     setError(null);
     setSubmitting(true);
-    const { error: authError } = await signIn(email.trim(), password);
-    if (authError) {
+
+    // ── Diagnostic: step 1 — submit ────────────────────────────────────────
+    console.log("[login] submit", { email: email.trim(), time: new Date().toISOString() });
+    console.log("[login] signIn start");
+
+    // ── Diagnostic: step 2-3 — signIn with 5 s timeout warning ────────────
+    const t0 = Date.now();
+    const signInTimer = setTimeout(() => {
+      console.warn("[login] WARNING", { stage: "signIn", elapsedMs: Date.now() - t0 });
+    }, 5000);
+
+    let authResult: { error: string | null };
+    try {
+      authResult = await signIn(email.trim(), password);
+    } catch (err) {
+      clearTimeout(signInTimer);
+      console.error("[login] ERROR", { stage: "signIn", error: err });
       setSubmitting(false);
-      setError(translateError(authError));
+      return;
+    }
+    clearTimeout(signInTimer);
+
+    // ── Diagnostic: step 3 — signIn result ────────────────────────────────
+    try {
+      const { data: { session: newSession } } = await supabase.auth.getSession();
+      console.log("[login] signIn result", {
+        error: authResult.error,
+        userId: newSession?.user.id ?? null,
+        sessionExists: !!newSession,
+      });
+    } catch (err) {
+      console.error("[login] ERROR", { stage: "getSession after signIn", error: err });
+    }
+
+    if (authResult.error) {
+      setSubmitting(false);
+      setError(translateError(authResult.error));
     }
   }
 

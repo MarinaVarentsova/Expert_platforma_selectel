@@ -77,15 +77,28 @@ export default function NewRequest() {
   }, [authState.kind]);
 
   useEffect(() => {
+    const session = supabase.auth.getSession();
+    console.log("[regions] load start");
     supabase.from("palata_regions").select("id, name")
       .order("sort_order").order("name")
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        console.log("[regions] load result", { count: data?.length, error, data });
         const list = data ?? [];
+        if (!list.length) {
+          session.then(({ data: { session: s } }) => {
+            console.warn("[regions] EMPTY REGIONS", {
+              error,
+              userId: currentUserId,
+              sessionExists: !!s,
+            });
+          });
+        }
         list.sort((a, b) => {
           if (a.name === "Вся Россия") return -1;
           if (b.name === "Вся Россия") return 1;
           return 0;
         });
+        console.log("[regions] set regions", { count: list.length });
         setAllRegions(list);
       });
   }, []);

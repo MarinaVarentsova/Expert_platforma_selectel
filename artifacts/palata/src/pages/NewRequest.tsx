@@ -77,31 +77,36 @@ export default function NewRequest() {
   }, [authState.kind]);
 
   useEffect(() => {
-    const session = supabase.auth.getSession();
     console.log("[regions] load start");
     supabase.from("palata_regions").select("id, name")
       .order("sort_order").order("name")
       .then(({ data, error }) => {
         console.log("[regions] load result", { count: data?.length, error, data });
         const list = data ?? [];
-        if (!list.length) {
-          session.then(({ data: { session: s } }) => {
-            console.warn("[regions] EMPTY REGIONS", {
-              error,
-              userId: currentUserId,
-              sessionExists: !!s,
-            });
-          });
-        }
         list.sort((a, b) => {
           if (a.name === "Вся Россия") return -1;
           if (b.name === "Вся Россия") return 1;
           return 0;
         });
-        console.log("[regions] set regions", { count: list.length });
+        console.log("[regions] state updated", { regionsCount: list.length });
         setAllRegions(list);
       });
   }, []);
+
+  // ── Diagnostic: mount / unmount ──────────────────────────────────────────
+  useEffect(() => {
+    console.log("[new-request] mounted");
+    return () => { console.log("[new-request] unmounted"); };
+  }, []);
+
+  // ── Diagnostic: authState changes ────────────────────────────────────────
+  useEffect(() => {
+    console.log("[new-request] authState", {
+      kind: authState.kind,
+      userId: authState.kind === "authenticated" ? authState.user.id : null,
+      sessionExists: authState.kind === "authenticated",
+    });
+  }, [authState]);
 
   const [form, setForm] = useState<FormData>({
     title: "",
@@ -457,6 +462,13 @@ export default function NewRequest() {
   // ── Form ───────────────────────────────────────────────────────────────────
   const busy = state.kind === "submitting";
 
+  // ── Diagnostic: every render ─────────────────────────────────────────────
+  console.log("[new-request] render", {
+    regionsCount: allRegions.length,
+    selectedRegionId: form.region_id,
+    authKind: authState.kind,
+  });
+
   return (
     <div className="min-h-[calc(100vh-56px)] bg-[#F4F4F4]">
 
@@ -635,7 +647,14 @@ export default function NewRequest() {
             <Field label="Регион" required error={errors.region_id}>
               <select
                 value={form.region_id}
-                onChange={e => set("region_id", e.target.value)}
+                onFocus={() => {
+                  console.log("[regions] dropdown opened", { regionsCount: allRegions.length });
+                }}
+                onChange={e => {
+                  const selected = allRegions.find(r => r.id === e.target.value);
+                  console.log("[regions] selected", { id: e.target.value, name: selected?.name ?? null });
+                  set("region_id", e.target.value);
+                }}
                 disabled={busy}
                 className={inputCls(!!errors.region_id)}
               >

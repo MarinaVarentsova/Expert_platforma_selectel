@@ -1086,8 +1086,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .update({ status: "accepted_work", responded_at: new Date().toISOString() })
         .eq("id", match.id);
       if (me) throw me;
-      // Other active (non-declined) matches
-      const otherActiveMatches = matches.filter(m => m.id !== match.id && ACTIVE_MATCH_STATUSES.has(m.status));
+      // Other active (non-declined) matches; exclude pending_customer (auto-match only, not involved)
+      const otherActiveMatches = matches.filter(m => m.id !== match.id && ACTIVE_MATCH_STATUSES.has(m.status) && m.status !== "pending_customer");
 
       console.log("[close-others] START", { requestId: r.id, acceptedExpertId: match.expert_id });
       console.table(otherActiveMatches.map(m => ({ matchId: m.id, expertId: m.expert_id, status: m.status, responded_at: (m as unknown as Record<string,unknown>).responded_at ?? "N/A" })));

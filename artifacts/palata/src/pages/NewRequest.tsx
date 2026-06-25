@@ -644,11 +644,19 @@ export default function NewRequest() {
             )}
 
             {/* ── Region ── */}
+            {console.log("[regions] render select", {
+              regionsCount: allRegions.length,
+              selectedRegionId: form.region_id,
+              firstRegion: allRegions[0],
+            }) as unknown as null}
             <Field label="Регион" required error={errors.region_id}>
               <select
                 value={form.region_id}
                 onFocus={() => {
-                  console.log("[regions] dropdown opened", { regionsCount: allRegions.length });
+                  console.log("[regions] dropdown opened", {
+                    regionsCount: allRegions.length,
+                    firstRegion: allRegions[0],
+                  });
                 }}
                 onChange={e => {
                   const selected = allRegions.find(r => r.id === e.target.value);

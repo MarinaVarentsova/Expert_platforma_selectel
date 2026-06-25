@@ -148,7 +148,7 @@ export default function ExpertDashboard() {
     if (p === "actions" || p === "profile" || p === "market") return p;
     return "requests";
   })();
-  const [tab, setTab] = useState<"requests" | "actions" | "profile" | "market">(initialTab);
+  const [tab, setTab] = useState<"requests" | "actions" | "rate-customer" | "profile" | "market">(initialTab);
   const [matchState, setMatchState] = useState<MatchState>({ kind: "loading" });
   const [profileState, setProfileState] = useState<ProfileState>({ kind: "loading" });
   const [pendingRatingsState, setPendingRatingsState] = useState<PendingRatingsState>({ kind: "loading" });
@@ -521,6 +521,15 @@ export default function ExpertDashboard() {
             </span>
           )}
         </TabButton>
+        <TabButton active={tab === "rate-customer"} onClick={() => setTab("rate-customer")}>
+          <Star className="w-3.5 h-3.5" />
+          Оценить заказчика
+          {pendingCount !== null && pendingCount > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-amber-500 text-white rounded-full">
+              {pendingCount}
+            </span>
+          )}
+        </TabButton>
         <button
           onClick={() => setTab("market")}
           className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all rounded-full border-b-2 -mb-px
@@ -568,6 +577,71 @@ export default function ExpertDashboard() {
               onMatchDeclined={handleMatchDeclined}
             />
           )}
+        </div>
+      )}
+
+      {/* Tab: Rate Customer */}
+      {tab === "rate-customer" && (
+        <div className="space-y-4">
+          {pendingRatingsState.kind === "loading" && <LoadingRows />}
+          {pendingRatingsState.kind === "error" && <ErrorCard message={pendingRatingsState.message} />}
+          {pendingRatingsState.kind === "ok" && pendingRatingsState.items.length === 0 && (
+            <div className="text-center py-12 text-slate-400 text-sm">Нет заказов, требующих оценки заказчика</div>
+          )}
+          {pendingRatingsState.kind === "ok" && pendingRatingsState.items.map(item => {
+            const form = getRatingForm(item.match_id);
+            const idleForm = form.kind === "idle" ? form : null;
+            const isSubmitting = form.kind === "submitting";
+            return (
+              <div key={item.match_id} className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600">Требуется оценка заказчика</p>
+                <p className="text-sm font-semibold text-slate-800">Заказ: {item.title}</p>
+                {item.customer_name && (
+                  <p className="text-xs text-slate-500">Заказчик: {item.customer_name}</p>
+                )}
+                {form.kind === "done" ? (
+                  <p className="text-sm text-emerald-600 font-medium">✓ Оценка отправлена</p>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">Оценка</p>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5].map(s => (
+                          <button
+                            key={s}
+                            disabled={isSubmitting}
+                            onClick={() => idleForm && setRatingForm(item.match_id, { ...idleForm, score: s })}
+                            className={`w-8 h-8 rounded-lg text-sm font-bold transition-colors ${
+                              (idleForm?.score ?? 5) >= s
+                                ? "bg-amber-400 text-white"
+                                : "bg-slate-100 text-slate-400 hover:bg-amber-100"
+                            }`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <textarea
+                      rows={2}
+                      disabled={isSubmitting}
+                      placeholder="Комментарий (необязательно)"
+                      value={idleForm?.comment ?? ""}
+                      onChange={e => idleForm && setRatingForm(item.match_id, { ...idleForm, comment: e.target.value })}
+                      className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-[#0F4C9A]"
+                    />
+                    <button
+                      disabled={isSubmitting || !item.customer_id}
+                      onClick={() => handleRateCustomer(item)}
+                      className="btn-primary text-xs py-2 px-4 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isSubmitting ? "Отправка…" : "Оценить заказчика"}
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

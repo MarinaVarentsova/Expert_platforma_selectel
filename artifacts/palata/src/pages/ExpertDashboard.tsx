@@ -2328,6 +2328,8 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     const now = new Date().toISOString();
     const matchId = await getMatchId();
 
+    console.log("[take-work] START", { requestId: item.request_id, currentExpertId: userId });
+
     // 1. Expert match → accepted_work
     if (matchId) {
       await supabase.from("palata_request_matches")
@@ -2339,14 +2341,28 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     const custId = custIdFromPayload ?? req?.customer_id ?? null;
     const { data: otherMatchData2 } = await supabase
       .from("palata_request_matches")
-      .select("id, expert_id, responded_at")
+      .select("id, expert_id, responded_at, status")
       .eq("request_id", item.request_id)
       .neq("expert_id", userId)
       .not("status", "in", "(declined,closed_by_other_expert,withdrawn,completed)");
-    const otherMatches2 = (otherMatchData2 ?? []) as Array<{ id: string; expert_id: string; responded_at: string | null }>;
+    const otherMatches2 = (otherMatchData2 ?? []) as Array<{ id: string; expert_id: string; responded_at: string | null; status: string }>;
+
+    console.log("[take-work] ALL MATCHES");
+    console.table(otherMatches2.map(x => ({ expert: x.expert_id, status: x.status, responded_at: x.responded_at })));
+
     // Only close experts who were actually involved (responded_at set).
     // Auto-matched experts (responded_at = null) are left untouched.
     const involvedMatches = otherMatches2.filter(m => m.responded_at !== null);
+
+    console.log("[take-work] WILL CLOSE OTHER EXPERTS");
+    for (const m of otherMatches2) {
+      if (m.responded_at !== null) {
+        console.log("[take-work] UPDATE", { expertId: m.expert_id, oldStatus: m.status, newStatus: "closed_by_other_expert" });
+      } else {
+        console.log("[take-work] SKIP", { expertId: m.expert_id, reason: "AUTO_MATCH", responded_at: m.responded_at });
+      }
+    }
+
     if (involvedMatches.length > 0) {
       await supabase.from("palata_request_matches")
         .update({ status: "closed_by_other_expert" })
@@ -2371,6 +2387,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     // 5b. Notify only involved experts (responded_at set), not bare auto-matched ones
     const orderLabel = req?.title ? `«${req.title}»` : shortId;
     for (const om of involvedMatches) {
+      console.log("[take-work] SEND NOTIFICATION", { expertId: om.expert_id, notificationType: "other_expert_took_order" });
       await createActionItem({
         request_id:          item.request_id,
         expert_id:           om.expert_id,
@@ -2414,6 +2431,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
         { request_id: item.request_id });
     }
 
+    console.log("[take-work] FINISH");
     setBusy(false);
     onDone();
   }

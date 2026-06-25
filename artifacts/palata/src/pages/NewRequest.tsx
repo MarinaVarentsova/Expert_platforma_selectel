@@ -27,7 +27,6 @@ const ACCEPT_ATTR = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type FormData = {
-  title: string;
   expertise_direction_id: string;
   region_id: string;
   urgency: string;
@@ -109,7 +108,6 @@ export default function NewRequest() {
   }, [authState]);
 
   const [form, setForm] = useState<FormData>({
-    title: "",
     expertise_direction_id: "",
     region_id: "",
     urgency: "normal",
@@ -163,8 +161,6 @@ export default function NewRequest() {
   // Validate form fields. Direction is required only in manual mode.
   function validate(requireDirection: boolean): boolean {
     const e: Partial<Record<keyof FormData, string>> = {};
-    if (!form.title.trim() || form.title.trim().length < 3)
-      e.title = "Введите название (минимум 3 символа)";
     if (requireDirection && !form.expertise_direction_id)
       e.expertise_direction_id = "Выберите направление экспертизы";
     if (!form.region_id)
@@ -262,9 +258,13 @@ export default function NewRequest() {
       const selectedRegionId = form.region_id || null;
       console.log("[new-request] selectedRegionId:", selectedRegionId);
 
+      const requestId = crypto.randomUUID();
+      const autoTitle = "Заказ " + requestId.slice(0, 8).toUpperCase();
+
       const insertPayload = {
+        id: requestId,
         status: "new",
-        title: form.title.trim(),
+        title: autoTitle,
         description: form.description.trim() || null,
         expertise_direction_id: resolvedDirectionId,
         region_id: selectedRegionId,
@@ -287,7 +287,6 @@ export default function NewRequest() {
       console.log("[new-request] created request:", reqData, reqError ? "error:" : "", reqError ?? "");
 
       if (reqError) throw new Error(reqError.message);
-      const requestId: string = reqData.id;
 
       // Upload files (if any)
       if (files.length > 0) {
@@ -353,7 +352,7 @@ export default function NewRequest() {
           type: "request_created",
           requestId,
           requestShortId: requestId.slice(0, 8).toUpperCase(),
-          requestTitle:   form.title.trim(),
+          requestTitle:   autoTitle,
           expertiseType:  directionName,
           region:         allRegions.find(r => r.id === form.region_id)?.name ?? "—",
           currentStatus:  "new",
@@ -382,7 +381,7 @@ export default function NewRequest() {
                 type:           "expert_proposed" as const,
                 requestId,
                 requestShortId: requestId.slice(0, 8).toUpperCase(),
-                requestTitle:   form.title.trim(),
+                requestTitle:   autoTitle,
                 expertiseType:  directionName,
                 region:         allRegions.find(r => r.id === form.region_id)?.name ?? "—",
                 currentStatus:  "new",
@@ -396,7 +395,7 @@ export default function NewRequest() {
           });
       }
 
-      setState({ kind: "success", requestId, title: form.title.trim(), matchedCount });
+      setState({ kind: "success", requestId, title: autoTitle, matchedCount });
     } catch (err: unknown) {
       setState({ kind: "error", message: (err as Error).message ?? "Неизвестная ошибка" });
     }
@@ -545,17 +544,6 @@ export default function NewRequest() {
 
           {/* ── 1: О заказе ─────────────────────────────────────────── */}
           <FormCard title="О заказе" num="01">
-            <Field label="Название заказа" required error={errors.title}>
-              <input
-                type="text"
-                className={inputCls(!!errors.title)}
-                placeholder="Например: строительно-техническая экспертиза жилого дома"
-                value={form.title}
-                onChange={e => set("title", e.target.value)}
-                disabled={busy}
-              />
-            </Field>
-
             {/* ── AI direction status banners ── */}
             {aiStatus === "detected" && (
               <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50">

@@ -830,6 +830,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   }
 
   async function handleSelectExpert(match: Match) {
+    console.log("HANDLE SELECT EXPERT", { requestId: r.id, matchId: match.id });
     if (!userId) return;
     setSelectedMatchId(match.id);
     setCustUI({ kind: "submitting" });

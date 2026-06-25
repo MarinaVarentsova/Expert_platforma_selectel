@@ -1086,17 +1086,10 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         .update({ status: "accepted_work", responded_at: new Date().toISOString() })
         .eq("id", match.id);
       if (me) throw me;
-      // Other active (non-declined) matches; exclude pending_customer (auto-match only, not involved).
-      // TODO: replace this negative filter with an explicit INVOLVED_MATCH_STATUSES whitelist, e.g.:
-      //   const INVOLVED_MATCH_STATUSES = new Set([
-      //     "proposed",          // customer selected via RequestDetail (responded_at set)
-      //     "contacts_opened",   // customer selected via CustomerDashboard
-      //     "selected_by_customer",
-      //     "can_start_from",    // expert proposed a date from market
-      //     "accepted",
-      //   ]);
-      // That way new statuses never accidentally close auto-matched experts.
-      const otherActiveMatches = matches.filter(m => m.id !== match.id && ACTIVE_MATCH_STATUSES.has(m.status) && m.status !== "pending_customer");
+      // Only close experts who were actually involved in this request.
+      // responded_at = NULL → auto-matched only, do not touch.
+      // responded_at ≠ NULL → customer selected or expert responded, can be closed.
+      const otherActiveMatches = matches.filter(m => m.id !== match.id && m.responded_at !== null);
 
       console.log("[close-others] START", { requestId: r.id, acceptedExpertId: match.expert_id });
       console.table(otherActiveMatches.map(m => ({ matchId: m.id, expertId: m.expert_id, status: m.status, responded_at: (m as unknown as Record<string,unknown>).responded_at ?? "N/A" })));

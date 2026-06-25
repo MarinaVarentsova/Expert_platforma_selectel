@@ -2344,10 +2344,13 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
       .neq("expert_id", userId)
       .not("status", "in", "(declined,closed_by_other_expert,withdrawn,completed)");
     const otherMatches2 = (otherMatchData2 ?? []) as Array<{ id: string; expert_id: string; responded_at: string | null }>;
-    if (otherMatches2.length > 0) {
+    // Only close experts who were actually involved (responded_at set).
+    // Auto-matched experts (responded_at = null) are left untouched.
+    const involvedMatches = otherMatches2.filter(m => m.responded_at !== null);
+    if (involvedMatches.length > 0) {
       await supabase.from("palata_request_matches")
         .update({ status: "closed_by_other_expert" })
-        .in("id", otherMatches2.map(m => m.id));
+        .in("id", involvedMatches.map(m => m.id));
     }
 
     // 3. Request → in_work
@@ -2365,9 +2368,9 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     await resolveActionItem(item.id);
     await cancelRequestActionItems(item.request_id!, item.id);
 
-    // 5b. Notify ALL other non-declined active experts
+    // 5b. Notify only involved experts (responded_at set), not bare auto-matched ones
     const orderLabel = req?.title ? `«${req.title}»` : shortId;
-    for (const om of otherMatches2) {
+    for (const om of involvedMatches) {
       await createActionItem({
         request_id:          item.request_id,
         expert_id:           om.expert_id,

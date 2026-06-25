@@ -593,51 +593,49 @@ export default function ExpertDashboard() {
             const idleForm = form.kind === "idle" ? form : null;
             const isSubmitting = form.kind === "submitting";
             return (
-              <div key={item.match_id} className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600">Требуется оценка заказчика</p>
-                <p className="text-sm font-semibold text-slate-800">Заказ: {item.title}</p>
+              <div key={item.match_id} className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <h2 className="text-sm font-semibold text-slate-700">Требуется оценка заказчика</h2>
+                </div>
+                <p className="text-sm text-slate-800 mb-1">Заказ: {item.title}</p>
                 {item.customer_name && (
-                  <p className="text-xs text-slate-500">Заказчик: {item.customer_name}</p>
+                  <p className="text-sm text-slate-500 mb-3">Заказчик: {item.customer_name}</p>
                 )}
                 {form.kind === "done" ? (
-                  <p className="text-sm text-emerald-600 font-medium">✓ Оценка отправлена</p>
+                  <p className="text-sm text-emerald-600 font-medium">Оценка сохранена. Спасибо!</p>
                 ) : (
-                  <>
-                    <div>
-                      <p className="text-xs text-slate-500 mb-1">Оценка</p>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map(s => (
-                          <button
-                            key={s}
-                            disabled={isSubmitting}
-                            onClick={() => idleForm && setRatingForm(item.match_id, { ...idleForm, score: s })}
-                            className={`w-8 h-8 rounded-lg text-sm font-bold transition-colors ${
-                              (idleForm?.score ?? 5) >= s
-                                ? "bg-amber-400 text-white"
-                                : "bg-slate-100 text-slate-400 hover:bg-amber-100"
-                            }`}
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-500">Ваша оценка заказчика:</p>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map(s => (
+                        <button
+                          key={s}
+                          disabled={isSubmitting}
+                          onClick={() => idleForm && setRatingForm(item.match_id, { ...idleForm, score: s })}
+                          className={`text-2xl transition-colors ${idleForm && idleForm.score >= s ? "text-amber-400" : "text-slate-200"}`}
+                        >★</button>
+                      ))}
+                      <span className="ml-2 text-sm text-slate-500 self-center">
+                        {idleForm ? `${idleForm.score} / 5` : ""}
+                      </span>
                     </div>
-                    <textarea
-                      rows={2}
+                    <input
+                      type="text"
                       disabled={isSubmitting}
                       placeholder="Комментарий (необязательно)"
                       value={idleForm?.comment ?? ""}
                       onChange={e => idleForm && setRatingForm(item.match_id, { ...idleForm, comment: e.target.value })}
-                      className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-[#0F4C9A]"
+                      className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
                     />
                     <button
                       disabled={isSubmitting || !item.customer_id}
                       onClick={() => handleRateCustomer(item)}
-                      className="btn-primary text-xs py-2 px-4 disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="btn-primary"
                     >
-                      {isSubmitting ? "Отправка…" : "Оценить заказчика"}
+                      {isSubmitting ? "Сохранение…" : "Отправить оценку"}
                     </button>
-                  </>
+                  </div>
                 )}
               </div>
             );

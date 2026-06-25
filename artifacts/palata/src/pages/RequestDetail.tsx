@@ -1089,8 +1089,14 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       // Other active (non-declined) matches
       const otherActiveMatches = matches.filter(m => m.id !== match.id && ACTIVE_MATCH_STATUSES.has(m.status));
 
+      console.log("[close-others] START", { requestId: r.id, acceptedExpertId: match.expert_id });
+      console.table(otherActiveMatches.map(m => ({ matchId: m.id, expertId: m.expert_id, status: m.status, responded_at: (m as unknown as Record<string,unknown>).responded_at ?? "N/A" })));
+
       // 2. Close other active matches → closed_by_other_expert
       if (otherActiveMatches.length > 0) {
+        for (const m of otherActiveMatches) {
+          console.log("[close-others] CLOSE", { expertId: m.expert_id, oldStatus: m.status, reason: "INVOLVED" });
+        }
         await supabase.from("palata_request_matches")
           .update({ status: "closed_by_other_expert" })
           .in("id", otherActiveMatches.map(m => m.id));
@@ -1109,6 +1115,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
       // 5. Create "other expert took order" notification for each non-declined active expert
       for (const om of otherActiveMatches) {
+        console.log("[close-others] NOTIFY", { expertId: om.expert_id, status: om.status });
         await createActionItem({
           request_id:          r.id,
           expert_id:           om.expert_id,

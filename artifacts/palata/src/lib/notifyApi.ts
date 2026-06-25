@@ -35,7 +35,7 @@ export interface NotifyItem {
   canStartFrom?: string;
 }
 
-const API_NOTIFY = `${import.meta.env.BASE_URL}api/notify`.replace(/\/\//g, "/").replace(":/", "://");
+const API_NOTIFY = "/api/notify";
 
 /**
  * Send one or more email notifications.

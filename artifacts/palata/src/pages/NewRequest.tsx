@@ -192,7 +192,7 @@ export default function NewRequest() {
     e.preventDefault();
 
     // Direction is required only when already in manual mode
-    const requireDir = aiStatus === "manual";
+    const requireDir = false;
     if (!validate(requireDir)) return;
 
     let resolvedDirectionId = form.expertise_direction_id;
@@ -228,8 +228,8 @@ export default function NewRequest() {
           setAiStatus("detected");
           setAiDetectedName(aiResult.direction_name ?? "");
         } else {
-          // AI could not determine — show manual selector
-          const msg = "По вашему заказу мы не смогли определить направление экспертизы. Вы можете самостоятельно выбрать направление из предложенного списка.";
+          // AI could not determine — show informational message
+          const msg = "По этому вопросу мы пока не подбираем экспертов.\nНа платформе сейчас представлены специалисты по строительным дефектам, ремонту, заливам, пожарам, трещинам и другим повреждениям недвижимости.\nВы можете описать такую ситуацию или изменить текущий запрос.";
           setAiStatus("manual");
           setAiFailMessage(msg);
           setState({ kind: "idle" });
@@ -238,7 +238,7 @@ export default function NewRequest() {
       } catch (err: unknown) {
         console.warn("[new-request] AI detect error:", (err as Error).message);
         setAiStatus("manual");
-        setAiFailMessage("Не удалось автоматически определить направление экспертизы. Выберите направление вручную.");
+        setAiFailMessage("По этому вопросу мы пока не подбираем экспертов.\nНа платформе сейчас представлены специалисты по строительным дефектам, ремонту, заливам, пожарам, трещинам и другим повреждениям недвижимости.\nВы можете описать такую ситуацию или изменить текущий запрос.");
         setState({ kind: "idle" });
         return;
       }
@@ -560,75 +560,6 @@ export default function NewRequest() {
                 <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-800">{aiFailMessage}</p>
               </div>
-            )}
-
-            {/* ── Direction dropdown (only in manual mode) ── */}
-            {aiStatus === "manual" && (
-              <Field label="Направление экспертизы" required error={errors.expertise_direction_id}>
-                <div className="relative" ref={dirDropRef}>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setDirDropOpen(v => !v)}
-                    className={`${inputCls(!!errors.expertise_direction_id)} flex items-center justify-between text-left`}
-                  >
-                    <span className={form.expertise_direction_id ? "text-[#111111]" : "text-slate-400"}>
-                      {form.expertise_direction_id
-                        ? (directions.find(d => d.id === form.expertise_direction_id)?.name ?? "— выберите —")
-                        : "— выберите —"}
-                    </span>
-                    <ChevronDown className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${dirDropOpen ? "rotate-180" : ""}`} />
-                  </button>
-
-                  {dirDropOpen && (
-                    <div className="absolute z-20 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
-                      <div className="p-2 border-b border-slate-100">
-                        <input
-                          type="text"
-                          value={dirSearch}
-                          onChange={e => setDirSearch(e.target.value)}
-                          placeholder="Поиск направления…"
-                          autoFocus
-                          className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A]"
-                        />
-                      </div>
-                      <div className="max-h-56 overflow-y-auto">
-                        {directions
-                          .filter(d => d.name.toLowerCase().includes(dirSearch.toLowerCase()))
-                          .map(d => {
-                            const sel = form.expertise_direction_id === d.id;
-                            return (
-                              <button
-                                key={d.id}
-                                type="button"
-                                onClick={() => {
-                                  set("expertise_direction_id", d.id);
-                                  setDirDropOpen(false);
-                                  setDirSearch("");
-                                }}
-                                className={`w-full text-left px-3 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
-                                  sel
-                                    ? "bg-[#F0F4FF] text-[#002B5C]"
-                                    : "hover:bg-[#F4F4F4] text-[#111111]"
-                                }`}
-                              >
-                                <div className={`w-4 h-4 rounded-full border flex-shrink-0 flex items-center justify-center transition-colors ${
-                                  sel ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300"
-                                }`}>
-                                  {sel && <Check className="w-2.5 h-2.5 text-white" />}
-                                </div>
-                                {d.name}
-                              </button>
-                            );
-                          })}
-                        {directions.filter(d => d.name.toLowerCase().includes(dirSearch.toLowerCase())).length === 0 && (
-                          <p className="text-sm text-slate-400 text-center py-6">Ничего не найдено</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Field>
             )}
 
             {/* ── Region ── */}

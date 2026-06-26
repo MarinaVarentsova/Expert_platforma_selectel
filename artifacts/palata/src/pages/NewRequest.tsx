@@ -582,10 +582,10 @@ export default function NewRequest() {
                   console.log("[regions] selected", { id: e.target.value, name: selected?.name ?? null });
                   set("region_id", e.target.value);
                 }}
-                disabled={busy}
+                disabled={busy || allRegions.length === 0}
                 className={inputCls(!!errors.region_id)}
               >
-                <option value="">— выберите регион —</option>
+                <option value="">{allRegions.length === 0 ? "Загрузка регионов…" : "— выберите регион —"}</option>
                 {allRegions.map(r => (
                   <option key={r.id} value={r.id}>{r.name}</option>
                 ))}

@@ -90,36 +90,34 @@ export default function Nav() {
             <img src="/logo.jpg" alt="Палата судебных экспертов" className="h-14 w-auto rounded-lg" />
           </a>
 
-          {/* Desktop nav links — always public, plus role links when authenticated */}
-          {!isLoading && (
-            <div className="hidden lg:flex items-center gap-1 flex-1">
-              {PUBLIC_LINKS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  onClick={() => handlePublicLink(id)}
-                  className="px-3 py-1.5 rounded-full text-sm text-[#444444] hover:text-[#002B5C] hover:bg-[#002B5C]/8 transition-all cursor-pointer select-none whitespace-nowrap"
-                >
-                  {label}
-                </button>
-              ))}
+          {/* Desktop nav links — public always visible, role links only when authenticated */}
+          <div className="hidden lg:flex items-center gap-1 flex-1">
+            {PUBLIC_LINKS.map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => handlePublicLink(id)}
+                className="px-3 py-1.5 rounded-full text-sm text-[#444444] hover:text-[#002B5C] hover:bg-[#002B5C]/8 transition-all cursor-pointer select-none whitespace-nowrap"
+              >
+                {label}
+              </button>
+            ))}
 
-              {isAuthenticated && roleLinks.map(({ to, label }) => {
-                const active = isActive(to);
-                return (
-                  <Link key={to} href={to}>
-                    <span className={[
-                      "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none whitespace-nowrap font-semibold",
-                      active
-                        ? "text-white bg-[#0F4C9A]"
-                        : "text-[#0F4C9A] border border-[#0F4C9A]/40 hover:bg-[#0F4C9A]/8",
-                    ].join(" ")}>
-                      {label}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
+            {isAuthenticated && roleLinks.map(({ to, label }) => {
+              const active = isActive(to);
+              return (
+                <Link key={to} href={to}>
+                  <span className={[
+                    "inline-block px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer select-none whitespace-nowrap font-semibold",
+                    active
+                      ? "text-white bg-[#0F4C9A]"
+                      : "text-[#0F4C9A] border border-[#0F4C9A]/40 hover:bg-[#0F4C9A]/8",
+                  ].join(" ")}>
+                    {label}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
 
           {/* Spacer mobile */}
           <div className="flex-1 lg:hidden" />

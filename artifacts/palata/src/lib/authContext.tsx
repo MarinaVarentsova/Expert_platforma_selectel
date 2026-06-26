@@ -52,29 +52,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // ── Diagnostic: step 4 — profile loading ─────────────────────────────
-    console.log("[login] profile loading");
+    const userId = session.user.id;
+    console.log("[profile] load start", { userId });
     const t0 = Date.now();
     const profileTimer = setTimeout(() => {
-      console.warn("[login] WARNING", { stage: "profile loading", elapsedMs: Date.now() - t0 });
+      console.warn("[profile] load slow warning", { userId, elapsedMs: Date.now() - t0 });
     }, 5000);
 
     let user: PalataUser | null;
     try {
-      user = await fetchPalataUser(session.user.id);
+      user = await fetchPalataUser(userId);
     } catch (err) {
       clearTimeout(profileTimer);
-      console.error("[login] ERROR", { stage: "profile loading", error: err });
+      console.log("[profile] load result", { role: null, userId, error: String(err), elapsedMs: Date.now() - t0 });
       setState({ kind: "unauthenticated" });
       return;
     }
     clearTimeout(profileTimer);
 
-    // ── Diagnostic: step 5 — profile loaded ──────────────────────────────
-    console.log("[login] profile loaded", {
+    console.log("[profile] load result", {
       role: user?.role ?? null,
-      userId: session.user.id,
-      error: user ? null : "no profile found",
+      userId,
+      error: user ? null : "no profile found in palata_users",
+      elapsedMs: Date.now() - t0,
     });
 
     if (!user) {
@@ -82,8 +82,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // ── Diagnostic: step 6 — role resolved ───────────────────────────────
-    console.log("[login] role resolved", { role: user.role });
     setState({ kind: "authenticated", session, user });
   }, []);
 

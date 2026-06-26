@@ -42,6 +42,16 @@ export default function Nav() {
   const user            = isAuthenticated ? state.user : null;
   const roleLinks: NavLink[] = isAuthenticated ? (ROLE_LINKS[user!.role] ?? []) : [];
 
+  console.log("[header] render", {
+    authKind: state.kind,
+    role: user?.role ?? null,
+    userId: user?.id ?? null,
+    profileLoading: isLoading,
+  });
+  if (isLoading) {
+    console.log("[header] nav hidden reason", { reason: "auth state is 'loading' — waiting for getSession + fetchPalataUser" });
+  }
+
   function isActive(to: string) {
     return location === to || location.startsWith(to + "/");
   }

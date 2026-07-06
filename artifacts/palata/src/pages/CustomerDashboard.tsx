@@ -238,32 +238,8 @@ export default function CustomerDashboard() {
           setProfileState({ kind: "ok", profile: data as unknown as CustomerProfile });
           return;
         }
-        // Profile row missing — restore from auth metadata (email-confirmation registration path)
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        const meta = authUser?.user_metadata ?? {};
-        const metaRegionId    = (meta.region_id    ?? null) as string | null;
-        const metaCompany     = (meta.company_name ?? null) as string | null;
-        const metaInn         = (meta.inn          ?? null) as string | null;
-        const metaContactName = (meta.contact_name ?? null) as string | null;
-        const metaNotes       = (meta.notes        ?? null) as string | null;
-        if (metaRegionId || metaCompany || metaInn || metaContactName || metaNotes) {
-          await supabase.from("palata_customer_profiles").upsert({
-            user_id:      userId,
-            region_id:    metaRegionId,
-            company_name: metaCompany,
-            inn:          metaInn,
-            contact_name: metaContactName,
-            notes:        metaNotes,
-          }, { onConflict: "user_id" });
-          const { data: healed } = await supabase
-            .from("palata_customer_profiles")
-            .select("company_name, inn, contact_name, notes, region_id, palata_regions(name)")
-            .eq("user_id", userId)
-            .maybeSingle();
-          setProfileState({ kind: "ok", profile: healed as CustomerProfile | null });
-        } else {
-          setProfileState({ kind: "ok", profile: null });
-        }
+        // Profile not found — registration must create it; nothing to restore here
+        setProfileState({ kind: "ok", profile: null });
       });
 
 

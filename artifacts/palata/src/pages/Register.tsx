@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { register as authRegister } from "@/lib/authClient";
 import { runAllPendingMatching } from "@/lib/matching";
 import {
   ChevronLeft, Building2, GraduationCap, Check,
@@ -15,6 +16,8 @@ import {
 
 type Role = "customer" | "expert";
 type Step = "role" | "form" | "success";
+
+const IS_DEV = import.meta.env.DEV;
 
 function inputClass(extra = "") {
   return `w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 focus:border-[#0F4C9A] bg-white ${extra}`;
@@ -61,6 +64,9 @@ export default function Register() {
   // Resolved direction names shown on success screen
   const [registeredDirNames, setRegisteredDirNames] = useState<string[]>([]);
   const [certWarnings, setCertWarnings]             = useState<string[]>([]);
+
+  // DEV: show verification token on success screen for manual testing
+  const [verificationToken, setVerificationToken] = useState<string | null>(null);
 
   const PALATA_URL = "палатаэкспертов.рф";
 
@@ -117,6 +123,7 @@ export default function Register() {
     e.preventDefault();
     setError(null);
 
+    // ── Client-side validation ─────────────────────────────────────────────
     if (!fullName.trim()) { setError("Введите ФИО"); return; }
     if (password.length < 8) { setError("Пароль должен быть не менее 8 символов"); return; }
     if (password !== confirmPwd) { setError("Пароли не совпадают"); return; }
@@ -127,7 +134,7 @@ export default function Register() {
 
     setLoading(true);
 
-    // ── Email duplicate check (before creating anything in Auth) ──────────
+    // ── Email duplicate check in Palata DB ────────────────────────────────
     {
       const { data: existingUser } = await supabase
         .from("palata_users")
@@ -135,22 +142,13 @@ export default function Register() {
         .eq("email", email.trim().toLowerCase())
         .maybeSingle();
       if (existingUser) {
-        setError("Пользователь с данной почтой уже зарегистрирован. Войдите в систему или восстановите пароль.");
+        setError("Пользователь с данной почтой уже зарегистрирован. Войдите в систему.");
         setLoading(false);
         return;
       }
     }
 
-    // ── Clear stale refresh token if present ──────────────────────────────
-    {
-      const { error: sessionErr } = await supabase.auth.getSession();
-      if (sessionErr?.message?.includes("Refresh Token")) {
-        console.warn("[register] stale session, clearing:", sessionErr.message);
-        await supabase.auth.signOut().catch(() => {});
-      }
-    }
-
-    // ── Pre-verify certs for expert before signUp ──────────────────────────
+    // ── Pre-verify certs for expert ────────────────────────────────────────
     let preVerified: (CertResult | null)[] = [...certResults];
     let verifiedCerts: CertResult[]        = [];
     let newCertWarnings: string[]          = [];
@@ -191,64 +189,24 @@ export default function Register() {
           `Новый сертификат можно получить на сайте Палаты: ${PALATA_URL}`
         );
     }
-    // ──────────────────────────────────────────────────────────────────────
 
-    const meta: Record<string, unknown> = {
-      role,
-      full_name: fullName.trim(),
-      phone: phone.trim() || null,
-    };
-
-    if (role === "customer") {
-      Object.assign(meta, {
-        company_name: companyName.trim() || null,
-        inn:          inn.trim() || null,
-        contact_name: contactName.trim() || null,
-        notes:        notes.trim() || null,
-        region_id:    regionIds[0] ?? null,
-      });
-    } else {
-      Object.assign(meta, {
-        bio:                              bio.trim() || null,
-        business_trip_ready:              tripReady,
-        palata_registry_verified:         palataOk,
-        palata_registry_number:           palataOk ? palataNum.trim() || null : null,
-        centrsudexpert_verified:          centrsudOk,
-        centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
-        // Persist region UUIDs in auth metadata so the DB trigger can write
-        // palata_expert_regions rows even when email confirmation is required
-        // and the React state is gone by the time the user clicks the link.
-        region_ids:                       regionIds,
-        // Persist verified cert results so ExpertDashboard can write them to DB
-        // after email confirmation (when session is null and we can't write to DB here).
-        verified_certs:                   verifiedCerts.map(r => ({
-          number:       r.number,
-          directionIds: r.directionIds,
-          validTo:      r.validTo ?? null,
-          expertName:   r.expertName ?? null,
-        })),
-      });
-    }
-
-    const { data, error: signUpErr } = await supabase.auth.signUp({
-      email: email.trim(),
+    // ── Register via auth-service ──────────────────────────────────────────
+    const registerResult = await authRegister({
+      email:     email.trim(),
       password,
-      options: {
-        data: meta,
-        emailRedirectTo: window.location.origin + "/auth/callback",
-      },
+      full_name: fullName.trim(),
+      phone:     phone.trim() || null,
     });
 
-    if (signUpErr) {
-      const msg = signUpErr.message;
-      console.error("[register] signUp error:", msg);
-      if (msg.includes("User already registered") || msg.includes("already registered")) {
-        setError("Пользователь с данной почтой уже зарегистрирован. Войдите в систему или восстановите пароль.");
-      } else if (msg.includes("Email rate limit") || msg.includes("rate limit")) {
+    if (!registerResult.success) {
+      const msg = registerResult.message.toLowerCase();
+      if (msg.includes("already") || msg.includes("exists") || msg.includes("registered")) {
+        setError("Пользователь с данной почтой уже зарегистрирован. Войдите в систему.");
+      } else if (msg.includes("rate limit") || msg.includes("too many")) {
         setError("Слишком много попыток. Подождите немного и попробуйте снова.");
-      } else if (msg.includes("Invalid email") || msg.includes("invalid email")) {
+      } else if (msg.includes("invalid email") || msg.includes("email")) {
         setError("Введите корректный email-адрес.");
-      } else if (msg.includes("Password") || msg.includes("password")) {
+      } else if (msg.includes("password")) {
         setError("Пароль не соответствует требованиям. Используйте не менее 8 символов.");
       } else {
         setError("Не удалось создать аккаунт. Попробуйте ещё раз.");
@@ -257,102 +215,101 @@ export default function Register() {
       return;
     }
 
-    // PKCE + email confirmation: data.user may be null, data.session is always null.
-    // Any signUp without a session → email confirmation is required → success screen.
-    if (!data.session) {
+    const userId = registerResult.user_id;
+
+    // ── Write palata_users row ─────────────────────────────────────────────
+    {
+      const { error: puErr } = await supabase.from("palata_users").insert({
+        id:        userId,
+        role,
+        full_name: fullName.trim(),
+        email:     email.trim().toLowerCase(),
+        phone:     phone.trim() || null,
+        is_active: true,
+      });
+      if (puErr) {
+        console.error("[register] palata_users insert:", puErr.message);
+        setError("Не удалось сохранить данные пользователя. Попробуйте ещё раз.");
+        setLoading(false);
+        return;
+      }
+    }
+
+    // ── Write profile tables ───────────────────────────────────────────────
+    if (role === "customer") {
+      const { error: cpErr } = await supabase.from("palata_customer_profiles").upsert({
+        user_id:      userId,
+        company_name: companyName.trim() || null,
+        inn:          inn.trim() || null,
+        contact_name: contactName.trim() || null,
+        notes:        notes.trim() || null,
+        region_id:    regionIds[0] ?? null,
+      }, { onConflict: "user_id" });
+      if (cpErr) console.error("[register] palata_customer_profiles upsert:", cpErr.message);
+
+    } else {
+      // expert_profiles
+      const { error: epErr } = await supabase.from("palata_expert_profiles").upsert({
+        user_id:                          userId,
+        bio:                              bio.trim() || null,
+        business_trip_ready:              tripReady,
+        accepts_requests:                 true,
+        palata_registry_verified:         palataOk,
+        palata_registry_number:           palataOk ? palataNum.trim() || null : null,
+        centrsudexpert_verified:          centrsudOk,
+        centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
+      }, { onConflict: "user_id" });
+      if (epErr) console.error("[register] palata_expert_profiles upsert:", epErr.message);
+
+      // directions
       const dirIds   = mergeDirectionIds(verifiedCerts);
       const dirNames = dirIds.map(id => allDirections.find(d => d.id === id)?.name ?? id);
       setRegisteredDirNames(dirNames);
       setCertWarnings(newCertWarnings);
-      setStep("success");
-      setLoading(false);
-      return;
-    }
 
-    // Immediate login path (email confirmation disabled, e.g. local dev)
-    if (!data.user) {
-      setError("Произошла ошибка. Попробуйте ещё раз.");
-      setLoading(false);
-      return;
-    }
-
-    if (data.session) {
-      const userId = data.user.id;
-
-      if (role === "customer") {
-        const cpPayload = {
-          user_id:      userId,
-          company_name: companyName.trim() || null,
-          inn:          inn.trim() || null,
-          contact_name: contactName.trim() || null,
-          notes:        notes.trim() || null,
-          region_id:    regionIds[0] ?? null,
-        };
-        console.log("[register] role:", role);
-        console.log("[register] regionIds:", regionIds);
-        console.log("[register] regionIds[0]:", regionIds[0]);
-        console.log("[register] palata_customer_profiles payload:", cpPayload);
-        const { data: cpData, error: cpErr } = await supabase.from("palata_customer_profiles").upsert(cpPayload, { onConflict: "user_id" }).select();
-        console.log("[register] palata_customer_profiles response → data:", cpData, "error:", cpErr);
-      } else {
-        const { error: epErr } = await supabase.from("palata_expert_profiles").upsert({
-          user_id:                          userId,
-          bio:                              bio.trim() || null,
-          business_trip_ready:              tripReady,
-          accepts_requests:                 true,
-          palata_registry_verified:         palataOk,
-          palata_registry_number:           palataOk ? palataNum.trim() || null : null,
-          centrsudexpert_verified:          centrsudOk,
-          centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
-        }, { onConflict: "user_id" });
-        if (epErr) console.error("[register] palata_expert_profiles upsert:", epErr.message);
-
-        // Use pre-verified results (already verified above, before signUp)
-        const dirIds   = mergeDirectionIds(verifiedCerts);
-        const dirNames = dirIds.map(id => allDirections.find(d => d.id === id)?.name ?? id);
-        setRegisteredDirNames(dirNames);
-        setCertWarnings(newCertWarnings);
-
-        // Delete + insert directions
-        await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
-        if (dirIds.length > 0) {
-          const { error: edErr } = await supabase.from("palata_expert_directions").insert(
-            dirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
-          );
-          if (edErr) console.error("[register] palata_expert_directions insert:", edErr.message);
-        }
-
-        // Save ONLY verified certs
-        if (verifiedCerts.length > 0) {
-          const { error: ecErr } = await supabase.from("palata_expert_certificates").insert(
-            verifiedCerts.map(r => ({
-              expert_id:          userId,
-              certificate_number: r.number,
-              status:             "verified" as const,
-              cert_valid_to:      r.validTo ?? null,
-              cert_expert_name:   r.expertName ?? null,
-              cert_direction_ids: r.directionIds,
-            }))
-          );
-          if (ecErr) console.error("[register] palata_expert_certificates insert:", ecErr.message);
-        }
-
-        if (regionIds.length > 0) {
-          const { error: erErr } = await supabase.from("palata_expert_regions").insert(
-            regionIds.map(id => ({ expert_id: userId, region_id: id }))
-          );
-          if (erErr) console.error("[register] palata_expert_regions insert:", erErr.message);
-        }
-
-        if (role === "expert") {
-          runAllPendingMatching().catch(() => {});
-        }
+      await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
+      if (dirIds.length > 0) {
+        const { error: edErr } = await supabase.from("palata_expert_directions").insert(
+          dirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
+        );
+        if (edErr) console.error("[register] palata_expert_directions insert:", edErr.message);
       }
-      navigate(role === "customer" ? "/customer" : "/expert");
-      return;
+
+      // certificates
+      if (verifiedCerts.length > 0) {
+        const { error: ecErr } = await supabase.from("palata_expert_certificates").insert(
+          verifiedCerts.map(r => ({
+            expert_id:          userId,
+            certificate_number: r.number,
+            status:             "verified" as const,
+            cert_valid_to:      r.validTo ?? null,
+            cert_expert_name:   r.expertName ?? null,
+            cert_direction_ids: r.directionIds,
+          }))
+        );
+        if (ecErr) console.error("[register] palata_expert_certificates insert:", ecErr.message);
+      }
+
+      // regions
+      if (regionIds.length > 0) {
+        const { error: erErr } = await supabase.from("palata_expert_regions").insert(
+          regionIds.map(id => ({ expert_id: userId, region_id: id }))
+        );
+        if (erErr) console.error("[register] palata_expert_regions insert:", erErr.message);
+      }
+
+      runAllPendingMatching().catch(() => {});
     }
+
+    // ── Show success screen ────────────────────────────────────────────────
+    if (IS_DEV) {
+      setVerificationToken(registerResult.verification_token ?? null);
+    }
+    setStep("success");
+    setLoading(false);
   }
 
+  // ── Success screen ─────────────────────────────────────────────────────────
   if (step === "success") {
     return (
       <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
@@ -374,6 +331,24 @@ export default function Register() {
               <button className="w-full btn-primary">Перейти на страницу входа</button>
             </Link>
           </div>
+
+          {/* DEV ONLY: verification token for manual testing without SMTP */}
+          {IS_DEV && verificationToken && (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-2xl p-4 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-yellow-700">
+                DEV — Подтверждение email (без SMTP)
+              </p>
+              <p className="text-xs text-yellow-800 leading-relaxed">
+                Перейдите по ссылке ниже, чтобы подтвердить email вручную:
+              </p>
+              <a
+                href={`/auth/callback?token=${verificationToken}`}
+                className="block text-xs font-mono text-yellow-900 underline break-all"
+              >
+                /auth/callback?token={verificationToken}
+              </a>
+            </div>
+          )}
 
           {role === "expert" && (
             <>
@@ -411,6 +386,7 @@ export default function Register() {
     );
   }
 
+  // ── Role selection screen ──────────────────────────────────────────────────
   if (step === "role") {
     return (
       <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
@@ -458,6 +434,7 @@ export default function Register() {
     );
   }
 
+  // ── Registration form ──────────────────────────────────────────────────────
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] px-4 py-10">
       <div className="max-w-xl mx-auto">

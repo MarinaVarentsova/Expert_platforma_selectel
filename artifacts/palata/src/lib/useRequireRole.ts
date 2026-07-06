@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAuth, type PalataRole, type PalataUser } from "./authContext";
+import { useAuth } from "./useAuth";
+import type { PalataRole, PalataUser } from "./authContext";
 
 const ROLE_HOME: Record<PalataRole, string> = {
   customer: "/customer",

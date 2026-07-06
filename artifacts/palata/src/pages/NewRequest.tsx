@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
-import { useAuth } from "@/lib/authContext";
+import { useAuth } from "@/lib/useAuth";
 import { notify } from "@/lib/notifyApi";
 import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check, ClipboardList, Zap, Star, User, Sparkles, AlertCircle } from "lucide-react";
 

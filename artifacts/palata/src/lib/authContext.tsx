@@ -1,6 +1,5 @@
 import {
   createContext,
-  useContext,
   useEffect,
   useState,
   useCallback,
@@ -29,13 +28,13 @@ export type AuthState =
   | { kind: "unauthenticated" }
   | { kind: "authenticated"; user: PalataUser };
 
-type AuthContextValue = {
+export type AuthContextValue = {
   state: AuthState;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function fetchPalataUser(userId: string): Promise<PalataUser | null> {
   const { data, error } = await supabase
@@ -142,13 +141,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
-  return ctx;
-}
-
-export function useCurrentUser(): PalataUser | null {
-  const { state } = useAuth();
-  return state.kind === "authenticated" ? state.user : null;
-}

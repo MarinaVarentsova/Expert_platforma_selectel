@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { ClipboardList, Zap, Star, User, Briefcase, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
-import { useCurrentUser } from "@/lib/authContext";
+import { useCurrentUser } from "@/lib/useAuth";
 
 import { runMatching } from "@/lib/matching";
 import { notify, type NotifyItem } from "@/lib/notifyApi";

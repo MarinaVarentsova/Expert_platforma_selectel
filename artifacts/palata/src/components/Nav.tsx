@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { LogOut, ChevronDown, Menu, X } from "lucide-react";
-import { useAuth } from "@/lib/authContext";
+import { useAuth } from "@/lib/useAuth";
 import type { PalataRole } from "@/lib/authContext";
 import { useState, useRef, useEffect } from "react";
 import { PlatformStatusBadge } from "@/components/PlatformStatusBadge";

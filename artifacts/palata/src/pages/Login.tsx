@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Eye, EyeOff, ArrowRight } from "lucide-react";
-import { useAuth } from "@/lib/authContext";
+import { useAuth } from "@/lib/useAuth";
 import type { PalataRole } from "@/lib/authContext";
 
 const ROLE_DESTINATIONS: Record<PalataRole, string> = {

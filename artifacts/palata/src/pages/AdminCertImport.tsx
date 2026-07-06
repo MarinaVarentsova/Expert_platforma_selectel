@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabaseClient";
-import { useAuth } from "@/lib/authContext";
+import { useAuth } from "@/lib/useAuth";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
 import {

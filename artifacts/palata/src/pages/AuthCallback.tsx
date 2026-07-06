@@ -1,103 +1,101 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { Check } from "lucide-react";
+import { verify, setToken, me } from "@/lib/authClient";
 import { supabase } from "@/lib/supabaseClient";
+
+type View = "loading" | "success" | "success-with-redirect" | "error";
 
 function redirectByRole(role: string, navigate: (path: string) => void) {
   if (role === "customer") navigate("/customer");
-  else if (role === "expert") navigate("/expert");
-  else if (role === "admin") navigate("/admin");
-  else navigate("/");
+  else if (role === "expert")  navigate("/expert");
+  else if (role === "admin")   navigate("/admin");
+  else navigate("/login");
 }
 
 export default function AuthCallback() {
   const [, navigate] = useLocation();
+  const [view, setView]   = useState<View>("loading");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function handleCallback() {
       const params = new URLSearchParams(window.location.search);
+      const token  = params.get("token");
 
-      // Handle error params (expired / invalid link)
-      const errorParam = params.get("error");
-      const errorCode  = params.get("error_code");
-      if (errorParam) {
-        console.error("[auth/callback] URL error:", errorParam, errorCode);
-        if (errorCode === "otp_expired" || errorParam === "access_denied") {
+      if (!token) {
+        setError(
+          "Ссылка подтверждения недействительна. " +
+          "Зарегистрируйтесь повторно или обратитесь к администратору."
+        );
+        setView("error");
+        return;
+      }
+
+      // ── Verify token via auth-service ──────────────────────────────────
+      const result = await verify(token);
+
+      if (!result.success) {
+        const msg = result.message.toLowerCase();
+        if (msg.includes("expired") || msg.includes("invalid") || msg.includes("not found")) {
           setError(
             "Ссылка подтверждения недействительна или истекла. " +
-            "Зарегистрируйтесь повторно или запросите новое письмо."
+            "Зарегистрируйтесь повторно."
           );
         } else {
-          setError("Произошла ошибка при подтверждении email. Попробуйте зарегистрироваться повторно.");
+          setError("Не удалось подтвердить email. Попробуйте войти вручную.");
         }
+        setView("error");
         return;
       }
 
-      // PKCE flow: exchange code for session
-      const code = params.get("code");
-      if (code) {
-        const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchangeErr) {
-          console.error("[auth/callback] exchangeCodeForSession:", exchangeErr.message);
-          if (
-            exchangeErr.message.includes("expired") ||
-            exchangeErr.message.includes("invalid") ||
-            exchangeErr.message.includes("already used")
-          ) {
-            setError(
-              "Ссылка подтверждения недействительна или истекла. " +
-              "Зарегистрируйтесь повторно или запросите новое письмо."
-            );
-          } else {
-            setError("Не удалось подтвердить email. Попробуйте войти вручную.");
+      // ── Auto-login if access_token returned ────────────────────────────
+      if (result.access_token) {
+        setToken(result.access_token);
+
+        const meResult = await me(result.access_token);
+        if (meResult.success) {
+          const { data: palataUser } = await supabase
+            .from("palata_users")
+            .select("role")
+            .eq("id", meResult.user_id)
+            .single();
+
+          if (palataUser?.role) {
+            setView("success-with-redirect");
+            setTimeout(() => redirectByRole(palataUser.role, navigate), 2500);
+            return;
           }
-          return;
         }
+        // me() or palata_users lookup failed — fall through to /login
       }
 
-      // Get session (after exchange or from hash)
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        setError("Не удалось получить сессию. Попробуйте войти вручную.");
-        return;
-      }
-
-      // Fetch user role from palata_users
-      const { data: palataUser, error: userErr } = await supabase
-        .from("palata_users")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
-
-      if (userErr || !palataUser) {
-        console.error("[auth/callback] palata_users lookup:", userErr?.message);
-        // DB trigger may not have run yet — retry once after a short delay
-        await new Promise(r => setTimeout(r, 1500));
-        const { data: retryUser } = await supabase
-          .from("palata_users")
-          .select("role")
-          .eq("id", session.user.id)
-          .single();
-        if (!retryUser) {
-          setError("Не удалось определить роль пользователя. Попробуйте войти вручную.");
-          return;
-        }
-        redirectByRole(retryUser.role, navigate);
-        return;
-      }
-
-      redirectByRole(palataUser.role, navigate);
+      // ── No access_token or lookup failed: show success + redirect login ─
+      setView("success");
+      setTimeout(() => navigate("/login"), 3000);
     }
 
     handleCallback();
   }, [navigate]);
 
-  if (error) {
+  // ── Loading ──────────────────────────────────────────────────────────────
+  if (view === "loading") {
     return (
       <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
         <div className="bg-white rounded-2xl border border-[#D0D0D0] p-8 text-center shadow-sm w-full max-w-md">
-          <p className="text-sm text-red-600 mb-5 leading-relaxed">{error}</p>
+          <div className="h-6 w-6 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin mx-auto mb-4" />
+          <p className="text-sm text-[#666666]">Подтверждаем email…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Error ────────────────────────────────────────────────────────────────
+  if (view === "error") {
+    return (
+      <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
+        <div className="bg-white rounded-2xl border border-[#D0D0D0] p-8 text-center shadow-sm w-full max-w-md space-y-5">
+          <p className="text-sm text-red-600 leading-relaxed">{error}</p>
           <a href="/login" className="text-[#002B5C] text-sm font-semibold hover:underline">
             Перейти на страницу входа
           </a>
@@ -106,10 +104,42 @@ export default function AuthCallback() {
     );
   }
 
+  // ── Success with role redirect ────────────────────────────────────────────
+  if (view === "success-with-redirect") {
+    return (
+      <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
+        <div className="bg-white rounded-2xl border border-[#D0D0D0] p-8 text-center shadow-sm w-full max-w-md space-y-5">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto">
+            <Check className="w-7 h-7 text-emerald-500" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-[#111111] mb-2">Email подтверждён</h2>
+            <p className="text-sm text-[#666666] leading-relaxed">
+              Перенаправляем вас в личный кабинет…
+            </p>
+          </div>
+          <div className="h-5 w-5 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin mx-auto" />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Success → redirect to /login ─────────────────────────────────────────
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
-      <div className="bg-white rounded-2xl border border-[#D0D0D0] p-8 text-center shadow-sm w-full max-w-md">
-        <p className="text-sm text-[#666666]">Подтверждаем email, перенаправляем…</p>
+      <div className="bg-white rounded-2xl border border-[#D0D0D0] p-8 text-center shadow-sm w-full max-w-md space-y-5">
+        <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto">
+          <Check className="w-7 h-7 text-emerald-500" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-[#111111] mb-2">Email подтверждён</h2>
+          <p className="text-sm text-[#666666] leading-relaxed">
+            Регистрация завершена. Сейчас вы будете перенаправлены на страницу входа…
+          </p>
+        </div>
+        <a href="/login" className="text-[#002B5C] text-sm font-semibold hover:underline">
+          Войти сейчас
+        </a>
       </div>
     </div>
   );

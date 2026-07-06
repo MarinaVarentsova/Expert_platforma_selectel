@@ -88,10 +88,8 @@ async function authFetch<T>(
   }
 
   if (!res.ok) {
-    const msg =
-      typeof body === "object" && body !== null && "message" in body
-        ? String((body as { message: unknown }).message)
-        : `HTTP ${res.status}`;
+    const b = (typeof body === "object" && body !== null) ? body as Record<string, unknown> : {};
+    const msg = String(b["message"] ?? b["error"] ?? `HTTP ${res.status}`);
     return { success: false, message: msg, status: res.status };
   }
 
@@ -156,6 +154,25 @@ export async function me(token?: string): Promise<MeResult | AuthError> {
       Authorization: `Bearer ${tok}`,
     },
   });
+}
+
+/**
+ * Verify an email confirmation token.
+ * GET /api/auth/verify?token=...
+ * May return an access_token if the service issues one on verification.
+ */
+export type VerifyResult = {
+  success: true;
+  user_id?: string;
+  access_token?: string;
+  email_verified?: boolean;
+};
+
+export async function verify(token: string): Promise<VerifyResult | AuthError> {
+  return authFetch<VerifyResult>(
+    `/api/auth/verify?token=${encodeURIComponent(token)}`,
+    { method: "GET" },
+  );
 }
 
 /**

@@ -43,6 +43,7 @@ export type LoginResult = {
 };
 
 export type MeResult = {
+  success: true;
   user_id: string;
   email: string;
   email_verified: boolean;

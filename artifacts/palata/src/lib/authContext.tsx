@@ -6,8 +6,13 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
+import {
+  login as authLogin,
+  logout as authLogout,
+  me as authMe,
+  getToken,
+} from "./authClient";
 
 export type PalataRole = "customer" | "expert" | "admin";
 
@@ -22,7 +27,7 @@ export type PalataUser = {
 export type AuthState =
   | { kind: "loading" }
   | { kind: "unauthenticated" }
-  | { kind: "authenticated"; session: Session; user: PalataUser };
+  | { kind: "authenticated"; user: PalataUser };
 
 type AuthContextValue = {
   state: AuthState;
@@ -46,15 +51,17 @@ async function fetchPalataUser(userId: string): Promise<PalataUser | null> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ kind: "loading" });
 
-  const applySession = useCallback(async (session: Session | null) => {
-    if (!session) {
+  const applyToken = useCallback(async (token: string) => {
+    const meResult = await authMe(token);
+    if (!meResult.success) {
+      authLogout();
       setState({ kind: "unauthenticated" });
       return;
     }
 
-    const userId = session.user.id;
-    console.log("[profile] load start", { userId });
+    const userId = meResult.user_id;
     const t0 = Date.now();
+    console.log("[profile] load start", { userId });
     const profileTimer = setTimeout(() => {
       console.warn("[profile] load slow warning", { userId, elapsedMs: Date.now() - t0 });
     }, 5000);
@@ -64,7 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user = await fetchPalataUser(userId);
     } catch (err) {
       clearTimeout(profileTimer);
-      console.log("[profile] load result", { role: null, userId, error: String(err), elapsedMs: Date.now() - t0 });
+      console.error("[profile] load error", { userId, error: String(err) });
+      authLogout();
       setState({ kind: "unauthenticated" });
       return;
     }
@@ -78,46 +86,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (!user) {
+      authLogout();
       setState({ kind: "unauthenticated" });
       return;
     }
 
-    setState({ kind: "authenticated", session, user });
+    setState({ kind: "authenticated", user });
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error("[auth] getSession error:", error.message);
-        if (error.message.includes("Refresh Token") || error.message.includes("refresh_token")) {
-          supabase.auth.signOut().catch(() => {});
-        }
-        setState({ kind: "unauthenticated" });
-        return;
-      }
-      applySession(session);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        applySession(session);
-      },
-    );
-
-    return () => subscription.unsubscribe();
-  }, [applySession]);
+    const token = getToken();
+    if (!token) {
+      setState({ kind: "unauthenticated" });
+      return;
+    }
+    applyToken(token);
+  }, [applyToken]);
 
   const signIn = useCallback(async (
     email: string,
     password: string,
   ): Promise<{ error: string | null }> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
+    const loginResult = await authLogin(email, password);
+    if (!loginResult.success) {
+      return { error: loginResult.message };
+    }
+
+    const token = loginResult.access_token;
+    const meResult = await authMe(token);
+    if (!meResult.success) {
+      authLogout();
+      return { error: meResult.message };
+    }
+
+    const user = await fetchPalataUser(meResult.user_id);
+    if (!user) {
+      authLogout();
+      return { error: "Профиль пользователя не найден. Обратитесь в поддержку." };
+    }
+
+    setState({ kind: "authenticated", user });
     return { error: null };
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    authLogout();
+    setState({ kind: "unauthenticated" });
     window.location.href = "/";
   }, []);
 

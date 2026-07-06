@@ -1,0 +1,93 @@
+Целевая архитектура миграции Palata с Supabase Auth на auth-service.
+
+Сейчас:
+- Supabase Auth создает пользователя.
+- Supabase user.id используется как user_id/expert_id/customer_id во многих таблицах Palata.
+- После signUp часть данных кладется в auth metadata, потом Supabase trigger/логика дашборда дозаполняет профиль.
+
+Должно стать:
+- Supabase Auth полностью не используется.
+- Новый auth-service отвечает только за:
+  1) регистрацию пользователя,
+  2) хранение email/password hash,
+  3) email verification,
+  4) login,
+  5) выдачу JWT,
+  6) /me по JWT.
+
+Auth-service уже работает:
+AUTH_SERVICE_URL=http://q1rwqqgfbmvyhwgsdr701t0h.161.104.50.164.sslip.io
+project_code=palata
+
+POST /api/auth/register возвращает:
+{
+  success: true,
+  user_id: "...",
+  project_id: "...",
+  status: "pending_email",
+  email_verified: false,
+  verification_token: "..."
+}
+
+Ключевое архитектурное решение:
+auth-service user_id становится новым главным ID пользователя в Palata.
+То есть auth_users.id должен использоваться как:
+- palata_users.id или palata_users.auth_user_id
+- palata_customer_profiles.user_id
+- palata_expert_profiles.user_id
+- palata_expert_directions.expert_id
+- palata_expert_certificates.expert_id
+- palata_expert_regions.expert_id
+и везде, где раньше использовался Supabase user.id.
+
+Цель:
+Сохранить бизнес-логику Palata, но заменить источник авторизации.
+
+Нужно предложить план миграции кода:
+1. Как заменить регистрацию:
+   - вместо supabase.auth.signUp вызвать AUTH_SERVICE_URL/api/auth/register
+   - сохранить все данные формы в Palata DB после успешной регистрации или после email verification
+   - определить, где лучше создавать palata_users/profile: сразу после register или после verify.
+
+2. Как заменить login:
+   - вместо supabase.auth.signInWithPassword вызвать AUTH_SERVICE_URL/api/auth/login
+   - сохранить access_token в localStorage/cookie
+   - использовать JWT для /me.
+
+3. Как заменить getUser/getSession:
+   - создать authClient.ts
+   - методы register/login/logout/me
+   - заменить supabase.auth.getUser/getSession на authClient.me.
+
+4. Как хранить текущего пользователя во фронтенде:
+   - user_id
+   - email
+   - role
+   - full_name
+   - access_token
+
+5. Какие таблицы Palata нужно адаптировать:
+   - palata_users
+   - palata_customer_profiles
+   - palata_expert_profiles
+   - palata_expert_directions
+   - palata_expert_certificates
+   - palata_expert_regions
+
+6. Что делать с текущими Supabase RLS/auth.uid():
+   - найти все зависимости;
+   - заменить на серверную проверку JWT или обычные SQL-запросы через backend.
+
+7. Что делать с email verification:
+   - сейчас auth-service возвращает verification_token;
+   - письма пока можно не отправлять автоматически;
+   - на первом этапе можно показать тестовую ссылку подтверждения или оставить экран “проверьте почту”;
+   - важно предложить рабочий минимальный сценарий для сдачи заказчику.
+
+Результат:
+Не меняй код сразу.
+Сначала выдай:
+- целевую схему потока регистрации/логина;
+- список файлов для изменения;
+- список рисков;
+- минимальный план работ, чтобы завтра получить рабочую ссылку.

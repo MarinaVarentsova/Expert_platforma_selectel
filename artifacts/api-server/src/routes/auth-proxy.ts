@@ -17,6 +17,9 @@ async function proxyRequest(req: Request, res: Response): Promise<void> {
   const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
   const upstreamUrl = `${UPSTREAM}/api${req.path}${qs}`;
 
+  // eslint-disable-next-line no-console
+  console.log("AUTH PROXY TARGET =", upstreamUrl, "| req.method =", req.method, "| req.path =", req.path, "| UPSTREAM =", UPSTREAM);
+
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const auth = req.headers["authorization"];
   if (auth) headers["Authorization"] = auth as string;

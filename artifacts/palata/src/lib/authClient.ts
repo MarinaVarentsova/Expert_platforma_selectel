@@ -1,6 +1,3 @@
-const AUTH_SERVICE_URL = (import.meta.env.VITE_AUTH_SERVICE_URL as string | undefined)
-  ?.replace(/\/$/, "") ?? "";
-
 const PROJECT_CODE = "palata";
 const TOKEN_KEY    = "palata_access_token";
 
@@ -62,13 +59,9 @@ async function authFetch<T>(
   path: string,
   options: RequestInit,
 ): Promise<T | AuthError> {
-  if (!AUTH_SERVICE_URL) {
-    return { success: false, message: "VITE_AUTH_SERVICE_URL is not configured" };
-  }
-
   let res: Response;
   try {
-    res = await fetch(`${AUTH_SERVICE_URL}${path}`, {
+    res = await fetch(path, {
       headers: { "Content-Type": "application/json" },
       ...options,
     });

@@ -41,3 +41,8 @@ externalPort = 3003
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+AUTH_SERVICE_URL = "http://q1rwqqgfbmvyhwgsdr701t0h.161.104.50.164.sslip.io"

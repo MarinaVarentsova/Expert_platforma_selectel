@@ -5,7 +5,6 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { supabase } from "./supabaseClient";
 import {
   login as authLogin,
   logout as authLogout,
@@ -36,27 +35,51 @@ export type AuthContextValue = {
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function fetchPalataUser(userId: string): Promise<PalataUser | null> {
-  console.log("[PALATA-SESSION] querying palata_users", { userId });
-  const { data, error } = await supabase
-    .from("palata_users")
-    .select("id, role, full_name, email, is_active")
-    .eq("id", userId)
-    .single();
+function redirectTargetForRole(role: PalataRole): string {
+  if (role === "admin") return "/admin";
+  if (role === "expert") return "/expert";
+  return "/customer";
+}
 
-  if (error || !data) {
-    console.error("[PALATA-SESSION] palata_users not found", {
-      userId,
-      error: error ? String(error.message ?? error) : "no data",
+async function fetchPalataUser(token: string): Promise<PalataUser | null> {
+  console.log("[PALATA-SESSION] requesting /api/palata/users/me");
+
+  let res: Response;
+  try {
+    res = await fetch("/api/palata/users/me", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    console.error("[PALATA-SESSION] /api/palata/users/me network error", { error: String(err) });
+    return null;
+  }
+
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+
+  const success = Boolean(body && typeof body === "object" && (body as Record<string, unknown>)["success"] === true);
+  const role = success ? ((body as Record<string, unknown>)["user"] as PalataUser | undefined)?.role : undefined;
+
+  console.log("[PALATA-SESSION] palata user response", {
+    status: res.status,
+    success,
+    role: role ?? null,
+  });
+
+  if (!success) {
+    console.error("[PALATA-SESSION] palata user lookup failed", {
+      status: res.status,
+      error: body && typeof body === "object" ? (body as Record<string, unknown>)["error"] : "unknown",
     });
     return null;
   }
-  console.log("[PALATA-SESSION] palata_users found", {
-    userId,
-    role: (data as PalataUser).role,
-    is_active: (data as PalataUser).is_active,
-  });
-  return data as PalataUser;
+
+  return (body as { user: PalataUser }).user;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -64,6 +87,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applyToken = useCallback(async (token: string) => {
     const meResult = await authMe(token);
+    console.log("[PALATA-SESSION] auth me result", {
+      user_id: meResult.success ? meResult.user_id : null,
+      email: meResult.success ? meResult.email : null,
+    });
     if (!meResult.success) {
       authLogout();
       setState({ kind: "unauthenticated" });
@@ -79,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let user: PalataUser | null;
     try {
-      user = await fetchPalataUser(userId);
+      user = await fetchPalataUser(token);
     } catch (err) {
       clearTimeout(profileTimer);
       console.error("[profile] load error", { userId, error: String(err) });
@@ -102,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    console.log("[PALATA-SESSION] redirect target =", redirectTargetForRole(user.role));
     setState({ kind: "authenticated", user });
   }, []);
 
@@ -132,10 +160,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const token = loginResult.access_token;
     const meResult = await authMe(token);
-    console.log("[PALATA-SESSION] /me result", {
-      success: meResult.success,
-      user_id: meResult.success ? meResult.user_id : undefined,
-      status: meResult.success ? undefined : meResult.status,
+    console.log("[PALATA-SESSION] auth me result", {
+      user_id: meResult.success ? meResult.user_id : null,
+      email: meResult.success ? meResult.email : null,
     });
     if (!meResult.success) {
       console.error("[PALATA-SESSION] /me failed, logging out", { message: meResult.message });
@@ -143,14 +170,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: meResult.message };
     }
 
-    const user = await fetchPalataUser(meResult.user_id);
+    const user = await fetchPalataUser(token);
     if (!user) {
       console.error("[PALATA-SESSION] no palata_users profile — cannot redirect", { user_id: meResult.user_id });
       authLogout();
       return { error: "Профиль пользователя не найден. Обратитесь в поддержку." };
     }
 
-    console.log("[PALATA-SESSION] signIn success, redirect target by role", { role: user.role });
+    console.log("[PALATA-SESSION] redirect target =", redirectTargetForRole(user.role));
     setState({ kind: "authenticated", user });
     return { error: null };
   }, []);

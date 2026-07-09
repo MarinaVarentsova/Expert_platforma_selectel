@@ -36,8 +36,9 @@ if (PALATA_DATABASE_URL) {
   }
 }
 
+// TODO: replace rejectUnauthorized:false with Selectel CA certificate
 const pool = PALATA_DATABASE_URL
-  ? new pg.Pool({ connectionString: PALATA_DATABASE_URL })
+  ? new pg.Pool({ connectionString: PALATA_DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
 
 const app = express();

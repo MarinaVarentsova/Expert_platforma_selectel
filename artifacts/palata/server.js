@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
+const { Pool } = pg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,9 +38,15 @@ if (PALATA_DATABASE_URL) {
 }
 
 // TODO: replace rejectUnauthorized:false with Selectel CA certificate
-const pool = PALATA_DATABASE_URL
-  ? new pg.Pool({ connectionString: PALATA_DATABASE_URL, ssl: { rejectUnauthorized: false } })
+const palataPool = PALATA_DATABASE_URL
+  ? new Pool({
+      connectionString: process.env.PALATA_DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false,
+      },
+    })
   : null;
+const pool = palataPool;
 
 const app = express();
 
@@ -135,6 +142,7 @@ app.get("/api/debug/palata-db", (_req, res) => {
     service: "palata-production-server",
     hasDatabaseUrl: Boolean(PALATA_DATABASE_URL),
     db: dbConfig,
+    sslRejectUnauthorized: false,
   });
 });
 

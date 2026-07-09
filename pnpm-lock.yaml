@@ -413,6 +413,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.106.1
         version: 2.106.1
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5

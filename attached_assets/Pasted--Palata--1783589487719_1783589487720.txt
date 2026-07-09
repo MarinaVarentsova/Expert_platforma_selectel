@@ -1,0 +1,189 @@
+Добавь детальное диагностическое логирование входа в Palata, чтобы понять, на каком шаге падает авторизация.
+
+Цель:
+При нажатии "Войти" мы должны видеть в логах и в консоли точную цепочку:
+frontend → authClient → auth-service/proxy → login API → БД → проверка пароля → ответ → получение пользователя Palata → редирект.
+
+Сейчас в браузере при входе видим HTTP 500 / non-JSON response, но непонятно, где именно падает.
+
+Важно:
+Не менять бизнес-логику авторизации.
+Не менять БД.
+Не менять пароли.
+Не делать новые фиксы вслепую.
+Сначала добавить логирование и вернуть отчет по фактической причине.
+
+Что сделать:
+
+1. Frontend: artifacts/palata/src/lib/authClient.ts
+
+Добавить console.log/console.error с префиксом [AUTH-CLIENT]:
+
+- какой URL вызывается при login/register/me/verify;
+- method;
+- email;
+- project_code;
+- статус ответа;
+- content-type ответа;
+- первые 500 символов body, если ответ не JSON;
+- текст ошибки fetch, если network error.
+
+Важно: пароль в лог не выводить.
+
+Пример:
+[AUTH-CLIENT] login start { url, email, project_code }
+[AUTH-CLIENT] response { status, ok, contentType }
+[AUTH-CLIENT] non-json body preview: ...
+[AUTH-CLIENT] error ...
+
+2. Если используется api-server proxy:
+
+Файл:
+artifacts/api-server/src/routes/auth-proxy.ts
+
+Добавить логи с префиксом [AUTH-PROXY]:
+
+- входящий req.method;
+- req.originalUrl;
+- req.path;
+- полный targetUrl;
+- наличие Authorization header: true/false;
+- content-type;
+- статус ответа upstream;
+- content-type upstream;
+- первые 500 символов upstream body, если upstream вернул не JSON или статус >= 400;
+- полный error stack при catch.
+
+Важно: пароль не логировать.
+
+Пример:
+[AUTH-PROXY] incoming { method, originalUrl, path }
+[AUTH-PROXY] targetUrl = ...
+[AUTH-PROXY] upstream response { status, contentType }
+[AUTH-PROXY] upstream body preview = ...
+[AUTH-PROXY] ERROR stack = ...
+
+3. Auth-service Next.js:
+
+Найти реальные route handlers:
+- /api/auth/login
+- /api/auth/me
+- /api/auth/register
+- /api/auth/verify
+
+Добавить логи с префиксом [AUTH-SERVICE]:
+
+Для POST /api/auth/login:
+- login start;
+- project_code;
+- email;
+- DATABASE_URL host/dbname без пароля;
+- найден ли project по project_code;
+- найден ли user по project_id + email;
+- user.status;
+- user.email_verified;
+- password_hash присутствует: true/false;
+- результат bcrypt.compare: true/false;
+- на каком условии возвращается 401;
+- при успехе: user_id и факт генерации token;
+- при ошибке: полный error stack.
+
+Важно: пароль и полный DATABASE_URL не логировать.
+
+Пример:
+[AUTH-SERVICE] login start { email, project_code }
+[AUTH-SERVICE] db target { host, database }
+[AUTH-SERVICE] project found { project_id }
+[AUTH-SERVICE] user found { user_id, status, email_verified, hasPasswordHash }
+[AUTH-SERVICE] bcrypt.compare result = true/false
+[AUTH-SERVICE] login success { user_id }
+[AUTH-SERVICE] login failed reason = ...
+
+4. Palata user/profile lookup after auth
+
+Найти код, который после успешного auth-service login:
+- вызывает /api/auth/me;
+- ищет пользователя в palata_users;
+- определяет role;
+- делает redirect.
+
+Добавить логи с префиксом [PALATA-SESSION]:
+
+- access_token получен: true/false;
+- /me status;
+- user_id;
+- запрос в palata_users;
+- найден ли palata_users;
+- role;
+- куда идет redirect;
+- если profileLoading/authKind зависает — почему.
+
+5. Добавить временный диагностический endpoint в auth-service:
+
+GET /api/debug/auth-config
+
+Возвращает JSON:
+{
+  ok: true,
+  service: "auth-service",
+  version: "auth-debug-2026-07-09-1",
+  db: {
+    host: "...",
+    database: "...",
+    hasDatabaseUrl: true
+  },
+  routes: {
+    login: true,
+    me: true
+  }
+}
+
+Без секретов и без паролей.
+
+6. Добавить временный диагностический endpoint в api-server, если proxy используется:
+
+GET /api/debug/auth-proxy
+
+Возвращает JSON:
+{
+  ok: true,
+  service: "api-server",
+  version: "auth-proxy-debug-2026-07-09-1",
+  upstream: "http://q1rw...",
+  hasUpstream: true
+}
+
+7. После добавления логов выполнить:
+
+pnpm --filter ./artifacts/palata run build
+pnpm --filter ./artifacts/api-server run build
+
+Если auth-service отдельный Next.js проект — выполнить его build отдельно.
+
+8. После запуска сделать тест:
+
+curl -i -X POST "http://localhost:3000/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"project_code":"palata","email":"varentsovamv@gmail.com","password":"P@lata-Adm!n-7Qv92#Mx"}'
+
+И вернуть:
+- HTTP status;
+- response body;
+- все строки логов [AUTH-SERVICE] по этому запросу.
+
+9. Также проверить внешний путь, если используется Palata домен:
+
+curl -i -X POST "http://omuav9y1ylueuihgny0ler3j.161.104.50.164.sslip.io/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"project_code":"palata","email":"varentsovamv@gmail.com","password":"P@lata-Adm!n-7Qv92#Mx"}'
+
+Вернуть:
+- HTTP status;
+- response body;
+- логи [AUTH-CLIENT] / [AUTH-PROXY] / [AUTH-SERVICE].
+
+Результат, который нужен от тебя:
+1. Список измененных файлов.
+2. Где именно падает вход.
+3. Точная причина падения.
+4. Какой следующий минимальный фикс нужен.

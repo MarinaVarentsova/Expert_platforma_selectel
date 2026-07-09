@@ -37,13 +37,25 @@ export type AuthContextValue = {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function fetchPalataUser(userId: string): Promise<PalataUser | null> {
+  console.log("[PALATA-SESSION] querying palata_users", { userId });
   const { data, error } = await supabase
     .from("palata_users")
     .select("id, role, full_name, email, is_active")
     .eq("id", userId)
     .single();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    console.error("[PALATA-SESSION] palata_users not found", {
+      userId,
+      error: error ? String(error.message ?? error) : "no data",
+    });
+    return null;
+  }
+  console.log("[PALATA-SESSION] palata_users found", {
+    userId,
+    role: (data as PalataUser).role,
+    is_active: (data as PalataUser).is_active,
+  });
   return data as PalataUser;
 }
 
@@ -106,24 +118,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
   ): Promise<{ error: string | null }> => {
+    console.log("[PALATA-SESSION] signIn start", { email });
+
     const loginResult = await authLogin(email, password);
+    console.log("[PALATA-SESSION] access_token received", {
+      success: loginResult.success,
+      hasToken: loginResult.success && "access_token" in loginResult,
+    });
     if (!loginResult.success) {
+      console.error("[PALATA-SESSION] login failed, aborting signIn", { message: loginResult.message });
       return { error: loginResult.message };
     }
 
     const token = loginResult.access_token;
     const meResult = await authMe(token);
+    console.log("[PALATA-SESSION] /me result", {
+      success: meResult.success,
+      user_id: meResult.success ? meResult.user_id : undefined,
+      status: meResult.success ? undefined : meResult.status,
+    });
     if (!meResult.success) {
+      console.error("[PALATA-SESSION] /me failed, logging out", { message: meResult.message });
       authLogout();
       return { error: meResult.message };
     }
 
     const user = await fetchPalataUser(meResult.user_id);
     if (!user) {
+      console.error("[PALATA-SESSION] no palata_users profile — cannot redirect", { user_id: meResult.user_id });
       authLogout();
       return { error: "Профиль пользователя не найден. Обратитесь в поддержку." };
     }
 
+    console.log("[PALATA-SESSION] signIn success, redirect target by role", { role: user.role });
     setState({ kind: "authenticated", user });
     return { error: null };
   }, []);

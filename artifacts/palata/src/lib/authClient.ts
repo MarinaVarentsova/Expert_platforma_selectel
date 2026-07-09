@@ -55,10 +55,24 @@ export type AuthError = {
 
 // ── Internal fetch helper ────────────────────────────────────────────────────
 
+type AuthFetchMeta = {
+  email?: string;
+  project_code?: string;
+};
+
 async function authFetch<T>(
   path: string,
   options: RequestInit,
+  meta: AuthFetchMeta = {},
 ): Promise<T | AuthError> {
+  const method = options.method ?? "GET";
+  console.log("[AUTH-CLIENT] request start", {
+    url: path,
+    method,
+    email: meta.email,
+    project_code: meta.project_code,
+  });
+
   let res: Response;
   try {
     res = await fetch(path, {
@@ -66,13 +80,50 @@ async function authFetch<T>(
       ...options,
     });
   } catch (err) {
+    console.error("[AUTH-CLIENT] network error", {
+      url: path,
+      method,
+      error: String(err),
+    });
     return { success: false, message: `Network error: ${String(err)}` };
+  }
+
+  const contentType = res.headers.get("content-type") ?? "";
+  console.log("[AUTH-CLIENT] response", {
+    url: path,
+    method,
+    status: res.status,
+    ok: res.ok,
+    contentType,
+  });
+
+  let rawText: string;
+  try {
+    rawText = await res.text();
+  } catch (err) {
+    console.error("[AUTH-CLIENT] failed to read response body", {
+      url: path,
+      method,
+      error: String(err),
+    });
+    return {
+      success: false,
+      message: `Auth service response body could not be read (HTTP ${res.status})`,
+      status: res.status,
+    };
   }
 
   let body: unknown;
   try {
-    body = await res.json();
+    body = JSON.parse(rawText);
   } catch {
+    console.error("[AUTH-CLIENT] non-json body preview", {
+      url: path,
+      method,
+      status: res.status,
+      contentType,
+      preview: rawText.slice(0, 500),
+    });
     return {
       success: false,
       message: `Auth service returned non-JSON response (HTTP ${res.status})`,
@@ -83,6 +134,12 @@ async function authFetch<T>(
   if (!res.ok) {
     const b = (typeof body === "object" && body !== null) ? body as Record<string, unknown> : {};
     const msg = String(b["message"] ?? b["error"] ?? `HTTP ${res.status}`);
+    console.error("[AUTH-CLIENT] error response body", {
+      url: path,
+      method,
+      status: res.status,
+      message: msg,
+    });
     return { success: false, message: msg, status: res.status };
   }
 
@@ -98,16 +155,20 @@ async function authFetch<T>(
 export async function register(
   payload: RegisterPayload,
 ): Promise<RegisterResult | AuthError> {
-  return authFetch<RegisterResult>("/api/auth/register", {
-    method: "POST",
-    body: JSON.stringify({
-      project_code: PROJECT_CODE,
-      email: payload.email,
-      password: payload.password,
-      full_name: payload.full_name,
-      phone: payload.phone ?? null,
-    }),
-  });
+  return authFetch<RegisterResult>(
+    "/api/auth/register",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        project_code: PROJECT_CODE,
+        email: payload.email,
+        password: payload.password,
+        full_name: payload.full_name,
+        phone: payload.phone ?? null,
+      }),
+    },
+    { email: payload.email, project_code: PROJECT_CODE },
+  );
 }
 
 /**
@@ -118,13 +179,20 @@ export async function login(
   email: string,
   password: string,
 ): Promise<LoginResult | AuthError> {
-  const result = await authFetch<LoginResult>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ project_code: PROJECT_CODE, email, password }),
-  });
+  const result = await authFetch<LoginResult>(
+    "/api/auth/login",
+    {
+      method: "POST",
+      body: JSON.stringify({ project_code: PROJECT_CODE, email, password }),
+    },
+    { email, project_code: PROJECT_CODE },
+  );
 
   if (result.success && "access_token" in result) {
+    console.log("[AUTH-CLIENT] login success", { user_id: result.user_id });
     setToken(result.access_token);
+  } else {
+    console.error("[AUTH-CLIENT] login failed", { email, project_code: PROJECT_CODE, message: result.message, status: result.status });
   }
 
   return result;
@@ -140,13 +208,17 @@ export async function me(token?: string): Promise<MeResult | AuthError> {
     return { success: false, message: "No access token" };
   }
 
-  return authFetch<MeResult>("/api/auth/me", {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${tok}`,
+  return authFetch<MeResult>(
+    "/api/auth/me",
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tok}`,
+      },
     },
-  });
+    { project_code: PROJECT_CODE },
+  );
 }
 
 /**
@@ -165,6 +237,7 @@ export async function verify(token: string): Promise<VerifyResult | AuthError> {
   return authFetch<VerifyResult>(
     `/api/auth/verify?token=${encodeURIComponent(token)}`,
     { method: "GET" },
+    { project_code: PROJECT_CODE },
   );
 }
 

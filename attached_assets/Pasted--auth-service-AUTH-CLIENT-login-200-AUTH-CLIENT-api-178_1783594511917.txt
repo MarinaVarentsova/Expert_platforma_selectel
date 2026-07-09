@@ -1,0 +1,148 @@
+Сейчас авторизация через auth-service уже работает:
+
+[AUTH-CLIENT] login → 200
+[AUTH-CLIENT] /api/auth/me → 200
+
+Падает следующий шаг:
+
+frontend после успешного /me пытается искать пользователя через Supabase:
+GET https://acnmooxaewiynzhqyuit.supabase.co/rest/v1/palata_users...
+→ 401 Invalid API key
+
+Это неправильная логика для новой production-схемы.
+
+ВАЖНО:
+Данные пользователей сейчас НЕ должны проверяться через Supabase.
+Пользователи и роли находятся в новой облачной PostgreSQL БД, таблица:
+
+public.palata_users
+
+Пример текущего админа:
+id = a43246cf-d2b4-4d0e-b36e-a198b141fc4a
+email = varentsovamv@gmail.com
+full_name = Марина Варенцова
+role = admin
+is_active = true
+
+Задача:
+После успешного login и /api/auth/me приложение должно брать профиль пользователя не из Supabase REST, а через backend/API, который подключается к новой PostgreSQL БД.
+
+Нужно найти весь код, где после авторизации используется:
+- supabase.from("palata_users")
+- supabase.from('palata_users')
+- palata_users
+- fetchPalataUser
+- getSession
+- useAuth
+- authContext.tsx
+- supabaseClient
+
+И заменить проверку профиля на API-запрос к серверу.
+
+Новая логика должна быть такая:
+
+1. Пользователь вводит логин/пароль.
+2. Frontend вызывает:
+   POST /api/auth/login
+3. Получает access_token.
+4. Frontend вызывает:
+   GET /api/auth/me
+5. Получает user_id/email из auth-service.
+6. Затем frontend вызывает новый backend endpoint:
+   GET /api/palata/users/me
+   с Authorization: Bearer <access_token>
+
+7. Backend endpoint должен:
+   - взять user_id из /api/auth/me или из уже проверенного токена;
+   - найти пользователя в новой PostgreSQL БД:
+     SELECT id, email, full_name, phone, role, is_active
+     FROM public.palata_users
+     WHERE id = $1
+       AND is_active = true
+     LIMIT 1;
+
+8. Вернуть JSON:
+   {
+     "success": true,
+     "user": {
+       "id": "...",
+       "email": "...",
+       "full_name": "...",
+       "role": "admin",
+       "is_active": true
+     }
+   }
+
+9. Если пользователь не найден:
+   {
+     "success": false,
+     "error": "PALATA_USER_NOT_FOUND"
+   }
+   HTTP 404
+
+10. Frontend должен использовать этот ответ для определения role и редиректа:
+   admin → /admin
+   expert → /expert
+   customer → /customer
+
+11. Убрать зависимость входа от Supabase:
+   Нельзя использовать VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY для проверки palata_users.
+   Supabase сейчас может остаться только для старых справочников, если где-то ещё нужно, но НЕ для auth/profile lookup.
+
+12. Добавить диагностические логи:
+
+Frontend:
+[PALATA-SESSION] auth me result { user_id, email }
+[PALATA-SESSION] requesting /api/palata/users/me
+[PALATA-SESSION] palata user response { status, success, role }
+[PALATA-SESSION] redirect target = ...
+
+Backend:
+[PALATA-USER] /api/palata/users/me start
+[PALATA-USER] token exists true/false
+[PALATA-USER] auth /me result { user_id, email }
+[PALATA-USER] db query palata_users by id
+[PALATA-USER] found { id, role, is_active }
+[PALATA-USER] not found reason = ...
+
+13. Нужны env переменные для backend подключения к новой БД.
+Проверить текущие env и код подключения.
+Если уже есть DATABASE_URL для новой PostgreSQL БД — использовать её.
+Если нет — добавить требование:
+DATABASE_URL=<connection string облачной PostgreSQL БД Palata>
+
+14. Добавить debug endpoint:
+GET /api/debug/palata-db
+
+Он должен вернуть без секретов:
+{
+  "ok": true,
+  "service": "palata-production-server",
+  "hasDatabaseUrl": true,
+  "db": {
+    "host": "...",
+    "database": "..."
+  }
+}
+
+15. Проверки после реализации:
+
+curl -i "http://localhost:3000/api/debug/palata-db"
+
+curl -i "http://localhost:3000/api/palata/users/me" \
+  -H "Authorization: Bearer <реальный access_token>"
+
+Должен вернуться пользователь role=admin для:
+varentsovamv@gmail.com
+
+16. Выполнить:
+pnpm --filter ./artifacts/palata run build
+pnpm --filter ./artifacts/palata run start
+
+17. Вернуть отчет:
+- какие файлы изменены;
+- где раньше был Supabase lookup;
+- какой endpoint теперь проверяет профиль;
+- какой SQL выполняется;
+- результат curl для /api/palata/users/me;
+- есть ли ещё места в auth flow, где используется supabase.from("palata_users").

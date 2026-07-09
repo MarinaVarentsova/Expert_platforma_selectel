@@ -137,6 +137,47 @@ app.get("/api/debug/palata-db", (_req, res) => {
   });
 });
 
+app.get("/api/debug/palata-users-schema", async (_req, res) => {
+  if (!pool) {
+    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT column_name, data_type
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'palata_users'
+       ORDER BY ordinal_position`,
+    );
+    res.json({ success: true, columns: result.rows });
+  } catch (err) {
+    console.error("[PALATA-USER] DB ERROR", {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      position: err.position,
+      schema: err.schema,
+      table: err.table,
+      column: err.column,
+      constraint: err.constraint,
+      stack: err.stack,
+    });
+    res.status(500).json({
+      success: false,
+      error: "DB_QUERY_FAILED",
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      table: err.table,
+      column: err.column,
+    });
+  }
+});
+
 app.all(/^\/api\/auth(\/.*)?$/, (req, res) => {
   proxyAuthRequest(req, res).catch((err) => {
     const stack = err instanceof Error ? err.stack : String(err);
@@ -209,8 +250,28 @@ async function handlePalataUserMe(req, res) {
       [meBody.user_id],
     );
   } catch (err) {
-    console.error("[PALATA-USER] db query error", { error: String(err) });
-    res.status(500).json({ success: false, error: "DB_QUERY_FAILED" });
+    console.error("[PALATA-USER] DB ERROR", {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      position: err.position,
+      schema: err.schema,
+      table: err.table,
+      column: err.column,
+      constraint: err.constraint,
+      stack: err.stack,
+    });
+    res.status(500).json({
+      success: false,
+      error: "DB_QUERY_FAILED",
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      table: err.table,
+      column: err.column,
+    });
     return;
   }
 

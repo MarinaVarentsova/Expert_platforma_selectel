@@ -291,13 +291,12 @@ export default function AdminCertImport() {
   }
 
   // ── Import execution ───────────────────────────────────────────────────────
+  const BATCH_SIZE = 400;
+
   async function runImport(rows: ParsedRow[], fileName: string) {
     setState({ kind: "importing", phase: "truncating" });
 
     try {
-      // Phase 1+2: truncate staging + insert rows + write log — single transactional endpoint (PostgreSQL/Selectel)
-      setState({ kind: "importing", phase: "inserting", progress: 0 });
-
       const payload = rows.map(r => ({
         certificate_number: r.certificate_number ?? "",
         expert_full_name:   r.expert_full_name   ?? "",
@@ -313,40 +312,69 @@ export default function AdminCertImport() {
       }));
 
       const token = getToken();
-      const importRes = await fetch("/api/palata/cert-import", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ rows: payload, file_name: fileName }),
-      });
+      const batches: (typeof payload)[] = [];
+      for (let i = 0; i < payload.length; i += BATCH_SIZE) {
+        batches.push(payload.slice(i, i + BATCH_SIZE));
+      }
+      if (batches.length === 0) batches.push([]);
 
-      const importBody = await importRes.json().catch(() => null);
+      setState({ kind: "importing", phase: "inserting", progress: 0 });
 
-      if (!importRes.ok || !importBody?.success) {
-        throw new Error(
-          `Импорт в PostgreSQL завершился ошибкой: ${importBody?.message ?? importBody?.error ?? importRes.status}`,
-        );
+      let finalResult: {
+        total: number; active: number; expired: number; parse_errors: number;
+        linked_experts: number; unlinked_experts: number;
+      } | null = null;
+
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const importRes = await fetch("/api/palata/cert-import", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            rows: batches[batchIndex],
+            file_name: fileName,
+            batch_index: batchIndex,
+            batch_count: batches.length,
+          }),
+        });
+
+        const importBody = await importRes.json().catch(() => null);
+
+        if (!importRes.ok || !importBody?.success) {
+          throw new Error(
+            `Импорт в PostgreSQL завершился ошибкой (батч ${batchIndex + 1}/${batches.length}): ${importBody?.message ?? importBody?.error ?? importRes.status}`,
+          );
+        }
+
+        setState({
+          kind: "importing",
+          phase: "inserting",
+          progress: Math.round(((batchIndex + 1) / batches.length) * 100),
+        });
+
+        if (importBody.result) {
+          finalResult = importBody.result;
+        }
       }
 
-      setState({
-        kind: "importing", phase: "inserting", progress: 100,
-      });
+      if (!finalResult) {
+        throw new Error("Импорт завершился без итогового результата");
+      }
 
       setState({ kind: "importing", phase: "processing" });
 
-      const result = importBody.result;
       const etl: EtlResult = {
-        total:                 result.total,
-        active:                result.active,
-        expired:               result.expired,
-        parse_errors:          result.parse_errors,
-        certs_upserted:        result.total,
+        total:                 finalResult.total,
+        active:                finalResult.active,
+        expired:               finalResult.expired,
+        parse_errors:          finalResult.parse_errors,
+        certs_upserted:        finalResult.total,
         expert_certs_upserted: 0,
         expert_dirs_upserted:  0,
-        linked_experts:        result.linked_experts,
-        unlinked_experts:      result.unlinked_experts,
+        linked_experts:        finalResult.linked_experts,
+        unlinked_experts:      finalResult.unlinked_experts,
         no_direction:          0,
       };
 

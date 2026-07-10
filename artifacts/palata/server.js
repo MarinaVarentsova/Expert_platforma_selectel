@@ -50,7 +50,7 @@ const pool = palataPool;
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
 async function proxyAuthRequest(req, res) {
   const hasAuthHeader = Boolean(req.headers["authorization"]);
@@ -456,6 +456,8 @@ async function handleCertImport(req, res) {
 
   const fileName = typeof req.body?.file_name === "string" ? req.body.file_name.trim() : "";
   const rows = req.body?.rows;
+  const batchIndex = Number.isInteger(req.body?.batch_index) ? req.body.batch_index : 0;
+  const batchCount = Number.isInteger(req.body?.batch_count) ? req.body.batch_count : 1;
 
   if (!fileName) {
     res.status(400).json({ success: false, error: "CERT_IMPORT_FAILED", message: "MISSING_FILE_NAME" });
@@ -467,7 +469,16 @@ async function handleCertImport(req, res) {
     return;
   }
 
-  console.log("[CERT-IMPORT] rows received", { userId: admin.userId, fileName, count: rows.length });
+  const isFirstBatch = batchIndex === 0;
+  const isLastBatch = batchIndex === batchCount - 1;
+
+  console.log("[CERT-IMPORT] rows received", {
+    userId: admin.userId,
+    fileName,
+    count: rows.length,
+    batchIndex,
+    batchCount,
+  });
 
   if (!pool) {
     res.status(503).json({ success: false, error: "CERT_IMPORT_FAILED", message: "DATABASE_NOT_CONFIGURED" });
@@ -479,12 +490,10 @@ async function handleCertImport(req, res) {
     await client.query("BEGIN");
     console.log("[CERT-IMPORT] transaction started");
 
-    await client.query("TRUNCATE TABLE public.palata_certificates_import");
-    console.log("[CERT-IMPORT] staging truncated");
-
-    let activeCount = 0;
-    let expiredCount = 0;
-    let parseErrorCount = 0;
+    if (isFirstBatch) {
+      await client.query("TRUNCATE TABLE public.palata_certificates_import");
+      console.log("[CERT-IMPORT] staging truncated");
+    }
 
     for (const r of rows) {
       const certificateNumber = toNullable(r.certificate_number);
@@ -492,11 +501,6 @@ async function handleCertImport(req, res) {
       const validFrom = toDateOrNull(r.valid_from);
       const validTo = toDateOrNull(r.valid_to);
       const certificateStatus = toNullable(r.certificate_status);
-
-      if (certificateStatus === "Активный") activeCount++;
-      else if (certificateStatus === "Истёкший") expiredCount++;
-
-      if (r._dateParseError || !certificateNumber || !expertFullName) parseErrorCount++;
 
       await client.query(
         `INSERT INTO public.palata_certificates_import
@@ -517,11 +521,31 @@ async function handleCertImport(req, res) {
         ],
       );
     }
-    console.log("[CERT-IMPORT] rows inserted", { userId: admin.userId, count: rows.length });
+    console.log("[CERT-IMPORT] rows inserted", {
+      userId: admin.userId,
+      count: rows.length,
+      batchIndex,
+      batchCount,
+    });
 
-    const totalRows = rows.length;
+    if (!isLastBatch) {
+      await client.query("COMMIT");
+      console.log("[CERT-IMPORT] commit", { userId: admin.userId, fileName, batchIndex, batchCount });
+      res.status(200).json({ success: true, batch_ack: true, batch_index: batchIndex });
+      return;
+    }
+
+    const statsResult = await client.query(
+      `SELECT
+         count(*)::integer AS total,
+         count(*) FILTER (WHERE certificate_status = 'Активный')::integer AS active,
+         count(*) FILTER (WHERE certificate_status = 'Истёкший')::integer AS expired,
+         count(*) FILTER (WHERE certificate_number IS NULL OR expert_full_name IS NULL)::integer AS parse_errors
+       FROM public.palata_certificates_import`,
+    );
+    const { total, active, expired, parse_errors: parseErrors } = statsResult.rows[0];
     const linkedExpertsCount = 0;
-    const unlinkedExpertsCount = totalRows;
+    const unlinkedExpertsCount = total;
 
     const logResult = await client.query(
       `INSERT INTO public.palata_certificate_import_logs
@@ -532,10 +556,10 @@ async function handleCertImport(req, res) {
       [
         admin.userId,
         fileName,
-        totalRows,
-        activeCount,
-        expiredCount,
-        parseErrorCount,
+        total,
+        active,
+        expired,
+        parseErrors,
         linkedExpertsCount,
         unlinkedExpertsCount,
         "ok",
@@ -545,15 +569,15 @@ async function handleCertImport(req, res) {
     console.log("[CERT-IMPORT] log inserted", { userId: admin.userId, fileName, logId: logResult.rows[0]?.id });
 
     await client.query("COMMIT");
-    console.log("[CERT-IMPORT] commit", { userId: admin.userId, fileName });
+    console.log("[CERT-IMPORT] commit", { userId: admin.userId, fileName, batchIndex, batchCount });
 
     res.status(200).json({
       success: true,
       result: {
-        total: totalRows,
-        active: activeCount,
-        expired: expiredCount,
-        parse_errors: parseErrorCount,
+        total,
+        active,
+        expired,
+        parse_errors: parseErrors,
         linked_experts: linkedExpertsCount,
         unlinked_experts: unlinkedExpertsCount,
         file_name: fileName,

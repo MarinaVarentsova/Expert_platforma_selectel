@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Check } from "lucide-react";
 import { verify, setToken, me } from "@/lib/authClient";
-import { supabase } from "@/lib/supabaseClient";
 
 type View = "loading" | "success" | "success-with-redirect" | "error";
 
@@ -55,15 +54,12 @@ export default function AuthCallback() {
 
         const meResult = await me(result.access_token);
         if (meResult.success) {
-          const { data: palataUser } = await supabase
-            .from("palata_users")
-            .select("role")
-            .eq("id", meResult.user_id)
-            .single();
+          const roleRes = await fetch(`/api/palata/customer-register/role/${encodeURIComponent(meResult.user_id)}`);
+          const roleBody = await roleRes.json().catch(() => null);
 
-          if (palataUser?.role) {
+          if (roleRes.ok && roleBody?.success && roleBody.role) {
             setView("success-with-redirect");
-            setTimeout(() => redirectByRole(palataUser.role, navigate), 2500);
+            setTimeout(() => redirectByRole(roleBody.role, navigate), 2500);
             return;
           }
         }

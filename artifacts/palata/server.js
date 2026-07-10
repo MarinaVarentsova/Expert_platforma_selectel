@@ -701,6 +701,184 @@ app.get("/api/palata/cert-import/stats", (req, res) => {
   });
 });
 
+async function handleCustomerRegisterCheckEmail(req, res) {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+
+  if (!email) {
+    res.status(400).json({ success: false, error: "MISSING_EMAIL" });
+    return;
+  }
+
+  if (!pool) {
+    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  console.log("[CUSTOMER-REGISTER] check email");
+
+  try {
+    const result = await pool.query(
+      `SELECT id FROM public.palata_users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email],
+    );
+
+    if (result.rows.length > 0) {
+      res.status(200).json({ success: false, error: "EMAIL_ALREADY_EXISTS" });
+      return;
+    }
+
+    console.log("[CUSTOMER-REGISTER] success", { stage: "check_email" });
+    res.status(200).json({ success: true, exists: false });
+  } catch (err) {
+    console.error("[CUSTOMER-REGISTER] error", { stage: "check_email", message: err.message });
+    res.status(500).json({ success: false, error: "CHECK_EMAIL_FAILED", message: err.message });
+  }
+}
+
+async function handleCustomerRegisterCreateUser(req, res) {
+  const id = typeof req.body?.id === "string" ? req.body.id : "";
+  const role = typeof req.body?.role === "string" ? req.body.role : "";
+  const fullName = typeof req.body?.full_name === "string" ? req.body.full_name.trim() : "";
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  const phone = typeof req.body?.phone === "string" && req.body.phone.trim() ? req.body.phone.trim() : null;
+  const isActive = req.body?.is_active !== false;
+
+  if (!id || !role || !fullName || !email) {
+    res.status(400).json({ success: false, error: "MISSING_FIELDS" });
+    return;
+  }
+
+  if (!pool) {
+    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  console.log("[CUSTOMER-REGISTER] insert user", { id, role });
+
+  try {
+    await pool.query(
+      `INSERT INTO public.palata_users (id, role, full_name, email, phone, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, role, fullName, email, phone, isActive],
+    );
+
+    console.log("[CUSTOMER-REGISTER] success", { stage: "insert_user", id });
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("[CUSTOMER-REGISTER] error", {
+      stage: "insert_user",
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      constraint: err.constraint,
+    });
+    res.status(500).json({ success: false, error: "USER_INSERT_FAILED", message: err.message });
+  }
+}
+
+async function handleCustomerRegisterUpsertProfile(req, res) {
+  const userId = typeof req.body?.user_id === "string" ? req.body.user_id : "";
+  const companyName = typeof req.body?.company_name === "string" && req.body.company_name.trim() ? req.body.company_name.trim() : null;
+  const inn = typeof req.body?.inn === "string" && req.body.inn.trim() ? req.body.inn.trim() : null;
+  const contactName = typeof req.body?.contact_name === "string" && req.body.contact_name.trim() ? req.body.contact_name.trim() : null;
+  const notes = typeof req.body?.notes === "string" && req.body.notes.trim() ? req.body.notes.trim() : null;
+  const regionId = typeof req.body?.region_id === "string" && req.body.region_id ? req.body.region_id : null;
+
+  if (!userId) {
+    res.status(400).json({ success: false, error: "MISSING_USER_ID" });
+    return;
+  }
+
+  if (!pool) {
+    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  console.log("[CUSTOMER-REGISTER] upsert profile", { userId });
+
+  try {
+    await pool.query(
+      `INSERT INTO public.palata_customer_profiles
+         (user_id, company_name, inn, contact_name, notes, region_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id) DO UPDATE SET
+         company_name = EXCLUDED.company_name,
+         inn = EXCLUDED.inn,
+         contact_name = EXCLUDED.contact_name,
+         notes = EXCLUDED.notes,
+         region_id = EXCLUDED.region_id`,
+      [userId, companyName, inn, contactName, notes, regionId],
+    );
+
+    console.log("[CUSTOMER-REGISTER] success", { stage: "upsert_profile", userId });
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("[CUSTOMER-REGISTER] error", {
+      stage: "upsert_profile",
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      constraint: err.constraint,
+    });
+    res.status(500).json({ success: false, error: "PROFILE_UPSERT_FAILED", message: err.message });
+  }
+}
+
+async function handleCustomerRegisterGetRole(req, res) {
+  const id = typeof req.params?.id === "string" ? req.params.id : "";
+
+  if (!id) {
+    res.status(400).json({ success: false, error: "MISSING_ID" });
+    return;
+  }
+
+  if (!pool) {
+    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT role FROM public.palata_users WHERE id = $1`,
+      [id],
+    );
+
+    console.log("[CUSTOMER-REGISTER] success", { stage: "get_role", id });
+    res.status(200).json({ success: true, role: result.rows[0]?.role ?? null });
+  } catch (err) {
+    console.error("[CUSTOMER-REGISTER] error", { stage: "get_role", message: err.message });
+    res.status(500).json({ success: false, error: "GET_ROLE_FAILED", message: err.message });
+  }
+}
+
+app.post("/api/palata/customer-register/check-email", (req, res) => {
+  handleCustomerRegisterCheckEmail(req, res).catch((err) => {
+    console.error("[CUSTOMER-REGISTER] error", { stage: "unhandled_check_email", stack: err.stack });
+    res.status(500).json({ success: false, error: "CHECK_EMAIL_FAILED", message: String(err) });
+  });
+});
+
+app.post("/api/palata/customer-register/create-user", (req, res) => {
+  handleCustomerRegisterCreateUser(req, res).catch((err) => {
+    console.error("[CUSTOMER-REGISTER] error", { stage: "unhandled_insert_user", stack: err.stack });
+    res.status(500).json({ success: false, error: "USER_INSERT_FAILED", message: String(err) });
+  });
+});
+
+app.post("/api/palata/customer-register/upsert-profile", (req, res) => {
+  handleCustomerRegisterUpsertProfile(req, res).catch((err) => {
+    console.error("[CUSTOMER-REGISTER] error", { stage: "unhandled_upsert_profile", stack: err.stack });
+    res.status(500).json({ success: false, error: "PROFILE_UPSERT_FAILED", message: String(err) });
+  });
+});
+
+app.get("/api/palata/customer-register/role/:id", (req, res) => {
+  handleCustomerRegisterGetRole(req, res).catch((err) => {
+    console.error("[CUSTOMER-REGISTER] error", { stage: "unhandled_get_role", stack: err.stack });
+    res.status(500).json({ success: false, error: "GET_ROLE_FAILED", message: String(err) });
+  });
+});
+
 app.use(express.static(STATIC_DIR));
 
 app.get(/(.*)/, (req, res, next) => {

@@ -134,14 +134,15 @@ export default function Register() {
 
     setLoading(true);
 
-    // ── Email duplicate check in Palata DB ────────────────────────────────
+    // ── Email duplicate check in Palata DB (PostgreSQL) ────────────────────
     {
-      const { data: existingUser } = await supabase
-        .from("palata_users")
-        .select("id")
-        .eq("email", email.trim().toLowerCase())
-        .maybeSingle();
-      if (existingUser) {
+      const checkRes = await fetch("/api/palata/customer-register/check-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      const checkBody = await checkRes.json().catch(() => null);
+      if (checkBody?.error === "EMAIL_ALREADY_EXISTS") {
         setError("Пользователь с данной почтой уже зарегистрирован. Войдите в систему.");
         setLoading(false);
         return;
@@ -217,18 +218,23 @@ export default function Register() {
 
     const userId = registerResult.user_id;
 
-    // ── Write palata_users row ─────────────────────────────────────────────
+    // ── Write palata_users row (PostgreSQL) ────────────────────────────────
     {
-      const { error: puErr } = await supabase.from("palata_users").insert({
-        id:        userId,
-        role,
-        full_name: fullName.trim(),
-        email:     email.trim().toLowerCase(),
-        phone:     phone.trim() || null,
-        is_active: true,
+      const createUserRes = await fetch("/api/palata/customer-register/create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id:        userId,
+          role,
+          full_name: fullName.trim(),
+          email:     email.trim().toLowerCase(),
+          phone:     phone.trim() || null,
+          is_active: true,
+        }),
       });
-      if (puErr) {
-        console.error("[register] palata_users insert:", puErr.message);
+      const createUserBody = await createUserRes.json().catch(() => null);
+      if (!createUserRes.ok || !createUserBody?.success) {
+        console.error("[register] palata_users insert:", createUserBody?.message ?? createUserRes.status);
         setError("Не удалось сохранить данные пользователя. Попробуйте ещё раз.");
         setLoading(false);
         return;
@@ -237,15 +243,22 @@ export default function Register() {
 
     // ── Write profile tables ───────────────────────────────────────────────
     if (role === "customer") {
-      const { error: cpErr } = await supabase.from("palata_customer_profiles").upsert({
-        user_id:      userId,
-        company_name: companyName.trim() || null,
-        inn:          inn.trim() || null,
-        contact_name: contactName.trim() || null,
-        notes:        notes.trim() || null,
-        region_id:    regionIds[0] ?? null,
-      }, { onConflict: "user_id" });
-      if (cpErr) console.error("[register] palata_customer_profiles upsert:", cpErr.message);
+      const upsertProfileRes = await fetch("/api/palata/customer-register/upsert-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id:      userId,
+          company_name: companyName.trim() || null,
+          inn:          inn.trim() || null,
+          contact_name: contactName.trim() || null,
+          notes:        notes.trim() || null,
+          region_id:    regionIds[0] ?? null,
+        }),
+      });
+      const upsertProfileBody = await upsertProfileRes.json().catch(() => null);
+      if (!upsertProfileRes.ok || !upsertProfileBody?.success) {
+        console.error("[register] palata_customer_profiles upsert:", upsertProfileBody?.message ?? upsertProfileRes.status);
+      }
 
     } else {
       // expert_profiles

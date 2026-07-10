@@ -238,7 +238,12 @@ async function handlePalataUserMe(req, res) {
     return;
   }
 
-  console.log("[PALATA-USER] auth /me result", { user_id: meBody.user_id, email: meBody.email });
+  console.log("[PALATA-USER] auth /me result", { user_id: meBody.user?.id, email: meBody.user?.email });
+
+  if (!meBody.user?.id) {
+    res.status(401).json({ success: false, error: "INVALID_AUTH_USER" });
+    return;
+  }
 
   if (!pool) {
     console.error("[PALATA-USER] not found reason = PALATA_DATABASE_URL not configured");
@@ -246,7 +251,7 @@ async function handlePalataUserMe(req, res) {
     return;
   }
 
-  console.log("[PALATA-USER] db query palata_users by id", { userId: meBody.user_id });
+  console.log("[PALATA-USER] db query palata_users by id", { userId: meBody.user.id });
 
   let result;
   try {
@@ -256,7 +261,7 @@ async function handlePalataUserMe(req, res) {
        WHERE id = $1
          AND is_active = true
        LIMIT 1`,
-      [meBody.user_id],
+      [meBody.user.id],
     );
   } catch (err) {
     console.error("[PALATA-USER] DB ERROR", {
@@ -287,7 +292,7 @@ async function handlePalataUserMe(req, res) {
   const row = result.rows[0];
 
   if (!row) {
-    console.log("[PALATA-USER] not found reason = no active palata_users row for id", { userId: meBody.user_id });
+    console.log("[PALATA-USER] not found reason = no active palata_users row for id", { userId: meBody.user.id });
     res.status(404).json({ success: false, error: "PALATA_USER_NOT_FOUND" });
     return;
   }

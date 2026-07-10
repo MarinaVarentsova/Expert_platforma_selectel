@@ -1,0 +1,147 @@
+Задача: переключить импорт сертификатов с Supabase на PostgreSQL Selectel, база palata, без изменения остального приложения.
+
+Сейчас загрузчик сертификатов в админке пишет:
+
+данные импорта в Supabase-таблицу palata_certificates_import;
+лог загрузки в Supabase-таблицу palata_certificate_import_logs.
+
+В новой PostgreSQL БД Selectel palata уже есть таблицы:
+
+public.palata_certificates_import;
+public.palata_certificate_import_logs;
+public.palata_expert_certificates.
+
+Подключение уже работает через:
+
+PALATA_DATABASE_URL
+
+В artifacts/palata/server.js уже есть рабочий pg.Pool.
+
+Что сделать
+1. Сначала найти текущий код импорта
+
+Найди все места, где загрузчик сертификатов обращается к:
+
+supabase.from("palata_certificates_import")
+supabase.from("palata_certificate_import_logs")
+
+и все API/routes/functions, которые обслуживают страницу:
+
+/admin/cert-import
+
+Верни список файлов и функций до начала изменения.
+
+2. Проверить реальные схемы новых PostgreSQL-таблиц
+
+Через information_schema.columns выведи точные колонки и типы для:
+
+public.palata_certificates_import
+public.palata_certificate_import_logs
+
+Сравни их с объектами, которые сейчас отправляются в Supabase.
+
+Ничего не предполагать по названиям полей.
+
+3. Ожидаемые поля таблицы импорта
+
+Проверить наличие и типы минимум этих полей:
+
+certificate_number
+expert_full_name
+specialty_text
+certificate_period
+codes
+directions
+valid_from
+valid_to
+certificate_status
+load_status
+4. Ожидаемые поля таблицы логов
+
+Проверить наличие и типы минимум этих полей:
+
+id
+created_at
+created_by
+file_name
+total_rows
+active_count
+expired_count
+parse_error_count
+linked_experts_count
+unlinked_experts_count
+status
+error_message
+
+Если реальные названия или типы отличаются — сначала сообщить расхождения, затем адаптировать код к фактической схеме. Не менять структуру таблиц без отдельного согласования.
+
+5. Переключить только backend импорта
+
+Frontend не должен обращаться к PostgreSQL напрямую.
+
+Сделать серверный endpoint в artifacts/palata/server.js или использовать существующий endpoint импорта.
+
+Он должен:
+
+принять подготовленные строки сертификатов;
+открыть транзакцию PostgreSQL;
+очистить или заменить staging-таблицу public.palata_certificates_import по текущей логике полного импорта;
+вставить все строки пакетно;
+записать результат в public.palata_certificate_import_logs;
+выполнить COMMIT;
+при ошибке выполнить ROLLBACK;
+вернуть JSON со статистикой импорта.
+6. Полностью убрать Supabase из этого процесса
+
+После изменения в цепочке импорта не должно остаться записей через:
+
+supabase.from("palata_certificates_import")
+supabase.from("palata_certificate_import_logs")
+
+Другие части приложения и другие Supabase-запросы не менять.
+
+7. Логирование
+
+Добавить серверные логи:
+
+[CERT-IMPORT] start
+[CERT-IMPORT] parsed rows
+[CERT-IMPORT] transaction started
+[CERT-IMPORT] staging cleared
+[CERT-IMPORT] rows inserted
+[CERT-IMPORT] log inserted
+[CERT-IMPORT] commit
+[CERT-IMPORT] rollback
+[CERT-IMPORT] error
+
+Пароли, токены и строку БД не логировать.
+
+8. Проверки до завершения
+
+Обязательно выполнить:
+
+node --check artifacts/palata/server.js
+pnpm --filter ./artifacts/palata run typecheck
+pnpm --filter ./artifacts/palata run build
+
+Затем локально или через доступную БД проверить:
+
+SELECT count(*) FROM public.palata_certificates_import;
+
+SELECT *
+FROM public.palata_certificate_import_logs
+ORDER BY created_at DESC
+LIMIT 3;
+9. Итоговый отчёт
+
+Вернуть:
+
+какие файлы изменены;
+где раньше была запись в Supabase;
+какой endpoint теперь пишет в PostgreSQL;
+точные SQL-запросы вставки;
+результат сравнения схем;
+результат build/typecheck;
+hash коммита после push в main.
+
+Не менять регистрацию экспертов, авторизацию, профили и palata_expert_certificates. Сейчас задача только переключить импорт и лог импорта на новую PostgreSQL БД.

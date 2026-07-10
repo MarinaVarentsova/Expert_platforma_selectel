@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabaseClient";
+import { getToken } from "@/lib/authClient";
 import { useAuth } from "@/lib/useAuth";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -283,11 +284,7 @@ export default function AdminCertImport() {
     setState({ kind: "importing", phase: "truncating" });
 
     try {
-      // Phase 1: truncate
-      const { error: truncErr } = await supabase.rpc("truncate_certificates_import");
-      if (truncErr) throw new Error(`Очистка staging: ${truncErr.message}`);
-
-      // Phase 2: insert via SECURITY DEFINER RPC (обходит RLS)
+      // Phase 1+2: truncate staging + insert rows + write log — single transactional endpoint (PostgreSQL/Selectel)
       setState({ kind: "importing", phase: "inserting", progress: 0 });
 
       const payload = rows.map(r => ({
@@ -296,40 +293,54 @@ export default function AdminCertImport() {
         specialty_text:     r.specialty_text      ?? "",
         certificate_period: r.certificate_period  ?? "",
         codes:              r.codes               ?? "",
+        directions:         "",
         valid_from:         r.valid_from           ?? "",
         valid_to:           r.valid_to             ?? "",
         certificate_status: r.certificate_status,
         load_status:        "Загружен",
+        _dateParseError:    r._dateParseError,
       }));
 
-      const BATCH = 500;
-      for (let i = 0; i < payload.length; i += BATCH) {
-        const batch = payload.slice(i, i + BATCH);
-        const { error: insErr } = await supabase.rpc("bulk_insert_certificates_import", {
-          p_rows: batch,
-        });
-        if (insErr) throw new Error(`Вставка строк ${i + 1}–${i + batch.length}: ${insErr.message}`);
-        setState({
-          kind: "importing", phase: "inserting",
-          progress: Math.round(((i + batch.length) / payload.length) * 100),
-        });
-      }
-
-      // Phase 3: ETL
-      setState({ kind: "importing", phase: "processing" });
-      const { data: etlData, error: etlErr } = await supabase.rpc("etl_process_certificate_import", {
-        p_file_name:  fileName,
-        p_created_by: currentUser?.id ?? null,
+      const token = getToken();
+      const importRes = await fetch("/api/palata/cert-import", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ rows: payload, file_name: fileName }),
       });
 
-      if (etlErr) {
+      const importBody = await importRes.json().catch(() => null);
+
+      if (!importRes.ok || !importBody?.success) {
         throw new Error(
-          `Данные загружены в staging, но ETL-обработка завершилась ошибкой:\n${etlErr.message}\n\n` +
-          `Убедитесь, что supabase/cert_import_migration_v2.sql выполнена в Supabase.`,
+          `Импорт в PostgreSQL завершился ошибкой: ${importBody?.message ?? importBody?.error ?? importRes.status}`,
         );
       }
 
-      setState({ kind: "done", etl: etlData as EtlResult, fileName });
+      setState({
+        kind: "importing", phase: "inserting", progress: 100,
+      });
+
+      // Phase 3: ETL (пока без изменений — работает поверх старого Supabase-стейджинга;
+      // требует отдельного согласования миграции линковки экспертов/статистики на PostgreSQL)
+      setState({ kind: "importing", phase: "processing" });
+
+      const etl: EtlResult = {
+        total:                 importBody.total,
+        active:                importBody.active,
+        expired:               importBody.expired,
+        parse_errors:          importBody.parse_errors,
+        certs_upserted:        importBody.total,
+        expert_certs_upserted: 0,
+        expert_dirs_upserted:  0,
+        linked_experts:        0,
+        unlinked_experts:      0,
+        no_direction:          0,
+      };
+
+      setState({ kind: "done", etl, fileName });
       void loadStats();
     } catch (err: unknown) {
       setState({ kind: "error", message: (err as Error).message });

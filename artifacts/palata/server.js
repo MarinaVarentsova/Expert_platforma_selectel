@@ -187,6 +187,53 @@ app.get("/api/debug/palata-users-schema", async (_req, res) => {
   }
 });
 
+app.get("/api/debug/palata-cert-import-schema", async (_req, res) => {
+  if (!pool) {
+    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT table_name, column_name, data_type
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name IN ('palata_certificates_import', 'palata_certificate_import_logs')
+       ORDER BY table_name, ordinal_position`,
+    );
+    const byTable = { palata_certificates_import: [], palata_certificate_import_logs: [] };
+    for (const row of result.rows) {
+      if (byTable[row.table_name]) {
+        byTable[row.table_name].push({ column_name: row.column_name, data_type: row.data_type });
+      }
+    }
+    res.json({ success: true, tables: byTable });
+  } catch (err) {
+    console.error("[CERT-IMPORT] DB ERROR", {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      position: err.position,
+      schema: err.schema,
+      table: err.table,
+      column: err.column,
+      constraint: err.constraint,
+      stack: err.stack,
+    });
+    res.status(500).json({
+      success: false,
+      error: "DB_QUERY_FAILED",
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      table: err.table,
+      column: err.column,
+    });
+  }
+});
+
 app.all(/^\/api\/auth(\/.*)?$/, (req, res) => {
   proxyAuthRequest(req, res).catch((err) => {
     const stack = err instanceof Error ? err.stack : String(err);
@@ -315,6 +362,195 @@ app.get("/api/palata/users/me", (req, res) => {
   handlePalataUserMe(req, res).catch((err) => {
     const stack = err instanceof Error ? err.stack : String(err);
     console.error("[PALATA-USER] ERROR stack =", stack);
+    res.status(500).json({ success: false, error: String(err) });
+  });
+});
+
+async function requireAdmin(req) {
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return { ok: false, status: 401, error: "MISSING_TOKEN" };
+
+  const token = authHeader.slice(7);
+
+  let meBody;
+  let meStatus;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    meStatus = meRes.status;
+    const meText = await meRes.text();
+    try {
+      meBody = JSON.parse(meText);
+    } catch {
+      meBody = null;
+    }
+  } catch (err) {
+    return { ok: false, status: 502, error: "AUTH_SERVICE_UNREACHABLE" };
+  }
+
+  if (meStatus !== 200 || !meBody || meBody.success !== true || !meBody.user?.id) {
+    return { ok: false, status: 401, error: "INVALID_TOKEN" };
+  }
+
+  if (!pool) {
+    return { ok: false, status: 503, error: "DATABASE_NOT_CONFIGURED" };
+  }
+
+  const result = await pool.query(
+    `SELECT id, role, is_active FROM public.palata_users WHERE id = $1 AND is_active = true LIMIT 1`,
+    [meBody.user.id],
+  );
+  const row = result.rows[0];
+  if (!row || row.role !== "admin") {
+    return { ok: false, status: 403, error: "FORBIDDEN" };
+  }
+
+  return { ok: true, userId: row.id };
+}
+
+async function handleCertImport(req, res) {
+  console.log("[CERT-IMPORT] start");
+
+  let admin;
+  try {
+    admin = await requireAdmin(req);
+  } catch (err) {
+    console.error("[CERT-IMPORT] error", { stage: "auth", message: err.message });
+    res.status(500).json({ success: false, error: "AUTH_CHECK_FAILED" });
+    return;
+  }
+
+  if (!admin.ok) {
+    res.status(admin.status).json({ success: false, error: admin.error });
+    return;
+  }
+
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
+  const fileName = typeof req.body?.file_name === "string" ? req.body.file_name : null;
+
+  if (!rows) {
+    res.status(400).json({ success: false, error: "MISSING_ROWS" });
+    return;
+  }
+
+  console.log("[CERT-IMPORT] parsed rows", { count: rows.length, fileName });
+
+  if (!pool) {
+    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    console.log("[CERT-IMPORT] transaction started");
+
+    await client.query("TRUNCATE TABLE public.palata_certificates_import");
+    console.log("[CERT-IMPORT] staging cleared");
+
+    let activeCount = 0;
+    let expiredCount = 0;
+    let parseErrorCount = 0;
+
+    for (const r of rows) {
+      if (r.certificate_status === "Активный") activeCount++;
+      else if (r.certificate_status === "Истёкший") expiredCount++;
+      if (r._dateParseError) parseErrorCount++;
+
+      await client.query(
+        `INSERT INTO public.palata_certificates_import
+           (certificate_number, expert_full_name, specialty_text, certificate_period,
+            codes, directions, valid_from, valid_to, certificate_status, load_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          r.certificate_number ?? null,
+          r.expert_full_name ?? null,
+          r.specialty_text ?? null,
+          r.certificate_period ?? null,
+          r.codes ?? null,
+          r.directions ?? null,
+          r.valid_from ?? null,
+          r.valid_to ?? null,
+          r.certificate_status ?? null,
+          r.load_status ?? "Загружен",
+        ],
+      );
+    }
+    console.log("[CERT-IMPORT] rows inserted", { count: rows.length });
+
+    const logResult = await client.query(
+      `INSERT INTO public.palata_certificate_import_logs
+         (created_by, file_name, total_rows, active_count, expired_count,
+          parse_error_count, linked_experts_count, unlinked_experts_count, status, error_message)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, created_at`,
+      [
+        admin.userId,
+        fileName,
+        rows.length,
+        activeCount,
+        expiredCount,
+        parseErrorCount,
+        0,
+        0,
+        "success",
+        null,
+      ],
+    );
+    console.log("[CERT-IMPORT] log inserted", { id: logResult.rows[0]?.id });
+
+    await client.query("COMMIT");
+    console.log("[CERT-IMPORT] commit");
+
+    res.status(200).json({
+      success: true,
+      total: rows.length,
+      active: activeCount,
+      expired: expiredCount,
+      parse_errors: parseErrorCount,
+      log_id: logResult.rows[0]?.id,
+      created_at: logResult.rows[0]?.created_at,
+    });
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+      console.log("[CERT-IMPORT] rollback");
+    } catch (rollbackErr) {
+      console.error("[CERT-IMPORT] error", { stage: "rollback", message: rollbackErr.message });
+    }
+
+    console.error("[CERT-IMPORT] error", {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      table: err.table,
+      column: err.column,
+      constraint: err.constraint,
+    });
+
+    res.status(500).json({
+      success: false,
+      error: "CERT_IMPORT_FAILED",
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      table: err.table,
+      column: err.column,
+    });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/cert-import", (req, res) => {
+  handleCertImport(req, res).catch((err) => {
+    const stack = err instanceof Error ? err.stack : String(err);
+    console.error("[CERT-IMPORT] error", { stage: "unhandled", stack });
     res.status(500).json({ success: false, error: String(err) });
   });
 });

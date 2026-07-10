@@ -1,0 +1,348 @@
+Нужно выполнить один строго ограниченный шаг: полностью переключить функционал страницы загрузки реестра сертификатов со старого Supabase на новую PostgreSQL Selectel.
+
+Работаем только с двумя таблицами новой БД:
+
+1. public.palata_certificates_import
+2. public.palata_certificate_import_logs
+
+Подключение к новой БД уже настроено и работает через PALATA_DATABASE_URL и pg.Pool в artifacts/palata/server.js.
+
+ЦЕЛЬ
+
+После выполнения я должна открыть страницу:
+
+/admin/cert-import
+
+загрузить Excel и получить такой результат:
+
+- старые данные в public.palata_certificates_import заменены данными нового файла;
+- в public.palata_certificate_import_logs создана запись о загрузке;
+- результат загрузки и виджет статистики на странице читаются из новой PostgreSQL;
+- при загрузке сертификатов страница больше не обращается к Supabase;
+- другие таблицы и функции приложения не изменены.
+
+ГРАНИЦА ЗАДАЧИ
+
+Меняем только функционал страницы /admin/cert-import и только работу с двумя таблицами:
+
+- public.palata_certificates_import
+- public.palata_certificate_import_logs
+
+Не трогать:
+
+- public.palata_expert_certificates;
+- public.palata_certificates;
+- public.palata_certificate_specialty_codes;
+- public.palata_expert_directions;
+- регистрацию экспертов;
+- проверку сертификата при регистрации;
+- линковку сертификатов с экспертами;
+- авторизацию;
+- пользователей;
+- заявки;
+- другие страницы;
+- другие обращения к Supabase вне AdminCertImport.tsx.
+
+Не переносить сейчас старую ETL-функцию etl_process_certificate_import и не вызывать её после нового импорта.
+
+ШАГ 1. ПРОВЕРИТЬ ТЕКУЩИЙ КОД
+
+Найти в artifacts/palata/src/pages/AdminCertImport.tsx все вызовы, связанные с импортом:
+
+- truncate_certificates_import;
+- bulk_insert_certificates_import;
+- etl_process_certificate_import;
+- get_cert_import_stats;
+- любые supabase.rpc(...);
+- любые supabase.from(...).
+
+После изменения в AdminCertImport.tsx не должно остаться ни одного обращения к Supabase, связанного с импортом и статистикой сертификатов.
+
+ШАГ 2. НЕ ГАДАТЬ С ПОЛЯМИ ТАБЛИЦ
+
+До написания INSERT использовать фактическую структуру таблиц новой PostgreSQL.
+
+В server.js уже есть или должен быть debug endpoint:
+
+GET /api/debug/palata-cert-import-schema
+
+Он должен выполнять:
+
+SELECT
+  table_name,
+  column_name,
+  data_type,
+  udt_name,
+  is_nullable,
+  column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name IN (
+    'palata_certificates_import',
+    'palata_certificate_import_logs'
+  )
+ORDER BY table_name, ordinal_position;
+
+Код INSERT и SELECT строить строго по фактическим названиям полей этих таблиц.
+
+Если Replit не может подключиться к приватной БД Selectel, не придумывать схему. Использовать уже известную структуру из текущего проекта/миграций и добавить debug endpoint для проверки после деплоя.
+
+Ожидаемые поля staging-таблицы, которые нужно сверить:
+
+- certificate_number;
+- expert_full_name;
+- specialty_text;
+- certificate_period;
+- codes;
+- directions;
+- valid_from;
+- valid_to;
+- certificate_status;
+- load_status.
+
+Ожидаемые поля таблицы логов, которые нужно сверить:
+
+- id;
+- created_at;
+- created_by;
+- file_name;
+- total_rows;
+- active_count;
+- expired_count;
+- parse_error_count;
+- linked_experts_count;
+- unlinked_experts_count;
+- status;
+- error_message.
+
+ШАГ 3. SERVER API ДЛЯ ЗАГРУЗКИ
+
+В artifacts/palata/server.js создать или окончательно доработать endpoint:
+
+POST /api/palata/cert-import
+
+Request:
+
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "file_name": "registry.xlsx",
+  "rows": [
+    {
+      "certificate_number": "...",
+      "expert_full_name": "...",
+      "specialty_text": "...",
+      "certificate_period": "...",
+      "codes": "...",
+      "directions": "...",
+      "valid_from": "YYYY-MM-DD или null",
+      "valid_to": "YYYY-MM-DD или null",
+      "certificate_status": "...",
+      "load_status": "..."
+    }
+  ]
+}
+
+Endpoint должен:
+
+1. Проверить Bearer token через текущий auth-service.
+2. Получить пользователя из public.palata_users.
+3. Разрешить импорт только role = 'admin' и is_active = true.
+4. Проверить, что file_name передан.
+5. Проверить, что rows является массивом.
+6. Получить client из существующего pg.Pool.
+7. Выполнить BEGIN.
+8. Выполнить:
+
+TRUNCATE TABLE public.palata_certificates_import;
+
+9. Вставить все строки нового файла в public.palata_certificates_import.
+10. Пустые строки преобразовывать в NULL там, где это допустимо.
+11. valid_from и valid_to передавать как date или NULL.
+12. Не передавать текст "NULL".
+13. Посчитать фактическую статистику принятого файла:
+    - total_rows = количество rows;
+    - active_count = количество активных сертификатов;
+    - expired_count = количество неактивных/просроченных сертификатов;
+    - parse_error_count = количество строк с ошибкой даты или обязательных полей;
+    - linked_experts_count = 0;
+    - unlinked_experts_count = total_rows;
+14. Вставить одну запись в public.palata_certificate_import_logs:
+    - created_by = id текущего администратора;
+    - file_name;
+    - total_rows;
+    - active_count;
+    - expired_count;
+    - parse_error_count;
+    - linked_experts_count = 0;
+    - unlinked_experts_count = total_rows;
+    - status = 'ok';
+    - error_message = NULL.
+15. Выполнить COMMIT.
+16. При любой ошибке выполнить ROLLBACK.
+17. Вернуть JSON:
+
+{
+  "success": true,
+  "result": {
+    "total": 0,
+    "active": 0,
+    "expired": 0,
+    "parse_errors": 0,
+    "linked_experts": 0,
+    "unlinked_experts": 0,
+    "file_name": "...",
+    "created_at": "..."
+  }
+}
+
+При ошибке вернуть структурированный JSON:
+
+{
+  "success": false,
+  "error": "CERT_IMPORT_FAILED",
+  "message": "..."
+}
+
+Не возвращать и не логировать пароль, токен или PALATA_DATABASE_URL.
+
+ШАГ 4. SERVER API ДЛЯ СТАТИСТИКИ
+
+Добавить endpoint:
+
+GET /api/palata/cert-import/stats
+
+Он должен:
+
+1. Проверить Bearer token.
+2. Проверить роль admin через public.palata_users.
+3. Получить последнюю запись:
+
+SELECT
+  created_at,
+  file_name,
+  total_rows,
+  active_count,
+  expired_count,
+  parse_error_count,
+  linked_experts_count,
+  unlinked_experts_count,
+  status,
+  error_message
+FROM public.palata_certificate_import_logs
+ORDER BY created_at DESC
+LIMIT 1;
+
+4. Дополнительно проверить реальное количество строк:
+
+SELECT count(*)::integer AS total
+FROM public.palata_certificates_import;
+
+5. Вернуть JSON в формате, который использует текущая страница:
+
+{
+  "success": true,
+  "stats": {
+    "total": 0,
+    "active": 0,
+    "expired": 0,
+    "parse_errors": 0,
+    "linked_experts": 0,
+    "unlinked_experts": 0,
+    "last_upload_at": null,
+    "file_name": null,
+    "status": null
+  }
+}
+
+Если логов ещё нет, вернуть нулевую статистику, а не 500.
+
+ШАГ 5. ПЕРЕКЛЮЧИТЬ FRONTEND
+
+В artifacts/palata/src/pages/AdminCertImport.tsx:
+
+1. Сохранить текущий разбор Excel и текущую валидацию файла.
+2. Удалить вызовы:
+   - supabase.rpc("truncate_certificates_import");
+   - supabase.rpc("bulk_insert_certificates_import");
+   - supabase.rpc("etl_process_certificate_import");
+   - supabase.rpc("get_cert_import_stats").
+3. Не использовать supabaseClient для этого функционала.
+4. Загрузку выполнять одним запросом:
+
+POST /api/palata/cert-import
+
+с Bearer token из getToken().
+
+5. После успешного импорта обновить интерфейс из ответа endpoint.
+6. При открытии страницы и после загрузки получать статистику через:
+
+GET /api/palata/cert-import/stats
+
+с Bearer token.
+
+7. Сохранить текущие сообщения интерфейса и обработку ошибок.
+8. Не менять внешний вид страницы.
+
+ШАГ 6. ЛОГИРОВАНИЕ
+
+Добавить серверные логи:
+
+[CERT-IMPORT] start
+[CERT-IMPORT] admin verified
+[CERT-IMPORT] rows received
+[CERT-IMPORT] transaction started
+[CERT-IMPORT] staging truncated
+[CERT-IMPORT] rows inserted
+[CERT-IMPORT] log inserted
+[CERT-IMPORT] commit
+[CERT-IMPORT] rollback
+[CERT-IMPORT] error
+[CERT-IMPORT-STATS] success
+[CERT-IMPORT-STATS] error
+
+В логах показывать только безопасные данные:
+- user id;
+- file_name;
+- количество строк;
+- статус этапа.
+
+ШАГ 7. ОБЯЗАТЕЛЬНЫЕ ПРОВЕРКИ
+
+Выполнить:
+
+node --check artifacts/palata/server.js
+pnpm --filter ./artifacts/palata run typecheck
+pnpm --filter ./artifacts/palata run build
+
+Также выполнить поиск и подтвердить, что в AdminCertImport.tsx больше нет:
+
+supabase.rpc(
+supabase.from(
+etl_process_certificate_import
+get_cert_import_stats
+truncate_certificates_import
+bulk_insert_certificates_import
+
+ШАГ 8. ИТОГОВЫЙ ОТЧЁТ
+
+В ответе вернуть только:
+
+1. Какие файлы изменены.
+2. Какие старые Supabase-вызовы удалены.
+3. Код или краткое описание POST /api/palata/cert-import.
+4. Код или краткое описание GET /api/palata/cert-import/stats.
+5. Точные поля INSERT в public.palata_certificates_import.
+6. Точные поля INSERT в public.palata_certificate_import_logs.
+7. Результат node --check.
+8. Результат typecheck.
+9. Результат build.
+10. Результат поиска по отсутствию Supabase-вызовов.
+11. Что нужно проверить после деплоя.
+
+Не расширять задачу.
+Не трогать другие таблицы.
+Не переносить регистрацию экспертов.
+Не переносить ETL и линковку.
+Не оставлять процедуру импорта частично на Supabase.

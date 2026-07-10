@@ -195,7 +195,13 @@ app.get("/api/debug/palata-cert-import-schema", async (_req, res) => {
 
   try {
     const result = await pool.query(
-      `SELECT table_name, column_name, data_type
+      `SELECT
+         table_name,
+         column_name,
+         data_type,
+         udt_name,
+         is_nullable,
+         column_default
        FROM information_schema.columns
        WHERE table_schema = 'public'
          AND table_name IN ('palata_certificates_import', 'palata_certificate_import_logs')
@@ -204,7 +210,13 @@ app.get("/api/debug/palata-cert-import-schema", async (_req, res) => {
     const byTable = { palata_certificates_import: [], palata_certificate_import_logs: [] };
     for (const row of result.rows) {
       if (byTable[row.table_name]) {
-        byTable[row.table_name].push({ column_name: row.column_name, data_type: row.data_type });
+        byTable[row.table_name].push({
+          column_name: row.column_name,
+          data_type: row.data_type,
+          udt_name: row.udt_name,
+          is_nullable: row.is_nullable,
+          column_default: row.column_default,
+        });
       }
     }
     res.json({ success: true, tables: byTable });
@@ -411,6 +423,18 @@ async function requireAdmin(req) {
   return { ok: true, userId: row.id };
 }
 
+function toNullable(v) {
+  if (v === undefined || v === null) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  return v;
+}
+
+function toDateOrNull(v) {
+  if (v === undefined || v === null) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  return v;
+}
+
 async function handleCertImport(req, res) {
   console.log("[CERT-IMPORT] start");
 
@@ -419,7 +443,7 @@ async function handleCertImport(req, res) {
     admin = await requireAdmin(req);
   } catch (err) {
     console.error("[CERT-IMPORT] error", { stage: "auth", message: err.message });
-    res.status(500).json({ success: false, error: "AUTH_CHECK_FAILED" });
+    res.status(500).json({ success: false, error: "CERT_IMPORT_FAILED", message: "AUTH_CHECK_FAILED" });
     return;
   }
 
@@ -428,18 +452,25 @@ async function handleCertImport(req, res) {
     return;
   }
 
-  const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
-  const fileName = typeof req.body?.file_name === "string" ? req.body.file_name : null;
+  console.log("[CERT-IMPORT] admin verified", { userId: admin.userId });
 
-  if (!rows) {
-    res.status(400).json({ success: false, error: "MISSING_ROWS" });
+  const fileName = typeof req.body?.file_name === "string" ? req.body.file_name.trim() : "";
+  const rows = req.body?.rows;
+
+  if (!fileName) {
+    res.status(400).json({ success: false, error: "CERT_IMPORT_FAILED", message: "MISSING_FILE_NAME" });
     return;
   }
 
-  console.log("[CERT-IMPORT] parsed rows", { count: rows.length, fileName });
+  if (!Array.isArray(rows)) {
+    res.status(400).json({ success: false, error: "CERT_IMPORT_FAILED", message: "ROWS_MUST_BE_ARRAY" });
+    return;
+  }
+
+  console.log("[CERT-IMPORT] rows received", { userId: admin.userId, fileName, count: rows.length });
 
   if (!pool) {
-    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    res.status(503).json({ success: false, error: "CERT_IMPORT_FAILED", message: "DATABASE_NOT_CONFIGURED" });
     return;
   }
 
@@ -449,16 +480,23 @@ async function handleCertImport(req, res) {
     console.log("[CERT-IMPORT] transaction started");
 
     await client.query("TRUNCATE TABLE public.palata_certificates_import");
-    console.log("[CERT-IMPORT] staging cleared");
+    console.log("[CERT-IMPORT] staging truncated");
 
     let activeCount = 0;
     let expiredCount = 0;
     let parseErrorCount = 0;
 
     for (const r of rows) {
-      if (r.certificate_status === "Активный") activeCount++;
-      else if (r.certificate_status === "Истёкший") expiredCount++;
-      if (r._dateParseError) parseErrorCount++;
+      const certificateNumber = toNullable(r.certificate_number);
+      const expertFullName = toNullable(r.expert_full_name);
+      const validFrom = toDateOrNull(r.valid_from);
+      const validTo = toDateOrNull(r.valid_to);
+      const certificateStatus = toNullable(r.certificate_status);
+
+      if (certificateStatus === "Активный") activeCount++;
+      else if (certificateStatus === "Истёкший") expiredCount++;
+
+      if (r._dateParseError || !certificateNumber || !expertFullName) parseErrorCount++;
 
       await client.query(
         `INSERT INTO public.palata_certificates_import
@@ -466,20 +504,24 @@ async function handleCertImport(req, res) {
             codes, directions, valid_from, valid_to, certificate_status, load_status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
-          r.certificate_number ?? null,
-          r.expert_full_name ?? null,
-          r.specialty_text ?? null,
-          r.certificate_period ?? null,
-          r.codes ?? null,
-          r.directions ?? null,
-          r.valid_from ?? null,
-          r.valid_to ?? null,
-          r.certificate_status ?? null,
-          r.load_status ?? "Загружен",
+          certificateNumber,
+          expertFullName,
+          toNullable(r.specialty_text),
+          toNullable(r.certificate_period),
+          toNullable(r.codes),
+          toNullable(r.directions),
+          validFrom,
+          validTo,
+          certificateStatus,
+          toNullable(r.load_status),
         ],
       );
     }
-    console.log("[CERT-IMPORT] rows inserted", { count: rows.length });
+    console.log("[CERT-IMPORT] rows inserted", { userId: admin.userId, count: rows.length });
+
+    const totalRows = rows.length;
+    const linkedExpertsCount = 0;
+    const unlinkedExpertsCount = totalRows;
 
     const logResult = await client.query(
       `INSERT INTO public.palata_certificate_import_logs
@@ -490,34 +532,38 @@ async function handleCertImport(req, res) {
       [
         admin.userId,
         fileName,
-        rows.length,
+        totalRows,
         activeCount,
         expiredCount,
         parseErrorCount,
-        0,
-        0,
-        "success",
+        linkedExpertsCount,
+        unlinkedExpertsCount,
+        "ok",
         null,
       ],
     );
-    console.log("[CERT-IMPORT] log inserted", { id: logResult.rows[0]?.id });
+    console.log("[CERT-IMPORT] log inserted", { userId: admin.userId, fileName, logId: logResult.rows[0]?.id });
 
     await client.query("COMMIT");
-    console.log("[CERT-IMPORT] commit");
+    console.log("[CERT-IMPORT] commit", { userId: admin.userId, fileName });
 
     res.status(200).json({
       success: true,
-      total: rows.length,
-      active: activeCount,
-      expired: expiredCount,
-      parse_errors: parseErrorCount,
-      log_id: logResult.rows[0]?.id,
-      created_at: logResult.rows[0]?.created_at,
+      result: {
+        total: totalRows,
+        active: activeCount,
+        expired: expiredCount,
+        parse_errors: parseErrorCount,
+        linked_experts: linkedExpertsCount,
+        unlinked_experts: unlinkedExpertsCount,
+        file_name: fileName,
+        created_at: logResult.rows[0]?.created_at ?? null,
+      },
     });
   } catch (err) {
     try {
       await client.query("ROLLBACK");
-      console.log("[CERT-IMPORT] rollback");
+      console.log("[CERT-IMPORT] rollback", { userId: admin.userId, fileName });
     } catch (rollbackErr) {
       console.error("[CERT-IMPORT] error", { stage: "rollback", message: rollbackErr.message });
     }
@@ -536,11 +582,6 @@ async function handleCertImport(req, res) {
       success: false,
       error: "CERT_IMPORT_FAILED",
       message: err.message,
-      code: err.code,
-      detail: err.detail,
-      hint: err.hint,
-      table: err.table,
-      column: err.column,
     });
   } finally {
     client.release();
@@ -551,7 +592,88 @@ app.post("/api/palata/cert-import", (req, res) => {
   handleCertImport(req, res).catch((err) => {
     const stack = err instanceof Error ? err.stack : String(err);
     console.error("[CERT-IMPORT] error", { stage: "unhandled", stack });
-    res.status(500).json({ success: false, error: String(err) });
+    res.status(500).json({ success: false, error: "CERT_IMPORT_FAILED", message: String(err) });
+  });
+});
+
+async function handleCertImportStats(req, res) {
+  let admin;
+  try {
+    admin = await requireAdmin(req);
+  } catch (err) {
+    console.error("[CERT-IMPORT-STATS] error", { message: err.message });
+    res.status(500).json({ success: false, error: "STATS_FAILED", message: "AUTH_CHECK_FAILED" });
+    return;
+  }
+
+  if (!admin.ok) {
+    res.status(admin.status).json({ success: false, error: admin.error });
+    return;
+  }
+
+  if (!pool) {
+    res.status(503).json({ success: false, error: "STATS_FAILED", message: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  try {
+    const logResult = await pool.query(
+      `SELECT
+         created_at,
+         file_name,
+         total_rows,
+         active_count,
+         expired_count,
+         parse_error_count,
+         linked_experts_count,
+         unlinked_experts_count,
+         status,
+         error_message
+       FROM public.palata_certificate_import_logs
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    );
+
+    const countResult = await pool.query(
+      `SELECT count(*)::integer AS total FROM public.palata_certificates_import`,
+    );
+
+    const last = logResult.rows[0] ?? null;
+
+    console.log("[CERT-IMPORT-STATS] success", { userId: admin.userId, hasLog: Boolean(last) });
+
+    res.status(200).json({
+      success: true,
+      stats: {
+        total: countResult.rows[0]?.total ?? 0,
+        active: last?.active_count ?? 0,
+        expired: last?.expired_count ?? 0,
+        parse_errors: last?.parse_error_count ?? 0,
+        linked_experts: last?.linked_experts_count ?? 0,
+        unlinked_experts: last?.unlinked_experts_count ?? 0,
+        last_upload_at: last?.created_at ?? null,
+        file_name: last?.file_name ?? null,
+        status: last?.status ?? null,
+      },
+    });
+  } catch (err) {
+    console.error("[CERT-IMPORT-STATS] error", {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      table: err.table,
+      column: err.column,
+    });
+    res.status(500).json({ success: false, error: "STATS_FAILED", message: err.message });
+  }
+}
+
+app.get("/api/palata/cert-import/stats", (req, res) => {
+  handleCertImportStats(req, res).catch((err) => {
+    const stack = err instanceof Error ? err.stack : String(err);
+    console.error("[CERT-IMPORT-STATS] error", { stage: "unhandled", stack });
+    res.status(500).json({ success: false, error: "STATS_FAILED", message: String(err) });
   });
 });
 

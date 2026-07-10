@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { supabase } from "@/lib/supabaseClient";
 import { getToken } from "@/lib/authClient";
 import { useAuth } from "@/lib/useAuth";
 import AdminLayout from "@/components/AdminLayout";
@@ -169,9 +168,21 @@ export default function AdminCertImport() {
   async function loadStats() {
     setStatsLoading(true);
     try {
-      const { data, error } = await supabase.rpc("get_cert_import_stats");
-      if (error) throw error;
-      setStats(data as RegistryStats);
+      const token = getToken();
+      const res = await fetch("/api/palata/cert-import/stats", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.success) throw new Error(body?.message ?? String(res.status));
+      const s = body.stats;
+      setStats({
+        total:          s.total ?? 0,
+        active:         s.active ?? 0,
+        expired:        s.expired ?? 0,
+        linked:         s.linked_experts ?? 0,
+        unlinked:       s.unlinked_experts ?? 0,
+        last_loaded_at: s.last_upload_at ?? null,
+      });
     } catch {
       setStats({ total: 0, active: 0, expired: 0, linked: 0, unlinked: 0, last_loaded_at: null });
     } finally {
@@ -323,20 +334,19 @@ export default function AdminCertImport() {
         kind: "importing", phase: "inserting", progress: 100,
       });
 
-      // Phase 3: ETL (пока без изменений — работает поверх старого Supabase-стейджинга;
-      // требует отдельного согласования миграции линковки экспертов/статистики на PostgreSQL)
       setState({ kind: "importing", phase: "processing" });
 
+      const result = importBody.result;
       const etl: EtlResult = {
-        total:                 importBody.total,
-        active:                importBody.active,
-        expired:               importBody.expired,
-        parse_errors:          importBody.parse_errors,
-        certs_upserted:        importBody.total,
+        total:                 result.total,
+        active:                result.active,
+        expired:               result.expired,
+        parse_errors:          result.parse_errors,
+        certs_upserted:        result.total,
         expert_certs_upserted: 0,
         expert_dirs_upserted:  0,
-        linked_experts:        0,
-        unlinked_experts:      0,
+        linked_experts:        result.linked_experts,
+        unlinked_experts:      result.unlinked_experts,
         no_direction:          0,
       };
 

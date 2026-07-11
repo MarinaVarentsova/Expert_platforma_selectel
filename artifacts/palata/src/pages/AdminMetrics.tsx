@@ -293,7 +293,13 @@ export default function AdminMetrics() {
             .select("request_id, expert_id, status"),
           supabase.from("palata_expert_ratings").select("score"),
           supabase.from("palata_customer_ratings").select("score"),
-          supabase.from("palata_customer_profiles").select("user_id"),
+          fetch("/api/palata/customer-profile")
+            .then(r => r.json())
+            .then((b: { success: boolean; rows?: { user_id: string }[] }) => ({
+              data:  b.success ? (b.rows ?? []) : [],
+              error: b.success ? null : { message: "customer-profile list failed" },
+            }))
+            .catch((e: unknown) => ({ data: [] as { user_id: string }[], error: { message: String(e) } })),
           supabase.from("palata_status_events")
             .select("entity_id, entity_type, new_status, created_at")
             .eq("entity_type", "request")

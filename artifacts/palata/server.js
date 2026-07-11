@@ -776,13 +776,94 @@ async function handleCustomerRegisterCreateUser(req, res) {
   }
 }
 
+function buildCustomerProfileParams(body) {
+  return {
+    userId:      typeof body?.user_id === "string" ? body.user_id : "",
+    companyName: typeof body?.company_name === "string" && body.company_name.trim() ? body.company_name.trim() : null,
+    contactName: typeof body?.contact_name === "string" && body.contact_name.trim() ? body.contact_name.trim() : null,
+    notes:       typeof body?.notes === "string" && body.notes.trim() ? body.notes.trim() : null,
+    regionId:    typeof body?.region_id === "string" && body.region_id ? body.region_id : null,
+  };
+}
+
+async function runCustomerProfileUpsert(pool, { userId, companyName, contactName, notes, regionId }) {
+  await pool.query(
+    `INSERT INTO public.palata_customer_profiles
+       (user_id, company_name, contact_name, notes, region_id)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (user_id) DO UPDATE SET
+       company_name = EXCLUDED.company_name,
+       contact_name = EXCLUDED.contact_name,
+       notes        = EXCLUDED.notes,
+       region_id    = EXCLUDED.region_id`,
+    [userId, companyName, contactName, notes, regionId],
+  );
+}
+
 async function handleCustomerRegisterUpsertProfile(req, res) {
-  const userId = typeof req.body?.user_id === "string" ? req.body.user_id : "";
-  const companyName = typeof req.body?.company_name === "string" && req.body.company_name.trim() ? req.body.company_name.trim() : null;
-  const inn = typeof req.body?.inn === "string" && req.body.inn.trim() ? req.body.inn.trim() : null;
-  const contactName = typeof req.body?.contact_name === "string" && req.body.contact_name.trim() ? req.body.contact_name.trim() : null;
-  const notes = typeof req.body?.notes === "string" && req.body.notes.trim() ? req.body.notes.trim() : null;
-  const regionId = typeof req.body?.region_id === "string" && req.body.region_id ? req.body.region_id : null;
+  const params = buildCustomerProfileParams(req.body);
+
+  if (!params.userId) {
+    res.status(400).json({ success: false, error: "MISSING_USER_ID" });
+    return;
+  }
+
+  if (!pool) {
+    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  console.log("[CUSTOMER-REGISTER] upsert profile", { userId: params.userId });
+
+  try {
+    await runCustomerProfileUpsert(pool, params);
+    console.log("[CUSTOMER-REGISTER] success", { stage: "upsert_profile", userId: params.userId });
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("[CUSTOMER-REGISTER] error", {
+      stage: "upsert_profile",
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      constraint: err.constraint,
+    });
+    res.status(500).json({ success: false, error: "PROFILE_UPSERT_FAILED", message: err.message });
+  }
+}
+
+async function handleCustomerProfileUpsert(req, res) {
+  const params = buildCustomerProfileParams(req.body);
+
+  if (!params.userId) {
+    res.status(400).json({ success: false, error: "MISSING_USER_ID" });
+    return;
+  }
+
+  if (!pool) {
+    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  console.log("[CUSTOMER-PROFILE] upsert", { userId: params.userId });
+
+  try {
+    await runCustomerProfileUpsert(pool, params);
+    console.log("[CUSTOMER-PROFILE] success", { stage: "upsert", userId: params.userId });
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("[CUSTOMER-PROFILE] error", {
+      stage: "upsert",
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      constraint: err.constraint,
+    });
+    res.status(500).json({ success: false, error: "PROFILE_UPSERT_FAILED", message: err.message });
+  }
+}
+
+async function handleCustomerProfileGet(req, res) {
+  const userId = typeof req.params?.userId === "string" ? req.params.userId : "";
 
   if (!userId) {
     res.status(400).json({ success: false, error: "MISSING_USER_ID" });
@@ -794,33 +875,63 @@ async function handleCustomerRegisterUpsertProfile(req, res) {
     return;
   }
 
-  console.log("[CUSTOMER-REGISTER] upsert profile", { userId });
+  console.log("[CUSTOMER-PROFILE] get", { userId });
 
   try {
-    await pool.query(
-      `INSERT INTO public.palata_customer_profiles
-         (user_id, company_name, inn, contact_name, notes, region_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (user_id) DO UPDATE SET
-         company_name = EXCLUDED.company_name,
-         inn = EXCLUDED.inn,
-         contact_name = EXCLUDED.contact_name,
-         notes = EXCLUDED.notes,
-         region_id = EXCLUDED.region_id`,
-      [userId, companyName, inn, contactName, notes, regionId],
+    const result = await pool.query(
+      `SELECT cp.user_id, cp.company_name, cp.contact_name, cp.notes,
+              cp.region_id, cp.created_at, cp.updated_at,
+              r.name AS region_name
+       FROM public.palata_customer_profiles cp
+       LEFT JOIN public.palata_regions r ON r.id = cp.region_id
+       WHERE cp.user_id = $1`,
+      [userId],
     );
 
-    console.log("[CUSTOMER-REGISTER] success", { stage: "upsert_profile", userId });
-    res.status(200).json({ success: true });
+    if (result.rows.length === 0) {
+      console.log("[CUSTOMER-PROFILE] success", { stage: "get", userId, found: false });
+      res.status(200).json({ success: true, profile: null });
+      return;
+    }
+
+    const row = result.rows[0];
+    const profile = {
+      user_id:         row.user_id,
+      company_name:    row.company_name ?? null,
+      contact_name:    row.contact_name ?? null,
+      notes:           row.notes ?? null,
+      region_id:       row.region_id ?? null,
+      created_at:      row.created_at ?? null,
+      updated_at:      row.updated_at ?? null,
+      palata_regions:  row.region_name ? { name: row.region_name } : null,
+    };
+
+    console.log("[CUSTOMER-PROFILE] success", { stage: "get", userId, found: true });
+    res.status(200).json({ success: true, profile });
   } catch (err) {
-    console.error("[CUSTOMER-REGISTER] error", {
-      stage: "upsert_profile",
-      message: err.message,
-      code: err.code,
-      detail: err.detail,
-      constraint: err.constraint,
-    });
-    res.status(500).json({ success: false, error: "PROFILE_UPSERT_FAILED", message: err.message });
+    console.error("[CUSTOMER-PROFILE] error", { stage: "get", message: err.message });
+    res.status(500).json({ success: false, error: "GET_PROFILE_FAILED", message: err.message });
+  }
+}
+
+async function handleCustomerProfileList(req, res) {
+  if (!pool) {
+    res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+    return;
+  }
+
+  console.log("[CUSTOMER-PROFILE] list");
+
+  try {
+    const result = await pool.query(
+      `SELECT user_id FROM public.palata_customer_profiles`,
+    );
+
+    console.log("[CUSTOMER-PROFILE] success", { stage: "list", count: result.rows.length });
+    res.status(200).json({ success: true, rows: result.rows });
+  } catch (err) {
+    console.error("[CUSTOMER-PROFILE] error", { stage: "list", message: err.message });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: err.message });
   }
 }
 
@@ -876,6 +987,27 @@ app.get("/api/palata/customer-register/role/:id", (req, res) => {
   handleCustomerRegisterGetRole(req, res).catch((err) => {
     console.error("[CUSTOMER-REGISTER] error", { stage: "unhandled_get_role", stack: err.stack });
     res.status(500).json({ success: false, error: "GET_ROLE_FAILED", message: String(err) });
+  });
+});
+
+app.get("/api/palata/customer-profile", (req, res) => {
+  handleCustomerProfileList(req, res).catch((err) => {
+    console.error("[CUSTOMER-PROFILE] error", { stage: "unhandled_list", stack: err.stack });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: String(err) });
+  });
+});
+
+app.get("/api/palata/customer-profile/:userId", (req, res) => {
+  handleCustomerProfileGet(req, res).catch((err) => {
+    console.error("[CUSTOMER-PROFILE] error", { stage: "unhandled_get", stack: err.stack });
+    res.status(500).json({ success: false, error: "GET_PROFILE_FAILED", message: String(err) });
+  });
+});
+
+app.post("/api/palata/customer-profile", (req, res) => {
+  handleCustomerProfileUpsert(req, res).catch((err) => {
+    console.error("[CUSTOMER-PROFILE] error", { stage: "unhandled_upsert", stack: err.stack });
+    res.status(500).json({ success: false, error: "PROFILE_UPSERT_FAILED", message: String(err) });
   });
 });
 

@@ -6,7 +6,7 @@ import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import {
   PlusCircle, FileText, User, MapPin, Building2,
-  Phone, Mail, ClipboardList, Hash, Star,
+  Phone, Mail, ClipboardList, Star,
   Zap, Calendar, CheckCircle2, XCircle, ChevronDown, ChevronUp, GraduationCap,
   Pencil, X,
 } from "lucide-react";
@@ -41,7 +41,6 @@ type Request = {
 
 type CustomerProfile = {
   company_name: string | null;
-  inn: string | null;
   contact_name: string | null;
   notes: string | null;
   region_id: string | null;
@@ -227,20 +226,13 @@ export default function CustomerDashboard() {
         setRequestState({ kind: "ok", rows: (data as Request[]) ?? [] });
       });
 
-    supabase
-      .from("palata_customer_profiles")
-      .select("company_name, inn, contact_name, notes, region_id, palata_regions(name)")
-      .eq("user_id", userId)
-      .maybeSingle()
-      .then(async ({ data, error }) => {
-        if (error) { setProfileState({ kind: "error", message: error.message }); return; }
-        if (data !== null) {
-          setProfileState({ kind: "ok", profile: data as unknown as CustomerProfile });
-          return;
-        }
-        // Profile not found — registration must create it; nothing to restore here
-        setProfileState({ kind: "ok", profile: null });
-      });
+    fetch(`/api/palata/customer-profile/${encodeURIComponent(userId)}`)
+      .then(r => r.json())
+      .then((b: { success: boolean; profile?: CustomerProfile | null; error?: string }) => {
+        if (!b.success) { setProfileState({ kind: "error", message: b.error ?? "failed" }); return; }
+        setProfileState({ kind: "ok", profile: b.profile ?? null });
+      })
+      .catch((e: unknown) => setProfileState({ kind: "error", message: String(e) }));
 
 
     supabase
@@ -296,12 +288,12 @@ export default function CustomerDashboard() {
     const uid = guard.user.id;
     supabase.from("palata_users").select("phone").eq("id", uid).single()
       .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
-    supabase.from("palata_customer_profiles")
-      .select("company_name, inn, contact_name, notes, region_id, palata_regions(name)")
-      .eq("user_id", uid).maybeSingle()
-      .then(({ data, error }) => {
-        if (!error) setProfileState({ kind: "ok", profile: data as CustomerProfile | null });
-      });
+    fetch(`/api/palata/customer-profile/${encodeURIComponent(uid)}`)
+      .then(r => r.json())
+      .then((b: { success: boolean; profile?: CustomerProfile | null }) => {
+        if (b.success) setProfileState({ kind: "ok", profile: b.profile ?? null });
+      })
+      .catch(() => { /* non-critical reload, ignore errors */ });
   }
 
   useEffect(() => {
@@ -625,7 +617,6 @@ function ProfileView({
   const [fullName, setFullName]         = useState(user.full_name ?? "");
   const [phone, setPhone]               = useState(user.phone ?? "");
   const [companyName, setCompanyName]   = useState(profile?.company_name ?? "");
-  const [inn, setInn]                   = useState(profile?.inn ?? "");
   const [contactName, setContactName]   = useState(profile?.contact_name ?? "");
   const [regionIds, setRegionIds]       = useState<string[]>(initialRegionIds);
   const [notes, setNotes]               = useState(profile?.notes ?? "");
@@ -638,7 +629,6 @@ function ProfileView({
     setFullName(user.full_name ?? "");
     setPhone(user.phone ?? "");
     setCompanyName(profile?.company_name ?? "");
-    setInn(profile?.inn ?? "");
     setContactName(profile?.contact_name ?? "");
     setNotes(profile?.notes ?? "");
     setSavedOk(false);
@@ -650,8 +640,8 @@ function ProfileView({
     setSaving(true);
     setSaveErr(null);
     const cpPayload = {
+      user_id:      userId,
       company_name: companyName.trim() || null,
-      inn:          inn.trim() || null,
       contact_name: contactName.trim() || null,
       notes:        notes.trim() || null,
       region_id:    regionIds[0] ?? null,
@@ -663,12 +653,16 @@ function ProfileView({
       supabase.from("palata_users")
         .update({ full_name: fullName.trim() || null, phone: phone.trim() || null })
         .eq("id", userId),
-      supabase.from("palata_customer_profiles")
-        .update(cpPayload)
-        .eq("user_id", userId)
-        .select(),
+      fetch("/api/palata/customer-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cpPayload),
+      }).then(r => r.json()).then((b: { success: boolean; error?: string }) => ({
+        data: b.success ? cpPayload : null,
+        error: b.success ? null : { message: b.error ?? "upsert failed" },
+      })).catch((e: unknown) => ({ data: null, error: { message: String(e) } })),
     ]);
-    console.log("[profile-save] palata_customer_profiles response → data:", (r2 as { data: unknown }).data, "error:", r2.error);
+    console.log("[profile-save] palata_customer_profiles response → data:", r2.data, "error:", r2.error);
     if (r1.error || r2.error) {
       setSaving(false);
       setSaveErr((r1.error ?? r2.error)!.message);
@@ -715,10 +709,6 @@ function ProfileView({
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">Компания</label>
             <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className={ic} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">ИНН</label>
-            <input type="text" value={inn} onChange={e => setInn(e.target.value)} className={`${ic} font-mono`} />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">Контактное лицо</label>
@@ -806,7 +796,6 @@ function ProfileView({
               </div>
               <div className="space-y-3">
                 <InfoRow icon={<Building2 className="w-3.5 h-3.5" />} label="Компания" value={profile.company_name} />
-                <InfoRow icon={<Hash className="w-3.5 h-3.5" />} label="ИНН" value={profile.inn} mono />
                 <InfoRow icon={<User className="w-3.5 h-3.5" />} label="Контактное лицо" value={profile.contact_name} />
                 <InfoRow
                   icon={<MapPin className="w-3.5 h-3.5" />}

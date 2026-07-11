@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { randomUUID } from "crypto";
 import pg from "pg";
 const { Pool } = pg;
 
@@ -1648,6 +1649,150 @@ app.post("/api/palata/expert-certificate", (req, res) => {
   handleExpertCertificateReplace(req, res).catch(err => {
     console.error("[EXPERT-CERT] error", { stage: "unhandled_replace", stack: err.stack });
     res.status(500).json({ success: false, error: "REPLACE_FAILED", message: String(err) });
+  });
+});
+
+// ── POST /api/palata/requests — create a new request (palata_requests + status event) ──
+
+async function handleCreateRequest(req, res) {
+  // 1. Optional Bearer auth: resolve customer_id from token if present
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  let customerId = null;
+  if (hasToken) {
+    const token = authHeader.slice(7);
+    try {
+      const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      const meBody = await meRes.json().catch(() => null);
+      if (meRes.status === 200 && meBody?.success === true && meBody?.user?.id) {
+        customerId = meBody.user.id;
+      }
+    } catch (authErr) {
+      console.warn("[REQUEST-CREATE] auth/me failed, treating as anonymous", { message: authErr.message });
+    }
+  }
+
+  // 2. Validate body
+  const body = req.body ?? {};
+  const {
+    expertise_direction_id,
+    region_id,
+    description,
+    customer_name,
+    customer_phone,
+    customer_email,
+    urgency,
+    requires_travel,
+    materials_available,
+  } = body;
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  if (!expertise_direction_id || !UUID_RE.test(String(expertise_direction_id))) {
+    return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "expertise_direction_id обязателен и должен быть UUID" });
+  }
+  if (!region_id || !UUID_RE.test(String(region_id))) {
+    return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "region_id обязателен и должен быть UUID" });
+  }
+  if (!description || !String(description).trim()) {
+    return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "description обязателен" });
+  }
+  if (!customer_name || !String(customer_name).trim()) {
+    return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "customer_name обязателен" });
+  }
+  const phoneVal = customer_phone ? String(customer_phone).trim() : "";
+  const emailVal = customer_email ? String(customer_email).trim() : "";
+  if (!phoneVal && !emailVal) {
+    return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "Необходимо указать хотя бы один из: customer_phone, customer_email" });
+  }
+  const VALID_URGENCY = ["normal", "urgent", "very_urgent"];
+  const resolvedUrgency = urgency ?? "normal";
+  if (!VALID_URGENCY.includes(String(resolvedUrgency))) {
+    return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "urgency должен быть одним из: normal, urgent, very_urgent" });
+  }
+  const resolvedRequiresTravel = Boolean(requires_travel);
+
+  if (!pool) {
+    return res.status(503).json({ success: false, error: "DB_UNAVAILABLE", message: "База данных недоступна" });
+  }
+
+  // 3. Transaction: INSERT palata_requests + INSERT palata_status_events
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const newId = randomUUID();
+    const newTitle = "Заказ " + newId.slice(0, 8).toUpperCase();
+
+    const insertRes = await client.query(
+      `INSERT INTO public.palata_requests (
+         id,
+         customer_id,
+         status,
+         title,
+         description,
+         expertise_direction_id,
+         region_id,
+         urgency,
+         requires_travel,
+         materials_available,
+         customer_name,
+         customer_phone,
+         customer_email
+       ) VALUES ($1, $2, 'new', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id, region_id, title`,
+      [
+        newId,
+        customerId,
+        newTitle,
+        String(description).trim() || null,
+        String(expertise_direction_id),
+        String(region_id),
+        String(resolvedUrgency),
+        resolvedRequiresTravel,
+        materials_available ? String(materials_available).trim() || null : null,
+        String(customer_name).trim(),
+        phoneVal || null,
+        emailVal || null,
+      ]
+    );
+
+    const row = insertRes.rows[0];
+
+    await client.query(
+      `INSERT INTO public.palata_status_events
+         (entity_type, entity_id, old_status, new_status, actor_id, note)
+       VALUES ('request', $1, NULL, 'new', $2, NULL)`,
+      [row.id, customerId]
+    );
+
+    await client.query("COMMIT");
+
+    console.log("[REQUEST-CREATE] success", { requestId: row.id, customerId });
+    return res.status(201).json({
+      success: true,
+      request: {
+        id: row.id,
+        region_id: row.region_id,
+        title: row.title,
+      },
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("[REQUEST-CREATE] error", { message: err.message, code: err.code });
+    return res.status(500).json({ success: false, error: "REQUEST_CREATE_FAILED", message: err.message });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/requests", (req, res) => {
+  handleCreateRequest(req, res).catch(err => {
+    console.error("[REQUEST-CREATE] unhandled error", { stack: err.stack });
+    res.status(500).json({ success: false, error: "REQUEST_CREATE_FAILED", message: String(err) });
   });
 });
 

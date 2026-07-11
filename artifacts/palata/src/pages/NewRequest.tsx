@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/useAuth";
+import { getToken } from "@/lib/authClient";
 import { notify } from "@/lib/notifyApi";
 import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check, ClipboardList, Zap, Star, User, Sparkles, AlertCircle } from "lucide-react";
 
@@ -258,35 +259,33 @@ export default function NewRequest() {
       const selectedRegionId = form.region_id || null;
       console.log("[new-request] selectedRegionId:", selectedRegionId);
 
-      const requestId = crypto.randomUUID();
-      const autoTitle = "Заказ " + requestId.slice(0, 8).toUpperCase();
+      const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      const token = getToken();
+      if (token) reqHeaders["Authorization"] = `Bearer ${token}`;
 
-      const insertPayload = {
-        id: requestId,
-        status: "new",
-        title: autoTitle,
-        description: form.description.trim() || null,
-        expertise_direction_id: resolvedDirectionId,
-        region_id: selectedRegionId,
-        urgency: form.urgency,
-        requires_travel: form.requires_travel,
-        materials_available: form.materials_available.trim() || null,
-        customer_name: form.customer_name.trim(),
-        customer_phone: form.customer_phone.trim() || null,
-        customer_email: form.customer_email.trim() || null,
-        customer_id: currentUserId,
-      };
-      console.log("[new-request] payload:", insertPayload);
+      const reqRes = await fetch("/api/palata/requests", {
+        method: "POST",
+        headers: reqHeaders,
+        body: JSON.stringify({
+          expertise_direction_id: resolvedDirectionId,
+          region_id: selectedRegionId,
+          description: form.description.trim() || null,
+          customer_name: form.customer_name.trim(),
+          customer_phone: form.customer_phone.trim() || null,
+          customer_email: form.customer_email.trim() || null,
+          urgency: form.urgency,
+          requires_travel: form.requires_travel,
+          materials_available: form.materials_available.trim() || null,
+        }),
+      });
+      const reqBody = await reqRes.json().catch(() => null);
+      console.log("[new-request] created request:", reqBody);
+      if (!reqRes.ok || !reqBody?.success) {
+        throw new Error(reqBody?.message ?? "Ошибка создания заявки");
+      }
 
-      const { data: reqData, error: reqError } = await supabase
-        .from("palata_requests")
-        .insert(insertPayload)
-        .select("id, region_id, title")
-        .single();
-
-      console.log("[new-request] created request:", reqData, reqError ? "error:" : "", reqError ?? "");
-
-      if (reqError) throw new Error(reqError.message);
+      const requestId = reqBody.request.id as string;
+      const autoTitle = reqBody.request.title as string;
 
       // Upload files (if any)
       if (files.length > 0) {
@@ -318,16 +317,6 @@ export default function NewRequest() {
         });
         await Promise.all(uploads);
       }
-
-      // Status event: new request created
-      await supabase.from("palata_status_events").insert({
-        entity_type: "request",
-        entity_id: requestId,
-        old_status: null,
-        new_status: "new",
-        actor_id: currentUserId,
-        note: "Заявка создана заказчиком через форму",
-      });
 
       // Auto-matching
       setState({ kind: "submitting", step: "Подбор экспертов…" });

@@ -1,0 +1,134 @@
+Задача: перенести только создание новой заявки с Supabase на PostgreSQL через PALATA_DATABASE_URL.
+
+Не переносить сейчас:
+- matching;
+- request_matches;
+- action_items;
+- request_contacts;
+- request_files;
+- Storage;
+- email;
+- чтение заявок;
+- действия из RequestDetail;
+- другие таблицы.
+
+Работаем только с:
+- public.palata_requests
+- public.palata_status_events
+
+Цель:
+заменить в NewRequest.tsx два текущих Supabase-вызова:
+1. INSERT в palata_requests;
+2. INSERT начального события в palata_status_events;
+
+на один backend endpoint:
+
+POST /api/palata/requests
+
+Серверная логика:
+
+1. Bearer token опционален:
+   - если токен есть, проверить его через /api/auth/me;
+   - customer_id брать только из токена;
+   - не принимать customer_id из body;
+   - если токена нет, customer_id = NULL, сохраняя текущую возможность анонимной заявки.
+
+2. Валидировать body:
+- expertise_direction_id — обязательный UUID;
+- region_id — обязательный UUID;
+- description — непустой текст;
+- customer_name — непустой текст;
+- хотя бы одно из customer_phone / customer_email;
+- urgency — только normal / urgent / very_urgent;
+- requires_travel — boolean.
+
+3. На сервере сгенерировать:
+- request_id = gen_random_uuid() или получить через INSERT RETURNING;
+- title = 'Заказ ' + первые 8 символов UUID в верхнем регистре;
+- status = 'new';
+- matching_round = 1.
+
+4. Выполнить одну транзакцию:
+
+BEGIN;
+
+INSERT INTO public.palata_requests (
+  customer_id,
+  status,
+  title,
+  description,
+  expertise_direction_id,
+  region_id,
+  urgency,
+  requires_travel,
+  materials_available,
+  customer_name,
+  customer_phone,
+  customer_email
+)
+VALUES (...)
+RETURNING id, region_id, title;
+
+INSERT INTO public.palata_status_events (
+  entity_type,
+  entity_id,
+  old_status,
+  new_status,
+  actor_id,
+  note
+)
+VALUES (
+  'request',
+  request_id,
+  NULL,
+  'new',
+  customer_id,
+  NULL
+);
+
+COMMIT;
+
+5. При любой ошибке:
+ROLLBACK;
+вернуть:
+{ success: false, error: "REQUEST_CREATE_FAILED", message }
+
+6. При успехе вернуть:
+{
+  success: true,
+  request: {
+    id,
+    region_id,
+    title
+  }
+}
+
+7. В NewRequest.tsx:
+- заменить только INSERT в palata_requests и INSERT в palata_status_events на fetch POST /api/palata/requests;
+- передавать Authorization: Bearer ${getToken()} только если токен есть;
+- после успешного ответа продолжить старую цепочку без изменений:
+  загрузка файлов → runMatching() → email → success screen.
+
+8. Не менять:
+- AI-определение направления;
+- upload файлов;
+- запись palata_request_files;
+- matching;
+- email;
+- UI;
+- тексты ошибок;
+- маршруты;
+- другие файлы, кроме artifacts/palata/server.js и NewRequest.tsx.
+
+9. Проверки:
+node --check artifacts/palata/server.js
+pnpm --filter ./artifacts/palata run typecheck
+pnpm --filter ./artifacts/palata run build
+
+10. В отчёте показать:
+- старые два Supabase-вызова;
+- новый endpoint;
+- полный SQL транзакции;
+- изменённые файлы;
+- подтверждение, что остальная цепочка NewRequest.tsx не менялась;
+- результаты трёх проверок.

@@ -1,0 +1,117 @@
+Начинаю с параллельного аудита всех обращений к palata_expert_profiles.
+
+
+3 actions
+Ищу все обращения к palata_expert_profiles в исходниках фронтенда и server.js параллельно.
+
+
+4 actions
+Читаю все затронутые файлы параллельно — по контексту вокруг каждого обращения.
+
+
+11 actions
+Дочитываю последний файл и паттерн существующего endpoint параллельно.
+
+
+3 actions
+Нужно дочитать паттерн существующих customer-profile endpoints и matching.ts контекст.
+
+
+3 actions
+Читаю импорты Register.tsx, ExpertDashboard.tsx, matching.ts и tail server.js параллельно.
+
+
+5 actions
+Читаю Register.tsx вокруг customer-profile уpsert и ExpertDashboard.tsx вокруг всех трёх вызовов.
+
+
+5 actions
+Теперь у меня полная картина. Начинаю реализацию: сначала server.js, потом все фронтенд-файлы параллельно.
+
+Проверю matching.ts на другие supabase-вызовы:
+
+
+2 actions
+matching.ts — много других supabase-вызовов, импорт остаётся. Теперь реализую всё: server.js + все 7 фронтенд-файлов.
+
+server.js — добавляю три handler-а и три маршрута:
+
+
+3 actions
+Server.js готов. Теперь все 7 фронтенд-файлов параллельно:
+
+
+12 actions
+Все правки внесены. Запускаю три проверки:
+
+
+6 actions
+Все три проверки прошли. Финальная верификация — убеждаюсь, что supabase.from("palata_expert_profiles") в исходниках больше не осталось:
+
+
+2 actions
+Всё готово. Отчёт:
+
+1. Все найденные обращения (11 вызовов в 7 файлах)
+#	Файл	Операция	Детали
+1	src/lib/matching.ts:133	SELECT	user_id, business_trip_ready, avg_customer_rating, completed_orders_count, decline_rate, palata_registry_verified, centrsudexpert_verified WHERE accepts_requests=true AND user_id IN(...)
+2	src/pages/CustomerDashboard.tsx:1097	SELECT	10 полей WHERE user_id IN(expertIds)
+3	src/pages/AdminExperts.tsx:54	SELECT	12 полей WHERE user_id IN(ids)
+4	src/pages/AdminExperts.tsx:323	UPSERT	10 полей, onConflict: user_id
+5	src/pages/Register.tsx:265	UPSERT	8 полей, onConflict: user_id
+6	src/pages/ExpertDashboard.tsx:281	SELECT	все поля WHERE user_id=userId .maybeSingle()
+7	src/pages/ExpertDashboard.tsx:369	SELECT	те же поля (reloadProfile)
+8	src/pages/ExpertDashboard.tsx:1394	UPSERT	10 полей, onConflict: user_id
+9	src/pages/RequestDetail.tsx:335	SELECT	avg_customer_rating WHERE user_id=userId .maybeSingle()
+10	src/pages/RequestDetail.tsx:575	SELECT	10 полей WHERE user_id IN(expertIds)
+11	src/pages/AdminMetrics.tsx:290	SELECT	user_id, palata_registry_verified, centrsudexpert_verified (все строки)
+2. Добавленные endpoints
+GET  /api/palata/expert-profile               → список (опц. ?user_ids=id1,id2&accepts_requests=true)
+GET  /api/palata/expert-profile/:userId       → один профиль по user_id
+POST /api/palata/expert-profile               → upsert (body: user_id + поля профиля)
+
+3. Полный SQL SELECT
+SELECT id, user_id, status, experience_years, education, certifications,
+       accepts_requests, business_trip_ready,
+       palata_registry_verified, palata_registry_number,
+       centrsudexpert_verified, centrsudexpert_registry_number,
+       avg_customer_rating, completed_orders_count, decline_rate,
+       bio, created_at, updated_at
+FROM public.palata_expert_profiles
+[WHERE user_id = $1]                        -- GET /:userId
+[WHERE user_id = ANY($1) [AND accepts_requests = true]]  -- GET list
+
+4. Полный SQL INSERT/UPSERT
+INSERT INTO public.palata_expert_profiles (
+  user_id, bio, experience_years, education,
+  business_trip_ready, accepts_requests,
+  palata_registry_verified, palata_registry_number,
+  centrsudexpert_verified, centrsudexpert_registry_number,
+  completed_orders_count
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+ON CONFLICT (user_id) DO UPDATE SET
+  bio                             = EXCLUDED.bio,
+  experience_years                = EXCLUDED.experience_years,
+  education                       = EXCLUDED.education,
+  business_trip_ready             = EXCLUDED.business_trip_ready,
+  accepts_requests                = EXCLUDED.accepts_requests,
+  palata_registry_verified        = EXCLUDED.palata_registry_verified,
+  palata_registry_number          = EXCLUDED.palata_registry_number,
+  centrsudexpert_verified         = EXCLUDED.centrsudexpert_verified,
+  centrsudexpert_registry_number  = EXCLUDED.centrsudexpert_registry_number,
+  completed_orders_count          = EXCLUDED.completed_orders_count,
+  updated_at                      = now()
+
+5. SQL UPDATE
+Отдельного UPDATE нет — все изменения профиля идут через INSERT … ON CONFLICT DO UPDATE (upsert).
+
+6. Результаты трёх проверок
+node --check artifacts/palata/server.js   ✅ OK
+pnpm --filter ./artifacts/palata run typecheck   ✅ OK (0 ошибок)
+pnpm --filter ./artifacts/palata run build   ✅ OK (1 247 kB, 12 сек)
+
+7. Подтверждение отсутствия supabase.from("palata_expert_profiles")
+grep -r 'supabase.from("palata_expert_profiles")' artifacts/palata/src
+→ No matches found
+
+Все 11 вызовов заменены на fetch("/api/palata/expert-profile/...") через pg.Pool → PALATA_DATABASE_URL.

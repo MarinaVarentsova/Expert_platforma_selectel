@@ -1,0 +1,172 @@
+Ничего не менять в коде.
+Не делать commit, push, build.
+
+Нужно провести технический аудит старой логики заполнения:
+
+public.palata_certificates_import
+→ public.palata_certificates
+→ public.palata_certificate_import_logs
+
+Контекст:
+
+Мы уже переключили загрузку Excel и лог импорта на новую PostgreSQL Selectel:
+
+- public.palata_certificates_import
+- public.palata_certificate_import_logs
+
+Но таблица:
+
+- public.palata_certificates
+
+в новой БД после импорта не заполняется.
+
+Предположение: в старой Supabase-архитектуре после загрузки staging-таблицы вызывалась ETL/RPC/SQL-функция, которая переносила данные из palata_certificates_import в palata_certificates. Эту финальную часть мы не перенесли.
+
+ЦЕЛЬ АУДИТА
+
+Точно определить:
+1. где и как раньше заполнялась palata_certificates;
+2. какая функция/триггер/RPC это делала;
+3. какие поля переносились;
+4. какие правила очистки, вставки, обновления и дедупликации применялись;
+5. какие связанные таблицы затрагивались;
+6. что именно нужно перенести в новую PostgreSQL.
+
+ШАГ 1. Найти все обращения
+
+Найти по всему репозиторию:
+
+palata_certificates
+palata_certificates_import
+etl_process_certificate_import
+bulk_insert_certificates_import
+truncate_certificates_import
+get_cert_import_stats
+
+Также найти:
+
+supabase.rpc(...)
+CREATE FUNCTION
+CREATE OR REPLACE FUNCTION
+TRIGGER
+INSERT INTO public.palata_certificates
+UPDATE public.palata_certificates
+DELETE FROM public.palata_certificates
+TRUNCATE public.palata_certificates
+
+ШАГ 2. Найти точную старую ETL-функцию
+
+Найти полный SQL определения функции, которая после импорта обрабатывала palata_certificates_import.
+
+Вернуть полный SQL без сокращений.
+
+Особенно показать:
+- что читает из palata_certificates_import;
+- что пишет в palata_certificates;
+- очищается ли palata_certificates перед загрузкой;
+- используется ли INSERT, UPSERT или MERGE;
+- по какому ключу определяется конфликт;
+- как считается certificate_status;
+- как обрабатываются valid_from и valid_to;
+- что происходит с просроченными сертификатами;
+- как обрабатываются ошибки парсинга;
+- есть ли дедупликация;
+- есть ли нормализация certificate_number;
+- есть ли trim/lower/regexp_replace;
+- какие значения load_status исключаются;
+- какие строки не попадают в рабочую таблицу.
+
+ШАГ 3. Схемы таблиц
+
+Показать фактические схемы старой Supabase-таблицы palata_certificates и новой PostgreSQL-таблицы public.palata_certificates.
+
+Для каждой таблицы вернуть:
+
+column_name
+data_type
+is_nullable
+column_default
+constraint
+unique index
+
+Если Replit не может подключиться к новой БД, найти её схему в migrations/schema SQL-файлах проекта.
+
+Сделать таблицу сопоставления:
+
+Источник:
+palata_certificates_import.<поле>
+
+Назначение:
+palata_certificates.<поле>
+
+Преобразование:
+trim / cast / status rule / date rule / null rule
+
+ШАГ 4. Связанные таблицы
+
+Проверить, затрагивала ли старая ETL-функция дополнительно:
+
+palata_certificate_specialty_codes
+palata_specialty_codes
+palata_expert_certificates
+palata_expert_directions
+palata_users
+palata_expert_profiles
+
+Для каждой связанной таблицы указать:
+- читается или изменяется;
+- зачем;
+- какие поля используются.
+
+ШАГ 5. Точка вызова
+
+Показать, где именно в приложении раньше запускалась обработка staging → palata_certificates:
+
+- файл;
+- функция;
+- строка;
+- RPC-вызов;
+- порядок вызовов.
+
+Построить цепочку:
+
+AdminCertImport.tsx
+→ ...
+→ palata_certificates_import
+→ ...
+→ palata_certificates
+→ ...
+→ palata_certificate_import_logs
+
+ШАГ 6. Сравнить с текущей новой реализацией
+
+Проверить текущий:
+
+POST /api/palata/cert-import
+
+и указать:
+
+- какие шаги старой ETL уже перенесены;
+- какие шаги отсутствуют;
+- почему сейчас public.palata_certificates не заполняется;
+- достаточно ли добавить обработку в существующую транзакцию или нужен отдельный endpoint.
+
+ШАГ 7. Итоговый отчёт
+
+Вернуть:
+
+1. все найденные файлы;
+2. полный SQL старой ETL-функции;
+3. полную цепочку вызовов;
+4. схему старой palata_certificates;
+5. схему новой public.palata_certificates;
+6. таблицу сопоставления полей import → certificates;
+7. правила очистки/дедупликации/статусов;
+8. все связанные таблицы;
+9. точный список отсутствующих шагов в текущем POST /api/palata/cert-import;
+10. минимальный план исправления.
+
+Ничего не изменять.
+Не писать новый код.
+Не выполнять миграции.
+Нужен только аудит.

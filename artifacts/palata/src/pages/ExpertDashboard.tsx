@@ -850,14 +850,10 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
       // ── Certificate check: expert must have a valid verified cert for this direction ──
       if (order.expertise_direction_id) {
         const today = new Date().toISOString().slice(0, 10);
-        const { data: certs } = await supabase
-          .from("palata_expert_certificates")
-          .select("id")
-          .eq("expert_id", userId)
-          .eq("status", "verified")
-          .gte("cert_valid_to", today)
-          .contains("cert_direction_ids", [order.expertise_direction_id])
-          .limit(1);
+        const _certQp = new URLSearchParams({ expert_ids: userId, status: "verified", valid_from: today, direction_id: order.expertise_direction_id, limit: "1" });
+        const _certApiRes = await fetch(`/api/palata/expert-certificate?${_certQp}`);
+        const _certApiBody = await _certApiRes.json().catch(() => null);
+        const certs = (_certApiBody?.rows ?? []) as { id: string }[];
         if (!certs || certs.length === 0) {
           setCertErrors(p => ({ ...p, [order.id]: true }));
           return;
@@ -1232,10 +1228,9 @@ function ProfileView({
     if (!userId || !allDirections.length) return;
 
     async function loadAndAutoHeal() {
-      const { data } = await supabase
-        .from("palata_expert_certificates")
-        .select("certificate_number, status, cert_valid_to, cert_direction_ids")
-        .eq("expert_id", userId);
+      const _loadCertRes = await fetch(`/api/palata/expert-certificate/${userId}`);
+      const _loadCertBody = await _loadCertRes.json().catch(() => null);
+      const data = (_loadCertBody?.rows ?? []) as { certificate_number: string; status: string; cert_valid_to: string | null; cert_direction_ids: string[] }[];
 
       if (data && data.length > 0) {
         setCertNumbers(data.map((c: { certificate_number: string }) => c.certificate_number));
@@ -1249,14 +1244,16 @@ function ProfileView({
       if (p.palata_registry_verified && p.palata_registry_number) {
         const result = await verifyCertificate(p.palata_registry_number, allDirections, user.full_name ?? "");
         if (result?.status === "verified") {
-          const { error: insErr } = await supabase.from("palata_expert_certificates").insert({
-            expert_id:          userId,
-            certificate_number: result.number,
-            status:             "verified" as const,
-            cert_valid_to:      result.validTo ?? null,
-            cert_expert_name:   result.expertName ?? null,
-            cert_direction_ids: result.directionIds,
+          const _insApiRes = await fetch("/api/palata/expert-certificate", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+            },
+            body: JSON.stringify({ certs: [{ certificate_number: result.number, status: "verified", cert_valid_to: result.validTo ?? null, cert_expert_name: result.expertName ?? null, cert_direction_ids: result.directionIds }] }),
           });
+          const _insApiBody = await _insApiRes.json().catch(() => null);
+          const insErr = (!_insApiRes.ok || !_insApiBody?.success) ? { message: _insApiBody?.message ?? String(_insApiRes.status) } : null;
           if (!insErr) {
             if (result.directionIds.length > 0) {
               await fetch("/api/palata/expert-directions", {
@@ -1416,19 +1413,22 @@ function ProfileView({
     setDirIds(newDirIds);
 
     // 7. Save only verified certs (replace all)
-    await supabase.from("palata_expert_certificates").delete().eq("expert_id", userId);
-    if (verifiedResults.length > 0) {
-      await supabase.from("palata_expert_certificates").insert(
-        verifiedResults.map(r => ({
-          expert_id:          userId,
+    await fetch("/api/palata/expert-certificate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+      body: JSON.stringify({
+        certs: verifiedResults.map(r => ({
           certificate_number: r.number,
-          status:             "verified" as const,
-          cert_valid_to:      r.validTo ?? null,
-          cert_expert_name:   r.expertName ?? null,
+          status: "verified",
+          cert_valid_to: r.validTo ?? null,
+          cert_expert_name: r.expertName ?? null,
           cert_direction_ids: r.directionIds,
-        }))
-      );
-    }
+        })),
+      }),
+    }).catch(err => console.error("[expert-save] expert-certificate replace:", err));
 
     // 8. Update cert UI to show only verified certs
     const verifiedNums = verifiedResults.map(r => r.number);

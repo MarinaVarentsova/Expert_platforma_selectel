@@ -394,13 +394,13 @@ function CertsTab() {
       const aheadStr = ahead.toISOString().slice(0, 10);
 
       const [certsRes, dirsRes] = await Promise.all([
-        supabase
-          .from("palata_expert_certificates")
-          .select("id, expert_id, certificate_number, cert_valid_to, cert_direction_ids")
-          .eq("status", "verified")
-          .gte("cert_valid_to", todayStr)
-          .lte("cert_valid_to", aheadStr)
-          .order("cert_valid_to", { ascending: true }),
+        (() => {
+          const _cp = new URLSearchParams({ status: "verified", valid_from: todayStr, valid_to: aheadStr });
+          return fetch(`/api/palata/expert-certificate?${_cp}`)
+            .then(r => r.json())
+            .then(b => ({ data: b.rows ?? null, error: null as { message: string } | null }))
+            .catch(err => ({ data: null as null, error: { message: String(err) } }));
+        })(),
         supabase
           .from("palata_expertise_directions")
           .select("id, name"),

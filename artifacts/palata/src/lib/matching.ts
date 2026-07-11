@@ -103,12 +103,10 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   //    applied in Supabase for this query to return rows for other experts.
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
-  const { data: certRows, error: certErr } = await supabase
-    .from("palata_expert_certificates")
-    .select("expert_id, cert_direction_ids, cert_valid_to")
-    .eq("status", "verified")
-    .gte("cert_valid_to", today)
-    .contains("cert_direction_ids", [expertiseDirectionId]);
+  const _certQp = new URLSearchParams({ status: "verified", valid_from: today, direction_id: expertiseDirectionId });
+  const _certApiRes = await fetch(`/api/palata/expert-certificate?${_certQp}`);
+  const _certApiBody = await _certApiRes.json().catch(() => null);
+  const certRows = (_certApiBody?.rows ?? []) as { expert_id: string; cert_direction_ids: string[]; cert_valid_to: string }[];
 
   const qualifiedExpertIds = new Set(
     (certRows ?? []).map(r => r.expert_id as string),

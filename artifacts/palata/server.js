@@ -1477,6 +1477,180 @@ app.post("/api/palata/expert-directions", (req, res) => {
   });
 });
 
+// ─── Expert Certificates ──────────────────────────────────────────────────────
+
+async function handleExpertCertificateList(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const expertIdsRaw = typeof req.query?.expert_ids === "string" ? req.query.expert_ids.trim() : "";
+  const expertIds = expertIdsRaw ? expertIdsRaw.split(",").map(s => s.trim()).filter(Boolean) : null;
+  const status = typeof req.query?.status === "string" ? req.query.status.trim() : null;
+  const directionId = typeof req.query?.direction_id === "string" ? req.query.direction_id.trim() : null;
+  const validFrom = typeof req.query?.valid_from === "string" ? req.query.valid_from.trim() : null;
+  const validTo = typeof req.query?.valid_to === "string" ? req.query.valid_to.trim() : null;
+  const limitRaw = typeof req.query?.limit === "string" ? parseInt(req.query.limit, 10) : null;
+  const limit = limitRaw && limitRaw > 0 ? limitRaw : null;
+  console.log("[EXPERT-CERT] list", { expertIdsCount: expertIds?.length ?? "all", status, directionId, validFrom, validTo, limit });
+  const params = [];
+  const conditions = [];
+  if (expertIds && expertIds.length > 0) {
+    params.push(expertIds);
+    conditions.push(`ec.expert_id = ANY($${params.length})`);
+  }
+  if (status) {
+    params.push(status);
+    conditions.push(`ec.status = $${params.length}`);
+  }
+  if (directionId) {
+    params.push(directionId);
+    conditions.push(`ec.cert_direction_ids @> ARRAY[$${params.length}::uuid]`);
+  }
+  if (validFrom) {
+    params.push(validFrom);
+    conditions.push(`ec.cert_valid_to >= $${params.length}`);
+  }
+  if (validTo) {
+    params.push(validTo);
+    conditions.push(`ec.cert_valid_to <= $${params.length}`);
+  }
+  let sql = `SELECT ec.id, ec.expert_id, ec.certificate_number, ec.status, ec.cert_valid_to,
+                    ec.cert_expert_name, ec.cert_direction_ids, ec.created_at, ec.updated_at
+             FROM public.palata_expert_certificates ec`;
+  if (conditions.length > 0) sql += ` WHERE ${conditions.join(" AND ")}`;
+  sql += ` ORDER BY ec.cert_valid_to ASC`;
+  if (limit) {
+    params.push(limit);
+    sql += ` LIMIT $${params.length}`;
+  }
+  try {
+    const result = await pool.query(sql, params);
+    console.log("[EXPERT-CERT] success", { stage: "list", count: result.rows.length });
+    res.status(200).json({ success: true, rows: result.rows });
+  } catch (err) {
+    console.error("[EXPERT-CERT] error", { stage: "list", message: err.message });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: err.message });
+  }
+}
+
+async function handleExpertCertificateGet(req, res) {
+  const expertId = typeof req.params?.expertId === "string" ? req.params.expertId.trim() : "";
+  if (!expertId) { res.status(400).json({ success: false, error: "MISSING_EXPERT_ID" }); return; }
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  console.log("[EXPERT-CERT] get", { expertId });
+  try {
+    const result = await pool.query(
+      `SELECT ec.id, ec.expert_id, ec.certificate_number, ec.status, ec.cert_valid_to,
+              ec.cert_expert_name, ec.cert_direction_ids, ec.created_at, ec.updated_at
+       FROM public.palata_expert_certificates ec
+       WHERE ec.expert_id = $1
+       ORDER BY ec.cert_valid_to ASC`,
+      [expertId],
+    );
+    console.log("[EXPERT-CERT] success", { stage: "get", expertId, count: result.rows.length });
+    res.status(200).json({ success: true, rows: result.rows });
+  } catch (err) {
+    console.error("[EXPERT-CERT] error", { stage: "get", message: err.message });
+    res.status(500).json({ success: false, error: "GET_CERT_FAILED", message: err.message });
+  }
+}
+
+async function handleExpertCertificateReplace(req, res) {
+  // 1. Bearer token required
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) {
+    res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+    return;
+  }
+  const token = authHeader.slice(7);
+
+  // 2. Resolve expert_id from token via /api/auth/me
+  let meBody;
+  let meStatus;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    meStatus = meRes.status;
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+  } catch (err) {
+    console.error("[EXPERT-CERT] auth /me request failed", { error: String(err) });
+    res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+    return;
+  }
+  if (meStatus !== 200 || !meBody || meBody.success !== true || !meBody.user?.id) {
+    res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    return;
+  }
+  const expertId = meBody.user.id;
+
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  // 3. Parse certs from body (expert_id from token only, never from body)
+  const body = req.body ?? {};
+  const rawCerts = Array.isArray(body.certs) ? body.certs : [];
+  const certs = rawCerts.filter(c => c && typeof c === "object");
+
+  console.log("[EXPERT-CERT] replace", { expertId, count: certs.length });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `DELETE FROM public.palata_expert_certificates WHERE expert_id = $1`,
+      [expertId],
+    );
+    for (const cert of certs) {
+      const dirIds = Array.isArray(cert.cert_direction_ids)
+        ? cert.cert_direction_ids.filter(id => typeof id === "string")
+        : [];
+      await client.query(
+        `INSERT INTO public.palata_expert_certificates
+           (expert_id, certificate_number, status, cert_valid_to, cert_expert_name, cert_direction_ids)
+         VALUES ($1, $2, $3, $4, $5, $6::uuid[])`,
+        [
+          expertId,
+          typeof cert.certificate_number === "string" ? cert.certificate_number : null,
+          typeof cert.status === "string" ? cert.status : "verified",
+          cert.cert_valid_to ?? null,
+          typeof cert.cert_expert_name === "string" ? cert.cert_expert_name : null,
+          dirIds,
+        ],
+      );
+    }
+    await client.query("COMMIT");
+    console.log("[EXPERT-CERT] success", { stage: "replace", expertId, count: certs.length });
+    res.status(200).json({ success: true });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("[EXPERT-CERT] error", { stage: "replace", message: err.message, code: err.code });
+    res.status(500).json({ success: false, error: "REPLACE_FAILED", message: err.message });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/expert-certificate", (req, res) => {
+  handleExpertCertificateList(req, res).catch(err => {
+    console.error("[EXPERT-CERT] error", { stage: "unhandled_list", stack: err.stack });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: String(err) });
+  });
+});
+
+app.get("/api/palata/expert-certificate/:expertId", (req, res) => {
+  handleExpertCertificateGet(req, res).catch(err => {
+    console.error("[EXPERT-CERT] error", { stage: "unhandled_get", stack: err.stack });
+    res.status(500).json({ success: false, error: "GET_CERT_FAILED", message: String(err) });
+  });
+});
+
+app.post("/api/palata/expert-certificate", (req, res) => {
+  handleExpertCertificateReplace(req, res).catch(err => {
+    console.error("[EXPERT-CERT] error", { stage: "unhandled_replace", stack: err.stack });
+    res.status(500).json({ success: false, error: "REPLACE_FAILED", message: String(err) });
+  });
+});
+
 app.use(express.static(STATIC_DIR));
 
 app.get(/(.*)/, (req, res, next) => {

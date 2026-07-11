@@ -865,14 +865,10 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       // ── Certificate check: expert must have a valid cert for this direction ──
       if (r.expertise_direction_id) {
         const today = new Date().toISOString().slice(0, 10);
-        const { data: certs } = await supabase
-          .from("palata_expert_certificates")
-          .select("id")
-          .eq("expert_id", match.expert_id)
-          .eq("status", "verified")
-          .gte("cert_valid_to", today)
-          .contains("cert_direction_ids", [r.expertise_direction_id])
-          .limit(1);
+        const _certQp2 = new URLSearchParams({ expert_ids: match.expert_id, status: "verified", valid_from: today, direction_id: r.expertise_direction_id, limit: "1" });
+        const _certApiRes2 = await fetch(`/api/palata/expert-certificate?${_certQp2}`);
+        const _certApiBody2 = await _certApiRes2.json().catch(() => null);
+        const certs = (_certApiBody2?.rows ?? []) as { id: string }[];
         if (!certs || certs.length === 0) {
           setSelectedMatchId(null);
           setCustUI({

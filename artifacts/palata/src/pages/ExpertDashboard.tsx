@@ -11,6 +11,7 @@ import {
   verifyCertificate, mergeDirectionIds, normalizeCertNumber,
   type CertResult,
 } from "@/lib/certificates";
+import { getToken } from "@/lib/authClient";
 import {
   Inbox, Star, User, CheckCircle2, XCircle, MapPin,
   Briefcase, FileText, GraduationCap, ClipboardList, Zap, Calendar,
@@ -1434,8 +1435,11 @@ function ProfileView({
     console.log("[expert-save] regs before save:", regs);
     const regReplaceRes = await fetch("/api/palata/expert-regions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ expert_id: userId, region_ids: regs }),
+      headers: {
+        "Content-Type": "application/json",
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+      body: JSON.stringify({ region_ids: regs }),
     });
     const regReplaceBody = await regReplaceRes.json().catch(() => null);
     if (!regReplaceRes.ok || !regReplaceBody?.success) {

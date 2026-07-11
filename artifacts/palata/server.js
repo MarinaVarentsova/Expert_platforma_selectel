@@ -1254,13 +1254,46 @@ async function handleExpertRegionsGet(req, res) {
 }
 
 async function handleExpertRegionsReplace(req, res) {
-  const body = req.body ?? {};
-  const expertId = typeof body.expert_id === "string" ? body.expert_id.trim() : "";
-  if (!expertId) { res.status(400).json({ success: false, error: "MISSING_EXPERT_ID" }); return; }
+  // 1. Bearer token required
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) {
+    res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+    return;
+  }
+  const token = authHeader.slice(7);
+
+  // 2. Resolve expert_id from token via /api/auth/me
+  let meBody;
+  let meStatus;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    meStatus = meRes.status;
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+  } catch (err) {
+    console.error("[EXPERT-REGIONS] auth /me request failed", { error: String(err) });
+    res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+    return;
+  }
+  if (meStatus !== 200 || !meBody || meBody.success !== true || !meBody.user?.id) {
+    res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    return;
+  }
+  const expertId = meBody.user.id;
+
   if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
-  const regionIds = Array.isArray(body.region_ids)
+
+  // 3. Deduplicate region_ids via Set
+  const body = req.body ?? {};
+  const rawIds = Array.isArray(body.region_ids)
     ? body.region_ids.filter(id => typeof id === "string")
     : [];
+  const regionIds = [...new Set(rawIds)];
+
   console.log("[EXPERT-REGIONS] replace", { expertId, count: regionIds.length });
   const client = await pool.connect();
   try {

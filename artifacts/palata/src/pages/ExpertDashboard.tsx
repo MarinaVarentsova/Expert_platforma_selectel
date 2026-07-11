@@ -1211,11 +1211,10 @@ function ProfileView({
   const PALATA_URL = "палатаэкспертов.рф";
 
   useEffect(() => {
-    supabase.from("palata_expert_directions")
-      .select("expertise_direction_id")
-      .eq("expert_id", userId)
-      .then(({ data }) =>
-        setDirIds((data ?? []).map((r: { expertise_direction_id: string }) => r.expertise_direction_id))
+    fetch(`/api/palata/expert-directions/${userId}`)
+      .then(r => r.json())
+      .then(b =>
+        setDirIds((b.rows ?? []).map((r: { expertise_direction_id: string }) => r.expertise_direction_id))
       );
     fetch(`/api/palata/expert-regions/${userId}`)
       .then(r => r.json())
@@ -1260,10 +1259,14 @@ function ProfileView({
           });
           if (!insErr) {
             if (result.directionIds.length > 0) {
-              await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
-              await supabase.from("palata_expert_directions").insert(
-                result.directionIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
-              );
+              await fetch("/api/palata/expert-directions", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+                },
+                body: JSON.stringify({ direction_ids: result.directionIds }),
+              });
               setDirIds(result.directionIds);
             }
             setCertNumbers([result.number]);
@@ -1402,12 +1405,14 @@ function ProfileView({
 
     // 6. Recalculate directions from verified certs only
     const newDirIds = mergeDirectionIds(verifiedResults);
-    await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
-    if (newDirIds.length > 0) {
-      await supabase.from("palata_expert_directions").insert(
-        newDirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
-      );
-    }
+    await fetch("/api/palata/expert-directions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+      body: JSON.stringify({ direction_ids: newDirIds }),
+    }).catch(err => console.error("[expert-save] expert-directions replace:", err));
     setDirIds(newDirIds);
 
     // 7. Save only verified certs (replace all)

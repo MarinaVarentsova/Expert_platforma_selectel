@@ -1099,9 +1099,15 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
           .then(b => ({ data: (b.rows ?? []) as PRow[] }))
           .catch(() => ({ data: [] as PRow[] })),
         supabase.from("palata_users").select("id, full_name, email").in("id", expertIds),
-        supabase.from("palata_expert_directions")
-          .select("expert_id, palata_expertise_directions(name)")
-          .in("expert_id", expertIds),
+        fetch(`/api/palata/expert-directions?expert_ids=${encodeURIComponent(expertIds.join(","))}`)
+          .then(r => r.json())
+          .then(b => ({
+            data: (b.rows ?? []).map((r: { expert_id: string; expertise_direction_id: string; direction_name: string | null }) => ({
+              expert_id: r.expert_id,
+              palata_expertise_directions: r.direction_name ? [{ name: r.direction_name }] : [],
+            })),
+          }))
+          .catch(() => ({ data: [] })),
         fetch(`/api/palata/expert-regions?expert_ids=${encodeURIComponent(expertIds.join(","))}`)
           .then(r => r.json())
           .then(b => ({

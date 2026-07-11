@@ -1342,6 +1342,141 @@ app.post("/api/palata/expert-regions", (req, res) => {
   });
 });
 
+// ─── Expert Directions ────────────────────────────────────────────────────────
+
+async function handleExpertDirectionsList(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const expertIdsRaw = typeof req.query?.expert_ids === "string" ? req.query.expert_ids.trim() : "";
+  const expertIds = expertIdsRaw ? expertIdsRaw.split(",").map(s => s.trim()).filter(Boolean) : null;
+  console.log("[EXPERT-DIRECTIONS] list", { expertIdsCount: expertIds?.length ?? "all" });
+  try {
+    let sql = `SELECT ed.expert_id, ed.expertise_direction_id, d.name AS direction_name
+               FROM public.palata_expert_directions ed
+               LEFT JOIN public.palata_expertise_directions d ON d.id = ed.expertise_direction_id`;
+    const params = [];
+    if (expertIds && expertIds.length > 0) {
+      params.push(expertIds);
+      sql += ` WHERE ed.expert_id = ANY($1)`;
+    }
+    const result = await pool.query(sql, params);
+    console.log("[EXPERT-DIRECTIONS] success", { stage: "list", count: result.rows.length });
+    res.status(200).json({ success: true, rows: result.rows });
+  } catch (err) {
+    console.error("[EXPERT-DIRECTIONS] error", { stage: "list", message: err.message });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: err.message });
+  }
+}
+
+async function handleExpertDirectionsGet(req, res) {
+  const expertId = typeof req.params?.expertId === "string" ? req.params.expertId.trim() : "";
+  if (!expertId) { res.status(400).json({ success: false, error: "MISSING_EXPERT_ID" }); return; }
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  console.log("[EXPERT-DIRECTIONS] get", { expertId });
+  try {
+    const result = await pool.query(
+      `SELECT ed.expertise_direction_id, d.name AS direction_name
+       FROM public.palata_expert_directions ed
+       LEFT JOIN public.palata_expertise_directions d ON d.id = ed.expertise_direction_id
+       WHERE ed.expert_id = $1`,
+      [expertId],
+    );
+    console.log("[EXPERT-DIRECTIONS] success", { stage: "get", expertId, count: result.rows.length });
+    res.status(200).json({ success: true, rows: result.rows });
+  } catch (err) {
+    console.error("[EXPERT-DIRECTIONS] error", { stage: "get", message: err.message });
+    res.status(500).json({ success: false, error: "GET_DIRECTIONS_FAILED", message: err.message });
+  }
+}
+
+async function handleExpertDirectionsReplace(req, res) {
+  // 1. Bearer token required
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) {
+    res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+    return;
+  }
+  const token = authHeader.slice(7);
+
+  // 2. Resolve expert_id from token via /api/auth/me
+  let meBody;
+  let meStatus;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    meStatus = meRes.status;
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+  } catch (err) {
+    console.error("[EXPERT-DIRECTIONS] auth /me request failed", { error: String(err) });
+    res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+    return;
+  }
+  if (meStatus !== 200 || !meBody || meBody.success !== true || !meBody.user?.id) {
+    res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    return;
+  }
+  const expertId = meBody.user.id;
+
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  // 3. Deduplicate direction_ids via Set
+  const body = req.body ?? {};
+  const rawIds = Array.isArray(body.direction_ids)
+    ? body.direction_ids.filter(id => typeof id === "string")
+    : [];
+  const directionIds = [...new Set(rawIds)];
+
+  console.log("[EXPERT-DIRECTIONS] replace", { expertId, count: directionIds.length });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `DELETE FROM public.palata_expert_directions WHERE expert_id = $1`,
+      [expertId],
+    );
+    if (directionIds.length > 0) {
+      const placeholders = directionIds.map((_, i) => `($1, $${i + 2})`).join(", ");
+      await client.query(
+        `INSERT INTO public.palata_expert_directions (expert_id, expertise_direction_id) VALUES ${placeholders}`,
+        [expertId, ...directionIds],
+      );
+    }
+    await client.query("COMMIT");
+    console.log("[EXPERT-DIRECTIONS] success", { stage: "replace", expertId, count: directionIds.length });
+    res.status(200).json({ success: true });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("[EXPERT-DIRECTIONS] error", { stage: "replace", message: err.message, code: err.code });
+    res.status(500).json({ success: false, error: "REPLACE_FAILED", message: err.message });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/expert-directions", (req, res) => {
+  handleExpertDirectionsList(req, res).catch(err => {
+    console.error("[EXPERT-DIRECTIONS] error", { stage: "unhandled_list", stack: err.stack });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: String(err) });
+  });
+});
+
+app.get("/api/palata/expert-directions/:expertId", (req, res) => {
+  handleExpertDirectionsGet(req, res).catch(err => {
+    console.error("[EXPERT-DIRECTIONS] error", { stage: "unhandled_get", stack: err.stack });
+    res.status(500).json({ success: false, error: "GET_DIRECTIONS_FAILED", message: String(err) });
+  });
+});
+
+app.post("/api/palata/expert-directions", (req, res) => {
+  handleExpertDirectionsReplace(req, res).catch(err => {
+    console.error("[EXPERT-DIRECTIONS] error", { stage: "unhandled_replace", stack: err.stack });
+    res.status(500).json({ success: false, error: "REPLACE_FAILED", message: String(err) });
+  });
+});
+
 app.use(express.static(STATIC_DIR));
 
 app.get(/(.*)/, (req, res, next) => {

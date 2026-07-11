@@ -55,9 +55,15 @@ export default function AdminExperts() {
         .then(r => r.json())
         .then(b => ({ data: (b.rows ?? []) as PRow[] }))
         .catch(() => ({ data: [] as PRow[] })),
-      supabase.from("palata_expert_directions")
-        .select("expert_id, palata_expertise_directions(name)")
-        .in("expert_id", ids),
+      fetch(`/api/palata/expert-directions?expert_ids=${encodeURIComponent(ids.join(","))}`)
+        .then(r => r.json())
+        .then(b => ({
+          data: (b.rows ?? []).map((r: { expert_id: string; expertise_direction_id: string; direction_name: string | null }) => ({
+            expert_id: r.expert_id,
+            palata_expertise_directions: r.direction_name ? [{ name: r.direction_name }] : [],
+          })) as DRow[],
+        }))
+        .catch(() => ({ data: [] as DRow[] })),
       fetch(`/api/palata/expert-regions?expert_ids=${encodeURIComponent(ids.join(","))}`)
         .then(r => r.json())
         .then(b => ({

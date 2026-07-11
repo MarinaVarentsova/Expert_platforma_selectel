@@ -599,9 +599,16 @@ export default function RequestDetail() {
               .catch(() => ({ data: [], error: null }))
           : Promise.resolve({ data: [], error: null }),
         expertIds.length > 0
-          ? supabase.from("palata_expert_directions")
-              .select("expert_id, palata_expertise_directions(name)")
-              .in("expert_id", expertIds)
+          ? fetch(`/api/palata/expert-directions?expert_ids=${encodeURIComponent(expertIds.join(","))}`)
+              .then(r => r.json())
+              .then(b => ({
+                data: (b.rows ?? []).map((r: { expert_id: string; expertise_direction_id: string; direction_name: string | null }) => ({
+                  expert_id: r.expert_id,
+                  palata_expertise_directions: r.direction_name ? { name: r.direction_name } : null,
+                })),
+                error: null,
+              }))
+              .catch(() => ({ data: [], error: null }))
           : Promise.resolve({ data: [], error: null }),
       ]);
 

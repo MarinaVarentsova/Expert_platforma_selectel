@@ -307,7 +307,13 @@ export default function AdminMetrics() {
             .eq("entity_type", "request")
             .eq("new_status", "completed"),
           supabase.from("palata_expertise_directions").select("id, name"),
-          supabase.from("palata_expert_directions").select("expert_id, expertise_direction_id"),
+          fetch("/api/palata/expert-directions")
+            .then(r => r.json())
+            .then(b => ({
+              data: (b.rows ?? []) as { expert_id: string; expertise_direction_id: string }[],
+              error: null as { message: string } | null,
+            }))
+            .catch(() => ({ data: [] as { expert_id: string; expertise_direction_id: string }[], error: null as { message: string } | null })),
           supabase.from("palata_regions").select("id, name"),
           fetch("/api/palata/expert-regions")
             .then(r => r.json())

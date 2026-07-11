@@ -587,6 +587,13 @@ async function handleCertImport(req, res) {
          now()                                   AS source_loaded_at
        FROM public.palata_certificates_import
        WHERE trim(COALESCE(certificate_number, '')) != ''
+       ORDER BY
+         trim(COALESCE(certificate_number, '')),
+         COALESCE(specialty_text, ''),
+         COALESCE(certificate_period, ''),
+         valid_to DESC NULLS LAST,
+         valid_from DESC NULLS LAST,
+         ctid DESC
        ON CONFLICT (certificate_number, specialty_text, certificate_period) DO UPDATE SET
          expert_full_name   = EXCLUDED.expert_full_name,
          specialty_code     = EXCLUDED.specialty_code,

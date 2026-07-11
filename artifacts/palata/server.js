@@ -547,6 +547,56 @@ async function handleCertImport(req, res) {
     const linkedExpertsCount = 0;
     const unlinkedExpertsCount = total;
 
+    // ── ETL: palata_certificates_import → palata_certificates ─────────────────
+    // Перенесено из старой etl_process_certificate_import (v2).
+    // Нормализация номера и ФИО, парсинг кодов специальностей из поля codes
+    // (или через regex из specialty_text), INSERT/UPDATE по уникальному ключу
+    // (certificate_number, specialty_text, certificate_period).
+    // Строки без certificate_number пропускаются (фильтр WHERE).
+    const etlResult = await client.query(
+      `INSERT INTO public.palata_certificates (
+         certificate_number, expert_full_name, specialty_text, certificate_period,
+         specialty_code, valid_from, valid_to, is_active, source_file_name, source_loaded_at
+       )
+       SELECT
+         trim(COALESCE(certificate_number, ''))  AS certificate_number,
+         trim(COALESCE(expert_full_name, ''))    AS expert_full_name,
+         COALESCE(specialty_text, '')            AS specialty_text,
+         COALESCE(certificate_period, '')        AS certificate_period,
+         CASE
+           WHEN codes IS NOT NULL AND trim(codes) != ''
+             THEN trim(codes)
+           WHEN specialty_text IS NOT NULL AND specialty_text ~ '\\d+\\.\\d+'
+             THEN array_to_string(
+               ARRAY(
+                 SELECT DISTINCT m[1]
+                 FROM regexp_matches(specialty_text, '(\\d+\\.\\d+)', 'g') AS m
+                 ORDER BY m[1]
+               ), ','
+             )
+           ELSE NULL
+         END                                     AS specialty_code,
+         valid_from,
+         valid_to,
+         (certificate_status = 'Активный')       AS is_active,
+         $1                                      AS source_file_name,
+         now()                                   AS source_loaded_at
+       FROM public.palata_certificates_import
+       WHERE trim(COALESCE(certificate_number, '')) != ''
+       ON CONFLICT ON CONSTRAINT palata_certificates_certificate_number_specialty_text_certi_key DO UPDATE SET
+         expert_full_name   = EXCLUDED.expert_full_name,
+         specialty_code     = EXCLUDED.specialty_code,
+         valid_from         = EXCLUDED.valid_from,
+         valid_to           = EXCLUDED.valid_to,
+         is_active          = EXCLUDED.is_active,
+         source_file_name   = EXCLUDED.source_file_name,
+         source_loaded_at   = EXCLUDED.source_loaded_at,
+         updated_at         = now()`,
+      [fileName],
+    );
+    const certsUpserted = etlResult.rowCount ?? 0;
+    console.log("[CERT-IMPORT] etl done", { userId: admin.userId, fileName, certsUpserted });
+
     const logResult = await client.query(
       `INSERT INTO public.palata_certificate_import_logs
          (created_by, file_name, total_rows, active_count, expired_count,
@@ -578,6 +628,7 @@ async function handleCertImport(req, res) {
         active,
         expired,
         parse_errors: parseErrors,
+        certs_upserted: certsUpserted,
         linked_experts: linkedExpertsCount,
         unlinked_experts: unlinkedExpertsCount,
         file_name: fileName,

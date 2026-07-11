@@ -587,9 +587,16 @@ export default function RequestDetail() {
           ? supabase.from("palata_regions").select("name").eq("id", request.region_id).single()
           : Promise.resolve({ data: null as { name: string } | null, error: null }),
         expertIds.length > 0
-          ? supabase.from("palata_expert_regions")
-              .select("expert_id, palata_regions(name)")
-              .in("expert_id", expertIds)
+          ? fetch(`/api/palata/expert-regions?expert_ids=${encodeURIComponent(expertIds.join(","))}`)
+              .then(r => r.json())
+              .then(b => ({
+                data: (b.rows ?? []).map((r: { expert_id: string; region_id: string; region_name: string | null }) => ({
+                  expert_id: r.expert_id,
+                  palata_regions: r.region_name ? { name: r.region_name } : null,
+                })),
+                error: null,
+              }))
+              .catch(() => ({ data: [], error: null }))
           : Promise.resolve({ data: [], error: null }),
         expertIds.length > 0
           ? supabase.from("palata_expert_directions")

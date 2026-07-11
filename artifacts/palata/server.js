@@ -1207,6 +1207,108 @@ app.post("/api/palata/expert-profile", (req, res) => {
   });
 });
 
+// ─── Expert Regions ───────────────────────────────────────────────────────────
+
+async function handleExpertRegionsList(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const expertIdsRaw = typeof req.query?.expert_ids === "string" ? req.query.expert_ids.trim() : "";
+  const expertIds = expertIdsRaw ? expertIdsRaw.split(",").map(s => s.trim()).filter(Boolean) : null;
+  console.log("[EXPERT-REGIONS] list", { expertIdsCount: expertIds?.length ?? "all" });
+  try {
+    let sql = `SELECT er.expert_id, er.region_id, r.name AS region_name
+               FROM public.palata_expert_regions er
+               LEFT JOIN public.palata_regions r ON r.id = er.region_id`;
+    const params = [];
+    if (expertIds && expertIds.length > 0) {
+      params.push(expertIds);
+      sql += ` WHERE er.expert_id = ANY($1)`;
+    }
+    const result = await pool.query(sql, params);
+    console.log("[EXPERT-REGIONS] success", { stage: "list", count: result.rows.length });
+    res.status(200).json({ success: true, rows: result.rows });
+  } catch (err) {
+    console.error("[EXPERT-REGIONS] error", { stage: "list", message: err.message });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: err.message });
+  }
+}
+
+async function handleExpertRegionsGet(req, res) {
+  const expertId = typeof req.params?.expertId === "string" ? req.params.expertId.trim() : "";
+  if (!expertId) { res.status(400).json({ success: false, error: "MISSING_EXPERT_ID" }); return; }
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  console.log("[EXPERT-REGIONS] get", { expertId });
+  try {
+    const result = await pool.query(
+      `SELECT er.region_id, r.name AS region_name
+       FROM public.palata_expert_regions er
+       LEFT JOIN public.palata_regions r ON r.id = er.region_id
+       WHERE er.expert_id = $1`,
+      [expertId],
+    );
+    console.log("[EXPERT-REGIONS] success", { stage: "get", expertId, count: result.rows.length });
+    res.status(200).json({ success: true, rows: result.rows });
+  } catch (err) {
+    console.error("[EXPERT-REGIONS] error", { stage: "get", message: err.message });
+    res.status(500).json({ success: false, error: "GET_REGIONS_FAILED", message: err.message });
+  }
+}
+
+async function handleExpertRegionsReplace(req, res) {
+  const body = req.body ?? {};
+  const expertId = typeof body.expert_id === "string" ? body.expert_id.trim() : "";
+  if (!expertId) { res.status(400).json({ success: false, error: "MISSING_EXPERT_ID" }); return; }
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const regionIds = Array.isArray(body.region_ids)
+    ? body.region_ids.filter(id => typeof id === "string")
+    : [];
+  console.log("[EXPERT-REGIONS] replace", { expertId, count: regionIds.length });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `DELETE FROM public.palata_expert_regions WHERE expert_id = $1`,
+      [expertId],
+    );
+    if (regionIds.length > 0) {
+      const placeholders = regionIds.map((_, i) => `($1, $${i + 2})`).join(", ");
+      await client.query(
+        `INSERT INTO public.palata_expert_regions (expert_id, region_id) VALUES ${placeholders}`,
+        [expertId, ...regionIds],
+      );
+    }
+    await client.query("COMMIT");
+    console.log("[EXPERT-REGIONS] success", { stage: "replace", expertId, count: regionIds.length });
+    res.status(200).json({ success: true });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("[EXPERT-REGIONS] error", { stage: "replace", message: err.message, code: err.code });
+    res.status(500).json({ success: false, error: "REPLACE_FAILED", message: err.message });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/expert-regions", (req, res) => {
+  handleExpertRegionsList(req, res).catch(err => {
+    console.error("[EXPERT-REGIONS] error", { stage: "unhandled_list", stack: err.stack });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: String(err) });
+  });
+});
+
+app.get("/api/palata/expert-regions/:expertId", (req, res) => {
+  handleExpertRegionsGet(req, res).catch(err => {
+    console.error("[EXPERT-REGIONS] error", { stage: "unhandled_get", stack: err.stack });
+    res.status(500).json({ success: false, error: "GET_REGIONS_FAILED", message: String(err) });
+  });
+});
+
+app.post("/api/palata/expert-regions", (req, res) => {
+  handleExpertRegionsReplace(req, res).catch(err => {
+    console.error("[EXPERT-REGIONS] error", { stage: "unhandled_replace", stack: err.stack });
+    res.status(500).json({ success: false, error: "REPLACE_FAILED", message: String(err) });
+  });
+});
+
 app.use(express.static(STATIC_DIR));
 
 app.get(/(.*)/, (req, res, next) => {

@@ -1216,16 +1216,13 @@ function ProfileView({
       .then(({ data }) =>
         setDirIds((data ?? []).map((r: { expertise_direction_id: string }) => r.expertise_direction_id))
       );
-    supabase.from("palata_expert_regions")
-      .select("region_id")
-      .eq("expert_id", userId)
-      .then(async ({ data }) => {
-        const ids = (data ?? []).map((r: { region_id: string }) => r.region_id);
-        if (ids.length > 0) {
-          setRegs(ids);
-          const { data: rd } = await supabase.from("palata_regions").select("id, name").in("id", ids);
-          const nm = Object.fromEntries((rd ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
-          setRegionNames(ids.map(id => nm[id] ?? id));
+    fetch(`/api/palata/expert-regions/${userId}`)
+      .then(r => r.json())
+      .then(b => {
+        const rows = (b.rows ?? []) as { region_id: string; region_name: string | null }[];
+        if (rows.length > 0) {
+          setRegs(rows.map(r => r.region_id));
+          setRegionNames(rows.map(r => r.region_name ?? r.region_id));
         }
       });
   }, [userId]);
@@ -1435,23 +1432,23 @@ function ProfileView({
 
     // 9. Save regions
     console.log("[expert-save] regs before save:", regs);
-    const { error: delRegErr } = await supabase.from("palata_expert_regions").delete().eq("expert_id", userId);
-    if (delRegErr) console.error("[expert-save] palata_expert_regions delete:", delRegErr.message);
+    const regReplaceRes = await fetch("/api/palata/expert-regions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expert_id: userId, region_ids: regs }),
+    });
+    const regReplaceBody = await regReplaceRes.json().catch(() => null);
+    if (!regReplaceRes.ok || !regReplaceBody?.success) {
+      setSaving(false);
+      setSaveErr("Ошибка сохранения регионов: " + (regReplaceBody?.message ?? regReplaceRes.status));
+      return;
+    }
     if (regs.length > 0) {
-      const { error: insRegErr } = await supabase.from("palata_expert_regions").insert(
-        regs.map(rid => ({ expert_id: userId, region_id: rid }))
-      );
-      console.log("[expert-save] palata_expert_regions insert error:", insRegErr);
-      if (insRegErr) {
-        setSaving(false);
-        setSaveErr("Ошибка сохранения регионов: " + insRegErr.message);
-        return;
-      }
-      const { data: rd } = await supabase.from("palata_regions").select("id, name").in("id", regs);
-      const nm = Object.fromEntries((rd ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
-      setRegionNames(regs.map(id => nm[id] ?? id));
+      const namesRes = await fetch(`/api/palata/expert-regions/${userId}`);
+      const namesBody = await namesRes.json().catch(() => null);
+      const rows = (namesBody?.rows ?? []) as { region_id: string; region_name: string | null }[];
+      setRegionNames(rows.map(r => r.region_name ?? r.region_id));
     } else {
-      console.log("[expert-save] regs is empty — skipping insert");
       setRegionNames([]);
     }
 

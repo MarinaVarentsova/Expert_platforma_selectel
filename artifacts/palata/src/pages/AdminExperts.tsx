@@ -58,9 +58,15 @@ export default function AdminExperts() {
       supabase.from("palata_expert_directions")
         .select("expert_id, palata_expertise_directions(name)")
         .in("expert_id", ids),
-      supabase.from("palata_expert_regions")
-        .select("expert_id, palata_regions(name)")
-        .in("expert_id", ids),
+      fetch(`/api/palata/expert-regions?expert_ids=${encodeURIComponent(ids.join(","))}`)
+        .then(r => r.json())
+        .then(b => ({
+          data: (b.rows ?? []).map((r: { expert_id: string; region_id: string; region_name: string | null }) => ({
+            expert_id: r.expert_id,
+            palata_regions: r.region_name ? { name: r.region_name } : null,
+          })) as RRow[],
+        }))
+        .catch(() => ({ data: [] as RRow[] })),
     ]);
 
     type PRow = {

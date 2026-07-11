@@ -309,7 +309,17 @@ export default function AdminMetrics() {
           supabase.from("palata_expertise_directions").select("id, name"),
           supabase.from("palata_expert_directions").select("expert_id, expertise_direction_id"),
           supabase.from("palata_regions").select("id, name"),
-          supabase.from("palata_expert_regions").select("expert_id, region_id, palata_regions!region_id(name)"),
+          fetch("/api/palata/expert-regions")
+            .then(r => r.json())
+            .then(b => ({
+              data: (b.rows ?? []).map((r: { expert_id: string; region_id: string; region_name: string | null }) => ({
+                expert_id: r.expert_id,
+                region_id: r.region_id,
+                palata_regions: r.region_name ? { name: r.region_name } : null,
+              })),
+              error: null as { message: string } | null,
+            }))
+            .catch(() => ({ data: [] as { expert_id: string; region_id: string; palata_regions: { name: string } | null }[], error: null as { message: string } | null })),
         ]);
 
       if (reqRes.error) { setState({ kind: "error", message: reqRes.error.message }); return; }

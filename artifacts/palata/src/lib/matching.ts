@@ -147,11 +147,12 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
       .filter(e => !e.business_trip_ready)
       .map(e => e.user_id);
     if (nonTripReadyIds.length > 0) {
-      const { data: regData } = await supabase
-        .from("palata_expert_regions")
-        .select("expert_id, region_id")
-        .in("expert_id", nonTripReadyIds);
-      for (const row of regData ?? []) {
+      const erRes = await fetch(
+        `/api/palata/expert-regions?expert_ids=${encodeURIComponent(nonTripReadyIds.join(","))}`,
+      );
+      const erBody = await erRes.json().catch(() => null);
+      const regData = (erBody?.rows ?? []) as { expert_id: string; region_id: string }[];
+      for (const row of regData) {
         if (!expertRegionMap.has(row.expert_id)) expertRegionMap.set(row.expert_id, new Set());
         expertRegionMap.get(row.expert_id)!.add(row.region_id);
       }

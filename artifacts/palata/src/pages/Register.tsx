@@ -309,11 +309,14 @@ export default function Register() {
       }
 
       // regions
-      if (regionIds.length > 0) {
-        const { error: erErr } = await supabase.from("palata_expert_regions").insert(
-          regionIds.map(id => ({ expert_id: userId, region_id: id }))
-        );
-        if (erErr) console.error("[register] palata_expert_regions insert:", erErr.message);
+      {
+        const regRes = await fetch("/api/palata/expert-regions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expert_id: userId, region_ids: regionIds }),
+        });
+        const regBody = await regRes.json().catch(() => null);
+        if (!regRes.ok || !regBody?.success) console.error("[register] palata_expert_regions replace:", regBody?.message ?? regRes.status);
       }
 
       runAllPendingMatching().catch(() => {});

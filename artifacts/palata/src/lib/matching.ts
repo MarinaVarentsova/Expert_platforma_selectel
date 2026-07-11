@@ -129,18 +129,13 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   }
 
   // 3. Fetch expert profiles — only those accepting requests
-  const { data: experts, error: profileErr } = await supabase
-    .from("palata_expert_profiles")
-    .select([
-      "user_id", "business_trip_ready",
-      "avg_customer_rating", "completed_orders_count", "decline_rate",
-      "palata_registry_verified", "centrsudexpert_verified",
-    ].join(", "))
-    .eq("accepts_requests", true)
-    .in("user_id", qualifiedIdList);
-
-  if (profileErr || !experts) {
-    throw new Error(profileErr?.message ?? "Failed to fetch expert profiles");
+  const epRes = await fetch(
+    `/api/palata/expert-profile?user_ids=${encodeURIComponent(qualifiedIdList.join(","))}&accepts_requests=true`,
+  );
+  const epBody = await epRes.json().catch(() => null);
+  const experts = (epBody?.rows ?? null) as ExpertForMatching[] | null;
+  if (!epBody?.success || !experts) {
+    throw new Error(epBody?.message ?? "Failed to fetch expert profiles");
   }
 
   // 4. Для выездных заказов: строим карту регионов для экспертов,

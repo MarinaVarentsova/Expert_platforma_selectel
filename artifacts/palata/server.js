@@ -1076,6 +1076,137 @@ app.post("/api/palata/customer-profile", (req, res) => {
   });
 });
 
+// ─── Expert Profile ───────────────────────────────────────────────────────────
+
+async function handleExpertProfileGet(req, res) {
+  const userId = typeof req.params?.userId === "string" ? req.params.userId.trim() : "";
+  if (!userId) { res.status(400).json({ success: false, error: "MISSING_USER_ID" }); return; }
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  console.log("[EXPERT-PROFILE] get", { userId });
+  try {
+    const result = await pool.query(
+      `SELECT id, user_id, status, experience_years, education, certifications,
+              accepts_requests, business_trip_ready,
+              palata_registry_verified, palata_registry_number,
+              centrsudexpert_verified, centrsudexpert_registry_number,
+              avg_customer_rating, completed_orders_count, decline_rate,
+              bio, created_at, updated_at
+       FROM public.palata_expert_profiles
+       WHERE user_id = $1
+       LIMIT 1`,
+      [userId],
+    );
+    const profile = result.rows[0] ?? null;
+    console.log("[EXPERT-PROFILE] success", { stage: "get", userId, found: Boolean(profile) });
+    res.status(200).json({ success: true, profile });
+  } catch (err) {
+    console.error("[EXPERT-PROFILE] error", { stage: "get", message: err.message });
+    res.status(500).json({ success: false, error: "GET_PROFILE_FAILED", message: err.message });
+  }
+}
+
+async function handleExpertProfileList(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const userIdsRaw = typeof req.query?.user_ids === "string" ? req.query.user_ids.trim() : "";
+  const userIds = userIdsRaw ? userIdsRaw.split(",").map(s => s.trim()).filter(Boolean) : null;
+  const acceptsRequests = req.query?.accepts_requests === "true" ? true : null;
+  console.log("[EXPERT-PROFILE] list", { userIdsCount: userIds?.length ?? "all", acceptsRequests });
+  try {
+    let sql = `SELECT id, user_id, status, experience_years, education, certifications,
+                      accepts_requests, business_trip_ready,
+                      palata_registry_verified, palata_registry_number,
+                      centrsudexpert_verified, centrsudexpert_registry_number,
+                      avg_customer_rating, completed_orders_count, decline_rate,
+                      bio, created_at, updated_at
+               FROM public.palata_expert_profiles`;
+    const params = [];
+    const conditions = [];
+    if (userIds && userIds.length > 0) {
+      params.push(userIds);
+      conditions.push(`user_id = ANY($${params.length})`);
+    }
+    if (acceptsRequests === true) {
+      conditions.push("accepts_requests = true");
+    }
+    if (conditions.length > 0) sql += " WHERE " + conditions.join(" AND ");
+    const result = await pool.query(sql, params);
+    console.log("[EXPERT-PROFILE] success", { stage: "list", count: result.rows.length });
+    res.status(200).json({ success: true, rows: result.rows });
+  } catch (err) {
+    console.error("[EXPERT-PROFILE] error", { stage: "list", message: err.message });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: err.message });
+  }
+}
+
+async function handleExpertProfileUpsert(req, res) {
+  const body = req.body ?? {};
+  const userId = typeof body.user_id === "string" ? body.user_id.trim() : "";
+  if (!userId) { res.status(400).json({ success: false, error: "MISSING_USER_ID" }); return; }
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const bio             = typeof body.bio === "string" ? body.bio : null;
+  const expYears        = body.experience_years != null ? (parseInt(body.experience_years) || null) : null;
+  const education       = typeof body.education === "string" ? body.education : null;
+  const tripReady       = typeof body.business_trip_ready === "boolean" ? body.business_trip_ready : false;
+  const accepts         = typeof body.accepts_requests === "boolean" ? body.accepts_requests : true;
+  const palataOk        = typeof body.palata_registry_verified === "boolean" ? body.palata_registry_verified : false;
+  const palataNum       = typeof body.palata_registry_number === "string" ? body.palata_registry_number : null;
+  const centrsudOk      = typeof body.centrsudexpert_verified === "boolean" ? body.centrsudexpert_verified : false;
+  const centrsudNum     = typeof body.centrsudexpert_registry_number === "string" ? body.centrsudexpert_registry_number : null;
+  const completedOrders = body.completed_orders_count != null ? (parseInt(body.completed_orders_count) || 0) : 0;
+  console.log("[EXPERT-PROFILE] upsert", { userId });
+  try {
+    await pool.query(
+      `INSERT INTO public.palata_expert_profiles (
+         user_id, bio, experience_years, education,
+         business_trip_ready, accepts_requests,
+         palata_registry_verified, palata_registry_number,
+         centrsudexpert_verified, centrsudexpert_registry_number,
+         completed_orders_count
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (user_id) DO UPDATE SET
+         bio                             = EXCLUDED.bio,
+         experience_years                = EXCLUDED.experience_years,
+         education                       = EXCLUDED.education,
+         business_trip_ready             = EXCLUDED.business_trip_ready,
+         accepts_requests                = EXCLUDED.accepts_requests,
+         palata_registry_verified        = EXCLUDED.palata_registry_verified,
+         palata_registry_number          = EXCLUDED.palata_registry_number,
+         centrsudexpert_verified         = EXCLUDED.centrsudexpert_verified,
+         centrsudexpert_registry_number  = EXCLUDED.centrsudexpert_registry_number,
+         completed_orders_count          = EXCLUDED.completed_orders_count,
+         updated_at                      = now()`,
+      [userId, bio, expYears, education, tripReady, accepts,
+       palataOk, palataNum, centrsudOk, centrsudNum, completedOrders],
+    );
+    console.log("[EXPERT-PROFILE] success", { stage: "upsert", userId });
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("[EXPERT-PROFILE] error", { stage: "upsert", message: err.message, code: err.code, constraint: err.constraint });
+    res.status(500).json({ success: false, error: "PROFILE_UPSERT_FAILED", message: err.message });
+  }
+}
+
+app.get("/api/palata/expert-profile", (req, res) => {
+  handleExpertProfileList(req, res).catch(err => {
+    console.error("[EXPERT-PROFILE] error", { stage: "unhandled_list", stack: err.stack });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: String(err) });
+  });
+});
+
+app.get("/api/palata/expert-profile/:userId", (req, res) => {
+  handleExpertProfileGet(req, res).catch(err => {
+    console.error("[EXPERT-PROFILE] error", { stage: "unhandled_get", stack: err.stack });
+    res.status(500).json({ success: false, error: "GET_PROFILE_FAILED", message: String(err) });
+  });
+});
+
+app.post("/api/palata/expert-profile", (req, res) => {
+  handleExpertProfileUpsert(req, res).catch(err => {
+    console.error("[EXPERT-PROFILE] error", { stage: "unhandled_upsert", stack: err.stack });
+    res.status(500).json({ success: false, error: "PROFILE_UPSERT_FAILED", message: String(err) });
+  });
+});
+
 app.use(express.static(STATIC_DIR));
 
 app.get(/(.*)/, (req, res, next) => {

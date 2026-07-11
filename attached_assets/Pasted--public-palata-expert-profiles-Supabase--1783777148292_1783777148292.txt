@@ -1,0 +1,134 @@
+Задача: полностью переключить только одну таблицу
+
+public.palata_expert_profiles
+
+с Supabase на новую PostgreSQL (PALATA_DATABASE_URL).
+
+Ничего кроме этой таблицы не менять.
+
+========================
+Шаг 1
+========================
+
+Найди ВСЕ обращения в проекте к
+
+supabase.from("palata_expert_profiles")
+
+а также любые SQL-запросы к этой таблице.
+
+Показать полный аудит:
+
+- файл
+- функция
+- SELECT
+- INSERT
+- UPDATE
+- UPSERT
+- DELETE
+
+========================
+Шаг 2
+========================
+
+Новая схема PostgreSQL
+
+public.palata_expert_profiles
+
+id uuid
+user_id uuid
+status palata_expert_profile_status
+experience_years integer
+education text
+certifications text[]
+accepts_requests boolean
+business_trip_ready boolean
+palata_registry_verified boolean
+centrsudexpert_verified boolean
+avg_customer_rating numeric
+completed_orders_count integer
+decline_rate numeric
+bio text
+created_at timestamptz
+updated_at timestamptz
+palata_registry_number text
+centrsudexpert_registry_number text
+
+Не использовать старую схему Supabase.
+
+========================
+Шаг 3
+========================
+
+Все обращения заменить на PostgreSQL через PALATA_DATABASE_URL.
+
+По аналогии с уже сделанными:
+
+- palata_certificates_import
+- palata_certificate_import_logs
+- palata_customer_profiles
+
+То есть:
+
+Express endpoint
+↓
+
+pg.Pool
+↓
+
+PALATA_DATABASE_URL
+
+↓
+
+public.palata_expert_profiles
+
+Фронтенд должен работать только через новые endpoints.
+
+========================
+Шаг 4
+========================
+
+Не менять:
+
+- palata_users
+- palata_expert_certificates
+- palata_expert_regions
+- palata_expert_directions
+- регистрацию
+- авторизацию
+- импорт сертификатов
+- любые ETL
+
+Только palata_expert_profiles.
+
+========================
+Шаг 5
+========================
+
+После изменений выполнить
+
+node --check artifacts/palata/server.js
+
+pnpm --filter ./artifacts/palata run typecheck
+
+pnpm --filter ./artifacts/palata run build
+
+========================
+В отчёте показать
+
+1. все найденные обращения;
+
+2. какие endpoints добавлены;
+
+3. полный SQL SELECT;
+
+4. полный SQL INSERT/UPSERT;
+
+5. полный SQL UPDATE;
+
+6. результаты трёх проверок;
+
+7. подтверждение, что
+
+supabase.from("palata_expert_profiles")
+
+в коде больше отсутствует.

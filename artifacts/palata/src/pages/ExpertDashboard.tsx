@@ -277,21 +277,13 @@ export default function ExpertDashboard() {
         setMatchState({ kind: "ok", rows: (data as unknown as Match[]) ?? [] });
       });
 
-    supabase
-      .from("palata_expert_profiles")
-      .select(`
-        id, status, experience_years,
-        education, certifications, accepts_requests, business_trip_ready,
-        palata_registry_verified, centrsudexpert_verified,
-        palata_registry_number, centrsudexpert_registry_number,
-        avg_customer_rating, completed_orders_count, bio
-      `)
-      .eq("user_id", userId)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (error) { setProfileState({ kind: "error", message: error.message }); return; }
-        setProfileState({ kind: "ok", profile: data as ExpertProfile | null });
-      });
+    fetch(`/api/palata/expert-profile/${userId}`)
+      .then(r => r.json())
+      .then(b => {
+        if (!b.success) { setProfileState({ kind: "error", message: b.message ?? "Failed to load profile" }); return; }
+        setProfileState({ kind: "ok", profile: b.profile as ExpertProfile | null });
+      })
+      .catch(e => setProfileState({ kind: "error", message: String(e) }));
 
     // ── Background queries: deferred so critical requests get first pick ───
     const bgTimer = setTimeout(() => {
@@ -366,17 +358,10 @@ export default function ExpertDashboard() {
     const uid = guard.user.id;
     supabase.from("palata_users").select("phone").eq("id", uid).single()
       .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
-    supabase.from("palata_expert_profiles")
-      .select(`
-        id, status, experience_years,
-        education, certifications, accepts_requests, business_trip_ready,
-        palata_registry_verified, centrsudexpert_verified,
-        palata_registry_number, centrsudexpert_registry_number,
-        avg_customer_rating, completed_orders_count, bio
-      `)
-      .eq("user_id", uid).maybeSingle()
-      .then(({ data, error }) => {
-        if (!error) setProfileState({ kind: "ok", profile: data as ExpertProfile | null });
+    fetch(`/api/palata/expert-profile/${uid}`)
+      .then(r => r.json())
+      .then(b => {
+        if (b.success) setProfileState({ kind: "ok", profile: b.profile as ExpertProfile | null });
       });
   }
 
@@ -1391,8 +1376,10 @@ function ProfileView({
       supabase.from("palata_users")
         .update({ full_name: fullName.trim() || null, phone: phone.trim() || null })
         .eq("id", userId),
-      supabase.from("palata_expert_profiles")
-        .upsert({
+      fetch("/api/palata/expert-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           user_id:                          userId,
           bio:                              bio.trim() || null,
           experience_years:                 expYears ? parseInt(expYears) : null,
@@ -1403,7 +1390,11 @@ function ProfileView({
           palata_registry_number:           palataOk ? palataNum.trim() || null : null,
           centrsudexpert_verified:          centrsudOk,
           centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
-        }, { onConflict: "user_id" }),
+        }),
+      })
+        .then(r => r.json())
+        .then(b => ({ error: b.success ? null : { message: b.message ?? "Expert profile upsert failed" } }))
+        .catch((e: unknown) => ({ error: { message: String(e) } })),
     ]);
     if (r1.error || r2.error) {
       setSaving(false);

@@ -51,9 +51,10 @@ export default function AdminExperts() {
     const ids = (users as { id: string }[]).map(u => u.id);
 
     const [{ data: profiles }, { data: expDirs }, { data: expRegs }] = await Promise.all([
-      supabase.from("palata_expert_profiles")
-        .select("user_id, experience_years, bio, accepts_requests, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count, status")
-        .in("user_id", ids),
+      fetch(`/api/palata/expert-profile?user_ids=${encodeURIComponent(ids.join(","))}`)
+        .then(r => r.json())
+        .then(b => ({ data: (b.rows ?? []) as PRow[] }))
+        .catch(() => ({ data: [] as PRow[] })),
       supabase.from("palata_expert_directions")
         .select("expert_id, palata_expertise_directions(name)")
         .in("expert_id", ids),
@@ -320,8 +321,10 @@ function ExpertDetailPanel({ expert: e, onClose, onSaved }: {
       supabase.from("palata_users")
         .update({ full_name: fullName.trim() || null, phone: phone.trim() || null })
         .eq("id", e.id),
-      supabase.from("palata_expert_profiles")
-        .upsert({
+      fetch("/api/palata/expert-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           user_id:                        e.id,
           bio:                            bio.trim() || null,
           experience_years:               expYears ? parseInt(expYears) : null,
@@ -332,7 +335,11 @@ function ExpertDetailPanel({ expert: e, onClose, onSaved }: {
           centrsudexpert_verified:        centrsudOk,
           centrsudexpert_registry_number: centrsudOk ? centrsudNum.trim() || null : null,
           completed_orders_count:         parseInt(completedCount) || 0,
-        }, { onConflict: "user_id" }),
+        }),
+      })
+        .then(r => r.json())
+        .then(b => ({ error: b.success ? null : { message: b.message ?? "Expert profile upsert failed" } }))
+        .catch((e: unknown) => ({ error: { message: String(e) } })),
     ]);
     if (r1.error || r2.error) {
       setSaveErr((r1.error ?? r2.error)!.message);

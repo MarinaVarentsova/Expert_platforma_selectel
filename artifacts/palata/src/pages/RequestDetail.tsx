@@ -332,12 +332,10 @@ function ExpertTopNav({ userId, userName, userEmail }: {
   const [actionCount, setActionCount] = useState(0);
 
   useEffect(() => {
-    supabase.from("palata_expert_profiles")
-      .select("avg_customer_rating")
-      .eq("user_id", userId)
-      .maybeSingle()
-      .then(({ data }) => {
-        const d = data as { avg_customer_rating: number | null } | null;
+    fetch(`/api/palata/expert-profile/${userId}`)
+      .then(r => r.json())
+      .then(b => {
+        const d = b.profile as { avg_customer_rating: number | null } | null;
         setRating(d?.avg_customer_rating ?? null);
       });
 
@@ -572,9 +570,10 @@ export default function RequestDetail() {
 
       const [profilesRes, usersRes, expRatRes, custRatRes, custAllRatRes, reqRegionsRes, expRegionsRes, expDirsRes] = await Promise.all([
         expertIds.length > 0
-          ? supabase.from("palata_expert_profiles")
-              .select("user_id, experience_years, bio, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count")
-              .in("user_id", expertIds)
+          ? fetch(`/api/palata/expert-profile?user_ids=${encodeURIComponent(expertIds.join(","))}`)
+              .then(r => r.json())
+              .then(b => ({ data: (b.rows ?? []) as ExpertProfile[], error: null }))
+              .catch(() => ({ data: [] as ExpertProfile[], error: null }))
           : Promise.resolve({ data: [] as ExpertProfile[], error: null }),
         userIds.length > 0
           ? supabase.from("palata_users").select("id, full_name, email").in("id", userIds)

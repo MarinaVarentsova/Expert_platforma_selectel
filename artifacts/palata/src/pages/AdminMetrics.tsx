@@ -287,8 +287,10 @@ export default function AdminMetrics() {
         await Promise.all([
           supabase.from("palata_requests")
             .select("id, status, expertise_type, expertise_direction_id, created_at, customer_id, region_id"),
-          supabase.from("palata_expert_profiles")
-            .select("user_id, palata_registry_verified, centrsudexpert_verified"),
+          fetch("/api/palata/expert-profile")
+            .then(r => r.json())
+            .then(b => ({ data: (b.rows ?? []) as { user_id: string; palata_registry_verified: boolean; centrsudexpert_verified: boolean }[], error: null }))
+            .catch(() => ({ data: [] as { user_id: string; palata_registry_verified: boolean; centrsudexpert_verified: boolean }[], error: null })),
           supabase.from("palata_request_matches")
             .select("request_id, expert_id, status"),
           supabase.from("palata_expert_ratings").select("score"),

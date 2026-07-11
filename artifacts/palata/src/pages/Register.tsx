@@ -262,17 +262,22 @@ export default function Register() {
 
     } else {
       // expert_profiles
-      const { error: epErr } = await supabase.from("palata_expert_profiles").upsert({
-        user_id:                          userId,
-        bio:                              bio.trim() || null,
-        business_trip_ready:              tripReady,
-        accepts_requests:                 true,
-        palata_registry_verified:         palataOk,
-        palata_registry_number:           palataOk ? palataNum.trim() || null : null,
-        centrsudexpert_verified:          centrsudOk,
-        centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
-      }, { onConflict: "user_id" });
-      if (epErr) console.error("[register] palata_expert_profiles upsert:", epErr.message);
+      const epRes = await fetch("/api/palata/expert-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id:                          userId,
+          bio:                              bio.trim() || null,
+          business_trip_ready:              tripReady,
+          accepts_requests:                 true,
+          palata_registry_verified:         palataOk,
+          palata_registry_number:           palataOk ? palataNum.trim() || null : null,
+          centrsudexpert_verified:          centrsudOk,
+          centrsudexpert_registry_number:   centrsudOk ? centrsudNum.trim() || null : null,
+        }),
+      });
+      const epBody = await epRes.json().catch(() => null);
+      if (!epRes.ok || !epBody?.success) console.error("[register] palata_expert_profiles upsert:", epBody?.message ?? epRes.status);
 
       // directions
       const dirIds   = mergeDirectionIds(verifiedCerts);

@@ -1094,9 +1094,10 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
       const expertIds = matches.map((m: { expert_id: string }) => m.expert_id);
 
       const [{ data: profiles }, { data: users }, { data: expertDirs }, { data: expertRegs }] = await Promise.all([
-        supabase.from("palata_expert_profiles").select(
-          "user_id, experience_years, business_trip_ready, palata_registry_verified, palata_registry_number, centrsudexpert_verified, centrsudexpert_registry_number, avg_customer_rating, completed_orders_count, bio"
-        ).in("user_id", expertIds),
+        fetch(`/api/palata/expert-profile?user_ids=${encodeURIComponent(expertIds.join(","))}`)
+          .then(r => r.json())
+          .then(b => ({ data: (b.rows ?? []) as PRow[] }))
+          .catch(() => ({ data: [] as PRow[] })),
         supabase.from("palata_users").select("id, full_name, email").in("id", expertIds),
         supabase.from("palata_expert_directions")
           .select("expert_id, palata_expertise_directions(name)")

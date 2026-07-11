@@ -558,7 +558,11 @@ async function handleCertImport(req, res) {
          certificate_number, expert_full_name, specialty_text, certificate_period,
          specialty_code, valid_from, valid_to, is_active, source_file_name, source_loaded_at
        )
-       SELECT
+       SELECT DISTINCT ON (
+         trim(COALESCE(certificate_number, '')),
+         COALESCE(specialty_text, ''),
+         COALESCE(certificate_period, '')
+       )
          trim(COALESCE(certificate_number, ''))  AS certificate_number,
          trim(COALESCE(expert_full_name, ''))    AS expert_full_name,
          COALESCE(specialty_text, '')            AS specialty_text,

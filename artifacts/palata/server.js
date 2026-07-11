@@ -565,7 +565,7 @@ async function handleCertImport(req, res) {
          COALESCE(certificate_period, '')        AS certificate_period,
          CASE
            WHEN codes IS NOT NULL AND trim(codes) != ''
-             THEN trim(codes)
+             THEN regexp_replace(trim(codes), '\\s*,\\s*', ',', 'g')
            WHEN specialty_text IS NOT NULL AND specialty_text ~ '\\d+\\.\\d+'
              THEN array_to_string(
                ARRAY(
@@ -583,7 +583,7 @@ async function handleCertImport(req, res) {
          now()                                   AS source_loaded_at
        FROM public.palata_certificates_import
        WHERE trim(COALESCE(certificate_number, '')) != ''
-       ON CONFLICT ON CONSTRAINT palata_certificates_certificate_number_specialty_text_certi_key DO UPDATE SET
+       ON CONFLICT (certificate_number, specialty_text, certificate_period) DO UPDATE SET
          expert_full_name   = EXCLUDED.expert_full_name,
          specialty_code     = EXCLUDED.specialty_code,
          valid_from         = EXCLUDED.valid_from,

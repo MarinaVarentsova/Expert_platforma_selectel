@@ -6,7 +6,7 @@ import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import {
   PlusCircle, FileText, User, MapPin, Building2,
-  Phone, Mail, ClipboardList, Star,
+  Phone, Mail, ClipboardList, Hash, Star,
   Zap, Calendar, CheckCircle2, XCircle, ChevronDown, ChevronUp, GraduationCap,
   Pencil, X,
 } from "lucide-react";
@@ -41,6 +41,7 @@ type Request = {
 
 type CustomerProfile = {
   company_name: string | null;
+  inn: string | null;
   contact_name: string | null;
   notes: string | null;
   region_id: string | null;
@@ -617,6 +618,7 @@ function ProfileView({
   const [fullName, setFullName]         = useState(user.full_name ?? "");
   const [phone, setPhone]               = useState(user.phone ?? "");
   const [companyName, setCompanyName]   = useState(profile?.company_name ?? "");
+  const [inn, setInn]                   = useState(profile?.inn ?? "");
   const [contactName, setContactName]   = useState(profile?.contact_name ?? "");
   const [regionIds, setRegionIds]       = useState<string[]>(initialRegionIds);
   const [notes, setNotes]               = useState(profile?.notes ?? "");
@@ -629,6 +631,7 @@ function ProfileView({
     setFullName(user.full_name ?? "");
     setPhone(user.phone ?? "");
     setCompanyName(profile?.company_name ?? "");
+    setInn(profile?.inn ?? "");
     setContactName(profile?.contact_name ?? "");
     setNotes(profile?.notes ?? "");
     setSavedOk(false);
@@ -642,6 +645,7 @@ function ProfileView({
     const cpPayload = {
       user_id:      userId,
       company_name: companyName.trim() || null,
+      inn:          inn.trim() || null,
       contact_name: contactName.trim() || null,
       notes:        notes.trim() || null,
       region_id:    regionIds[0] ?? null,
@@ -796,6 +800,7 @@ function ProfileView({
               </div>
               <div className="space-y-3">
                 <InfoRow icon={<Building2 className="w-3.5 h-3.5" />} label="Компания" value={profile.company_name} />
+                <InfoRow icon={<Hash className="w-3.5 h-3.5" />} label="ИНН" value={profile.inn} mono />
                 <InfoRow icon={<User className="w-3.5 h-3.5" />} label="Контактное лицо" value={profile.contact_name} />
                 <InfoRow
                   icon={<MapPin className="w-3.5 h-3.5" />}

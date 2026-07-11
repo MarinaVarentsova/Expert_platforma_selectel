@@ -780,23 +780,26 @@ function buildCustomerProfileParams(body) {
   return {
     userId:      typeof body?.user_id === "string" ? body.user_id : "",
     companyName: typeof body?.company_name === "string" && body.company_name.trim() ? body.company_name.trim() : null,
+    inn:         typeof body?.inn === "string" && body.inn.trim() ? body.inn.trim() : null,
     contactName: typeof body?.contact_name === "string" && body.contact_name.trim() ? body.contact_name.trim() : null,
     notes:       typeof body?.notes === "string" && body.notes.trim() ? body.notes.trim() : null,
     regionId:    typeof body?.region_id === "string" && body.region_id ? body.region_id : null,
   };
 }
 
-async function runCustomerProfileUpsert(pool, { userId, companyName, contactName, notes, regionId }) {
+async function runCustomerProfileUpsert(pool, { userId, companyName, inn, contactName, notes, regionId }) {
   await pool.query(
     `INSERT INTO public.palata_customer_profiles
-       (user_id, company_name, contact_name, notes, region_id)
-     VALUES ($1, $2, $3, $4, $5)
+       (user_id, company_name, inn, contact_name, notes, region_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (user_id) DO UPDATE SET
        company_name = EXCLUDED.company_name,
+       inn          = EXCLUDED.inn,
        contact_name = EXCLUDED.contact_name,
        notes        = EXCLUDED.notes,
-       region_id    = EXCLUDED.region_id`,
-    [userId, companyName, contactName, notes, regionId],
+       region_id    = EXCLUDED.region_id,
+       updated_at   = now()`,
+    [userId, companyName, inn, contactName, notes, regionId],
   );
 }
 

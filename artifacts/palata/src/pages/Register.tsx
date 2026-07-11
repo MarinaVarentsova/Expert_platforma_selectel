@@ -47,6 +47,7 @@ export default function Register() {
   const [phone, setPhone]                 = useState("");
 
   const [companyName, setCompanyName]     = useState("");
+  const [inn, setInn]                     = useState("");
   const [contactName, setContactName]     = useState("");
   const [notes, setNotes]                 = useState("");
 
@@ -248,6 +249,7 @@ export default function Register() {
         body: JSON.stringify({
           user_id:      userId,
           company_name: companyName.trim() || null,
+          inn:          inn.trim() || null,
           contact_name: contactName.trim() || null,
           notes:        notes.trim() || null,
           region_id:    regionIds[0] ?? null,
@@ -522,6 +524,11 @@ export default function Register() {
                   <Label>Компания / Организация</Label>
                   <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)}
                     placeholder='ООО «Ромашка»' className={inputClass()} />
+                </div>
+                <div>
+                  <Label>ИНН</Label>
+                  <input type="text" value={inn} onChange={e => setInn(e.target.value)}
+                    placeholder="7700000000" className={inputClass("font-mono")} />
                 </div>
                 <div>
                   <Label>Контактное лицо</Label>

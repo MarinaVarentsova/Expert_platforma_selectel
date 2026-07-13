@@ -1692,25 +1692,96 @@ app.post("/api/palata/email-events", (req, res) => {
   });
 });
 
-// ── GET /api/palata/email-events — query email events (admin only) ──
+// ── GET /api/palata/email-events — two modes: request_id (per-request auth) or admin list ──
 
 async function handleEmailEventsQuery(req, res) {
+  const { request_id, template, mode, recipient } = req.query;
+
+  // ── Mode 1: request_id — verify token, check per-request access ─────────────
+  if (request_id) {
+    const authHeader = req.headers["authorization"] ?? "";
+    if (!authHeader.startsWith("Bearer ") || authHeader.slice(7).length === 0) {
+      return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+    }
+    const token = authHeader.slice(7);
+
+    let meBody;
+    let meStatus;
+    try {
+      const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      meStatus = meRes.status;
+      const meText = await meRes.text();
+      try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    } catch {
+      return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+    }
+
+    if (meStatus !== 200 || !meBody?.success || !meBody?.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+
+    const userId = meBody.user.id;
+    const role = meBody.user.role;
+
+    const client = await pool.connect();
+    try {
+      let hasAccess = role === "admin";
+
+      if (!hasAccess) {
+        const reqResult = await client.query(
+          `SELECT customer_id, assigned_expert_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+          [request_id],
+        );
+        if (reqResult.rows.length === 0) {
+          return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+        }
+        const r = reqResult.rows[0];
+        if (r.customer_id === userId || r.assigned_expert_id === userId) {
+          hasAccess = true;
+        } else {
+          const matchResult = await client.query(
+            `SELECT 1 FROM public.palata_request_matches WHERE request_id = $1 AND expert_id = $2 LIMIT 1`,
+            [request_id, userId],
+          );
+          if (matchResult.rows.length > 0) hasAccess = true;
+        }
+      }
+
+      if (!hasAccess) {
+        return res.status(403).json({ success: false, error: "FORBIDDEN" });
+      }
+
+      const { rows } = await client.query(
+        `SELECT id, recipient_id, email_address, template_name, subject, context, sent_at, error
+         FROM public.palata_email_events
+         WHERE context @> $1::jsonb
+         ORDER BY sent_at DESC
+         LIMIT 50`,
+        [JSON.stringify({ request_id })],
+      );
+      res.json({ success: true, rows, total: null });
+    } catch (err) {
+      console.error("[EMAIL-EVENTS] request_id query failed", { stack: err.stack });
+      res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+    } finally {
+      client.release();
+    }
+    return;
+  }
+
+  // ── Mode 2: admin list — requireAdmin, with filters ──────────────────────────
   const admin = await requireAdmin(req);
   if (!admin.ok) {
     return res.status(admin.status).json({ success: false, error: admin.error });
   }
 
-  const { request_id, template, mode, recipient } = req.query;
-
   const conditions = [];
   const params = [];
   let idx = 1;
 
-  if (request_id) {
-    conditions.push(`context @> $${idx}::jsonb`);
-    params.push(JSON.stringify({ request_id }));
-    idx++;
-  }
   if (template) {
     conditions.push(`template_name = $${idx}`);
     params.push(template);
@@ -1728,32 +1799,25 @@ async function handleEmailEventsQuery(req, res) {
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  const limitVal = request_id ? 50 : 300;
-  const fields = request_id
-    ? "id, recipient_id, email_address, template_name, subject, context, sent_at, error"
-    : "id, recipient_id, email_address, template_name, subject, context, sent_at, delivered_at, opened_at, error";
 
   const client = await pool.connect();
   try {
     const { rows } = await client.query(
-      `SELECT ${fields}
+      `SELECT id, recipient_id, email_address, template_name, subject, context,
+              sent_at, delivered_at, opened_at, error
        FROM public.palata_email_events
        ${where}
        ORDER BY sent_at DESC
-       LIMIT ${limitVal}`,
+       LIMIT 300`,
       params,
     );
-    let total = null;
-    if (!request_id) {
-      const cntRes = await client.query(
-        `SELECT COUNT(*)::int AS total FROM public.palata_email_events ${where}`,
-        params,
-      );
-      total = cntRes.rows[0]?.total ?? rows.length;
-    }
-    res.json({ success: true, rows, total });
+    const cntRes = await client.query(
+      `SELECT COUNT(*)::int AS total FROM public.palata_email_events ${where}`,
+      params,
+    );
+    res.json({ success: true, rows, total: cntRes.rows[0]?.total ?? rows.length });
   } catch (err) {
-    console.error("[EMAIL-EVENTS] query failed", { stack: err.stack });
+    console.error("[EMAIL-EVENTS] admin-list query failed", { stack: err.stack });
     res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
   } finally {
     client.release();

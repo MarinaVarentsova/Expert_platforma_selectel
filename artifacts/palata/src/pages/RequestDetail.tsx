@@ -3,6 +3,7 @@ import { useParams, Link, useLocation } from "wouter";
 import { ClipboardList, Zap, Star, User, Briefcase, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrentUser } from "@/lib/useAuth";
+import { getToken } from "@/lib/authClient";
 
 import { runMatching } from "@/lib/matching";
 import { notify, type NotifyItem } from "@/lib/notifyApi";
@@ -545,11 +546,9 @@ export default function RequestDetail() {
         supabase.from("palata_request_contacts")
           .select("id, request_id, expert_id, revealed_at, customer_phone, customer_email, expert_phone, expert_email")
           .eq("request_id", id!),
-        supabase.auth.getSession().then(({ data: { session } }) =>
-          fetch(`/api/palata/email-events?request_id=${encodeURIComponent(id!)}`, {
-            headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
-          }).then(r => r.json()).catch(() => ({ success: false, rows: [] as EmailEvent[] }))
-        ),
+        fetch(`/api/palata/email-events?request_id=${encodeURIComponent(id!)}`, {
+          headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+        }).then(r => r.json()).catch(() => ({ success: false, rows: [] as EmailEvent[] })),
       ]);
 
       if (!reqRes.data || reqRes.error) {

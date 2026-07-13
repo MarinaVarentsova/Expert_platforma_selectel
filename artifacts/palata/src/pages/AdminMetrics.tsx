@@ -297,7 +297,10 @@ export default function AdminMetrics() {
             .then(r => r.json())
             .then(b => ({ data: (b.rows ?? []) as { score: number }[], error: null }))
             .catch(() => ({ data: [] as { score: number }[], error: null })),
-          supabase.from("palata_customer_ratings").select("score"),
+          fetch("/api/palata/customer-ratings")
+            .then(r => r.json())
+            .then(b => ({ data: (b.rows ?? []) as { score: number }[], error: null }))
+            .catch(() => ({ data: [] as { score: number }[], error: null })),
           fetch("/api/palata/customer-profile")
             .then(r => r.json())
             .then((b: { success: boolean; rows?: { user_id: string }[] }) => ({

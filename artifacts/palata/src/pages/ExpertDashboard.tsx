@@ -212,11 +212,10 @@ export default function ExpertDashboard() {
 
     // Parallel: check which requests are already rated + fetch customer info
     const [{ data: ratings }, { data: customers }] = await Promise.all([
-      supabase
-        .from("palata_customer_ratings")
-        .select("request_id")
-        .eq("expert_id", userId)
-        .in("request_id", reqIds),
+      fetch(`/api/palata/customer-ratings?expert_id=${encodeURIComponent(userId)}&request_ids=${encodeURIComponent(reqIds.join(","))}`)
+        .then(r => r.json())
+        .then(b => ({ data: (b.rows ?? []) as { request_id: string }[] }))
+        .catch(() => ({ data: [] as { request_id: string }[] })),
       allCustomerIds.length > 0
         ? supabase.from("palata_users").select("id, full_name, email").in("id", allCustomerIds)
         : Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string }[] }),
@@ -428,14 +427,18 @@ export default function ExpertDashboard() {
     const form = getRatingForm(item.match_id);
     if (form.kind !== "idle" || !item.customer_id) return;
     setRatingForm(item.match_id, { kind: "submitting" });
-    const { error } = await supabase.from("palata_customer_ratings").insert({
-      request_id: item.request_id,
-      customer_id: item.customer_id,
-      expert_id: user.id,
-      score: form.score,
-      comment: form.comment || null,
-    });
-    if (error) { setRatingForm(item.match_id, { kind: "idle", score: 5, comment: "" }); return; }
+    const insRes = await fetch("/api/palata/customer-ratings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        request_id: item.request_id,
+        customer_id: item.customer_id,
+        expert_id: user.id,
+        score: form.score,
+        comment: form.comment || null,
+      }),
+    }).then(r => r.json()).catch(() => ({ success: false }));
+    if (!insRes.success) { setRatingForm(item.match_id, { kind: "idle", score: 5, comment: "" }); return; }
     await supabase.from("palata_status_events").insert({
       entity_type: "request", entity_id: item.request_id,
       old_status: "completed", new_status: "completed",
@@ -808,8 +811,11 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
         ? supabase.from("palata_users").select("id, full_name, email").in("id", customerIds)
         : Promise.resolve({ data: [] }),
       customerIds.length > 0
-        ? supabase.from("palata_customer_ratings").select("customer_id, score").in("customer_id", customerIds)
-        : Promise.resolve({ data: [] }),
+        ? fetch(`/api/palata/customer-ratings?customer_ids=${encodeURIComponent(customerIds.join(","))}`)
+            .then(r => r.json())
+            .then(b => ({ data: (b.rows ?? []) as { customer_id: string; score: number }[] }))
+            .catch(() => ({ data: [] as { customer_id: string; score: number }[] }))
+        : Promise.resolve({ data: [] as { customer_id: string; score: number }[] }),
     ]);
 
     const ratingAcc: Record<string, number[]> = {};

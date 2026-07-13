@@ -1652,6 +1652,89 @@ app.post("/api/palata/expert-certificate", (req, res) => {
   });
 });
 
+// ── GET /api/palata/customer-ratings — query customer ratings ──
+
+async function handleCustomerRatingsQuery(req, res) {
+  const { request_id, customer_id, customer_ids, expert_id, request_ids } = req.query;
+
+  const conditions = [];
+  const params = [];
+  let idx = 1;
+
+  if (request_id) {
+    conditions.push(`request_id = $${idx}`); params.push(request_id); idx++;
+  }
+  if (customer_id) {
+    conditions.push(`customer_id = $${idx}`); params.push(customer_id); idx++;
+  }
+  if (expert_id) {
+    conditions.push(`expert_id = $${idx}`); params.push(expert_id); idx++;
+  }
+  if (request_ids) {
+    const ids = String(request_ids).split(",").map(s => s.trim()).filter(Boolean);
+    if (ids.length > 0) { conditions.push(`request_id = ANY($${idx})`); params.push(ids); idx++; }
+  }
+  if (customer_ids) {
+    const ids = String(customer_ids).split(",").map(s => s.trim()).filter(Boolean);
+    if (ids.length > 0) { conditions.push(`customer_id = ANY($${idx})`); params.push(ids); idx++; }
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT id, request_id, customer_id, expert_id, score, comment, created_at
+       FROM public.palata_customer_ratings ${where}`,
+      params,
+    );
+    res.json({ success: true, rows });
+  } catch (err) {
+    console.error("[CUSTOMER-RATINGS] query failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/customer-ratings", (req, res) => {
+  handleCustomerRatingsQuery(req, res).catch(err => {
+    console.error("[CUSTOMER-RATINGS] query unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+// ── POST /api/palata/customer-ratings — insert a customer rating ──
+
+async function handleCustomerRatingsInsert(req, res) {
+  const { request_id, customer_id, expert_id, score, comment } = req.body ?? {};
+  if (!request_id || !customer_id || !expert_id || score == null) {
+    return res.status(400).json({ success: false, error: "MISSING_REQUIRED_FIELDS" });
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `INSERT INTO public.palata_customer_ratings
+         (request_id, customer_id, expert_id, score, comment)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [request_id, customer_id, expert_id, score, comment ?? null],
+    );
+    res.json({ success: true, id: rows[0]?.id });
+  } catch (err) {
+    console.error("[CUSTOMER-RATINGS] insert failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "INSERT_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/customer-ratings", (req, res) => {
+  handleCustomerRatingsInsert(req, res).catch(err => {
+    console.error("[CUSTOMER-RATINGS] insert unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── GET /api/palata/expert-ratings — query expert ratings ──
 
 async function handleExpertRatingsQuery(req, res) {

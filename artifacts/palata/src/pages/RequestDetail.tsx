@@ -427,11 +427,10 @@ function CustomerTopNav({ userId, userName, userEmail }: {
   const [rateCount, setRateCount]     = useState(0);
 
   useEffect(() => {
-    supabase.from("palata_customer_ratings")
-      .select("score")
-      .eq("customer_id", userId)
-      .then(({ data }) => {
-        const scores = (data ?? []).map((r: { score: number }) => r.score);
+    fetch(`/api/palata/customer-ratings?customer_id=${encodeURIComponent(userId)}`)
+      .then(r => r.json())
+      .then(({ rows }) => {
+        const scores = ((rows ?? []) as { score: number }[]).map(r => r.score);
         if (scores.length > 0) {
           setRating(Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 10) / 10);
         }
@@ -585,9 +584,15 @@ export default function RequestDetail() {
           .then(r => r.json())
           .then(b => ({ data: (b.rows ?? []) as ExpertRating[], error: null }))
           .catch(() => ({ data: [] as ExpertRating[], error: null })),
-        supabase.from("palata_customer_ratings").select("*").eq("request_id", id!),
+        fetch(`/api/palata/customer-ratings?request_id=${encodeURIComponent(id!)}`)
+          .then(r => r.json())
+          .then(b => ({ data: (b.rows ?? []) as CustomerRating[], error: null }))
+          .catch(() => ({ data: [] as CustomerRating[], error: null })),
         request.customer_id
-          ? supabase.from("palata_customer_ratings").select("score").eq("customer_id", request.customer_id)
+          ? fetch(`/api/palata/customer-ratings?customer_id=${encodeURIComponent(request.customer_id)}`)
+              .then(r => r.json())
+              .then(b => ({ data: (b.rows ?? []) as { score: number }[], error: null }))
+              .catch(() => ({ data: [] as { score: number }[], error: null }))
           : Promise.resolve({ data: [] as { score: number }[], error: null }),
         request.region_id
           ? fetch("/api/palata/regions")
@@ -1327,14 +1332,18 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     const score = ratingUI.score;
     const comment = ratingUI.comment;
     setRatingUI({ kind: "submitting" });
-    const { error } = await supabase.from("palata_customer_ratings").insert({
-      request_id: r.id,
-      customer_id: r.customer_id,
-      expert_id: userId,
-      score,
-      comment: comment || null,
-    });
-    if (error) { setRatingUI({ kind: "idle", score: 5, comment: "" }); return; }
+    const insRes = await fetch("/api/palata/customer-ratings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        request_id: r.id,
+        customer_id: r.customer_id,
+        expert_id: userId,
+        score,
+        comment: comment || null,
+      }),
+    }).then(r => r.json()).catch(() => ({ success: false }));
+    if (!insRes.success) { setRatingUI({ kind: "idle", score: 5, comment: "" }); return; }
     await logEvent("request", r.id, r.status, r.status, `Эксперт оценил заказчика: ${score}/5`);
     const custUser = usersMap[r.customer_id];
     if (custUser?.email) {

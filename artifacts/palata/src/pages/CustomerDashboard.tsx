@@ -243,12 +243,10 @@ export default function CustomerDashboard() {
       .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
 
     // Load avg rating that experts gave to this customer
-    supabase
-      .from("palata_customer_ratings")
-      .select("score")
-      .eq("customer_id", userId)
-      .then(({ data }) => {
-        const rows = (data ?? []) as { score: number }[];
+    fetch(`/api/palata/customer-ratings?customer_id=${encodeURIComponent(userId)}`)
+      .then(r => r.json())
+      .then(b => {
+        const rows = (b.rows ?? []) as { score: number }[];
         if (rows.length > 0) {
           const avg = rows.reduce((s, r) => s + r.score, 0) / rows.length;
           setMyRating(avg);

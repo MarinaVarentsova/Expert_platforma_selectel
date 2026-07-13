@@ -1652,6 +1652,32 @@ app.post("/api/palata/expert-certificate", (req, res) => {
   });
 });
 
+// ── GET /api/palata/regions — list regions from PostgreSQL ──
+
+async function handleRegionsList(_req, res) {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(`
+      SELECT id, name, sort_order
+      FROM public.palata_regions
+      ORDER BY sort_order ASC NULLS LAST, name ASC
+    `);
+    res.json({ success: true, rows });
+  } catch (err) {
+    console.error("[REGIONS] query failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/regions", (_req, res) => {
+  handleRegionsList(_req, res).catch(err => {
+    console.error("[REGIONS] unhandled error", { stack: err.stack });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: String(err) });
+  });
+});
+
 // ── GET /api/palata/expertise-directions — list active expertise directions from PostgreSQL ──
 
 async function handleExpertiseDirectionsList(_req, res) {

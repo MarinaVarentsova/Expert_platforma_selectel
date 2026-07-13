@@ -27,20 +27,18 @@ export function RegionMultiSelect({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    supabase
-      .from("palata_regions")
-      .select("id, name")
-      .order("sort_order")
-      .order("name")
-      .then(({ data }) => {
-        const list = data ?? [];
+    fetch("/api/palata/regions")
+      .then(r => r.json())
+      .then(b => {
+        const list = (b.rows ?? []) as { id: string; name: string }[];
         list.sort((a, b) => {
           if (a.name === "Вся Россия") return -1;
           if (b.name === "Вся Россия") return 1;
           return 0;
         });
         setRegions(list);
-      });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

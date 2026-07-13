@@ -584,7 +584,13 @@ export default function RequestDetail() {
           ? supabase.from("palata_customer_ratings").select("score").eq("customer_id", request.customer_id)
           : Promise.resolve({ data: [] as { score: number }[], error: null }),
         request.region_id
-          ? supabase.from("palata_regions").select("name").eq("id", request.region_id).single()
+          ? fetch("/api/palata/regions")
+              .then(r => r.json())
+              .then(b => {
+                const found = (b.rows ?? []).find((r: { id: string; name: string }) => r.id === request.region_id);
+                return { data: found ? { name: found.name } : null, error: null as { message: string } | null };
+              })
+              .catch(() => ({ data: null as { name: string } | null, error: null as { message: string } | null }))
           : Promise.resolve({ data: null as { name: string } | null, error: null }),
         expertIds.length > 0
           ? fetch(`/api/palata/expert-regions?expert_ids=${encodeURIComponent(expertIds.join(","))}`)
@@ -724,9 +730,10 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       .then(r => r.json())
       .then(b => setEditDirections(b.rows ?? []))
       .catch(() => {});
-    supabase.from("palata_regions")
-      .select("id, name").order("sort_order").order("name")
-      .then(({ data: d }) => setEditRegions(d ?? []));
+    fetch("/api/palata/regions")
+      .then(r => r.json())
+      .then(b => setEditRegions(b.rows ?? []))
+      .catch(() => {});
   }, []);
 
   function beginEdit() {

@@ -317,7 +317,10 @@ export default function AdminMetrics() {
               error: null as { message: string } | null,
             }))
             .catch(() => ({ data: [] as { expert_id: string; expertise_direction_id: string }[], error: null as { message: string } | null })),
-          supabase.from("palata_regions").select("id, name"),
+          fetch("/api/palata/regions")
+            .then(r => r.json())
+            .then(b => ({ data: (b.rows ?? []) as { id: string; name: string }[], error: null as { message: string } | null }))
+            .catch(err => ({ data: [] as { id: string; name: string }[], error: { message: String(err) } })),
           fetch("/api/palata/expert-regions")
             .then(r => r.json())
             .then(b => ({

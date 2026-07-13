@@ -1652,6 +1652,37 @@ app.post("/api/palata/expert-certificate", (req, res) => {
   });
 });
 
+// ── GET /api/palata/certificates — lookup certificates by number fragment ──
+
+async function handleCertificatesLookup(req, res) {
+  const certId = (req.query.cert_id ?? "").trim();
+  if (!certId) {
+    return res.json({ success: true, rows: [] });
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT certificate_number, expert_full_name, specialty_code, valid_to, is_active
+       FROM public.palata_certificates
+       WHERE certificate_number ILIKE $1`,
+      [`%${certId}%`],
+    );
+    res.json({ success: true, rows });
+  } catch (err) {
+    console.error("[CERTIFICATES] query failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/certificates", (req, res) => {
+  handleCertificatesLookup(req, res).catch(err => {
+    console.error("[CERTIFICATES] unhandled error", { stack: err.stack });
+    res.status(500).json({ success: false, error: "LOOKUP_FAILED", message: String(err) });
+  });
+});
+
 // ── GET /api/palata/regions — list regions from PostgreSQL ──
 
 async function handleRegionsList(_req, res) {

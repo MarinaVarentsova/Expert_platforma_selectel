@@ -67,17 +67,6 @@ export async function verifyCertificate(
   const certId = extractNumericId(raw);
   if (!certId) return { ...base, status: "not_found" };
 
-  const { data: certs } = await supabase
-    .from("palata_certificates")
-    .select("certificate_number, expert_full_name, specialty_code, valid_to, is_active")
-    .ilike("certificate_number", `%${certId}%`);
-
-  if (!certs || certs.length === 0) {
-    return { ...base, status: "not_found" };
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-
   type CertRow = {
     certificate_number: string;
     expert_full_name: string | null;
@@ -86,7 +75,18 @@ export async function verifyCertificate(
     is_active: boolean;
   };
 
-  const rows = certs as CertRow[];
+  const certsRes = await fetch(`/api/palata/certificates?cert_id=${encodeURIComponent(certId)}`)
+    .then(r => r.json())
+    .catch(() => ({ success: false, rows: [] as CertRow[] }));
+  const certs: CertRow[] | null = certsRes.rows ?? null;
+
+  if (!certs || certs.length === 0) {
+    return { ...base, status: "not_found" };
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const rows = certs;
 
   // Prefer active cert with valid_to >= today
   const cert =

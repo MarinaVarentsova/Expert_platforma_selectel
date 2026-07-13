@@ -162,11 +162,10 @@ export default function ExpertDashboard() {
   const [allDirections, setAllDirections] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
-    supabase.from("palata_expertise_directions")
-      .select("id, name")
-      .eq("is_active", true)
-      .order("sort_order")
-      .then(({ data }) => setAllDirections(data ?? []));
+    fetch("/api/palata/expertise-directions")
+      .then(r => r.json())
+      .then(b => setAllDirections(b.rows ?? []))
+      .catch(() => {});
   }, []);
 
   const directionsMap = Object.fromEntries(allDirections.map(d => [d.id, d.name]));
@@ -2260,12 +2259,14 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
   const [declineError, setDeclineError]     = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.from("palata_expertise_directions").select("id, name").eq("is_active", true)
-      .then(({ data }) => {
+    fetch("/api/palata/expertise-directions")
+      .then(r => r.json())
+      .then(b => {
         const m: Record<string, string> = {};
-        for (const d of data ?? []) m[d.id] = d.name;
+        for (const d of (b.rows ?? []) as { id: string; name: string }[]) m[d.id] = d.name;
         setDirMap(m);
-      });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

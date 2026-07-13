@@ -91,13 +91,14 @@ export default function AdminDashboard() {
   const [directionMap, setDirectionMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    supabase.from("palata_expertise_directions")
-      .select("id, name")
-      .then(({ data }) => {
+    fetch("/api/palata/expertise-directions")
+      .then(r => r.json())
+      .then(b => {
         const m: Record<string, string> = {};
-        for (const d of (data ?? []) as { id: string; name: string }[]) m[d.id] = d.name;
+        for (const d of (b.rows ?? []) as { id: string; name: string }[]) m[d.id] = d.name;
         setDirectionMap(m);
-      });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -401,9 +402,10 @@ function CertsTab() {
             .then(b => ({ data: b.rows ?? null, error: null as { message: string } | null }))
             .catch(err => ({ data: null as null, error: { message: String(err) } }));
         })(),
-        supabase
-          .from("palata_expertise_directions")
-          .select("id, name"),
+        fetch("/api/palata/expertise-directions")
+          .then(r => r.json())
+          .then(b => ({ data: (b.rows ?? []) as { id: string; name: string }[], error: null as { message: string } | null }))
+          .catch(err => ({ data: [] as { id: string; name: string }[], error: { message: String(err) } })),
       ]);
 
       if (certsRes.error) { setState({ kind: "error", message: certsRes.error.message }); return; }

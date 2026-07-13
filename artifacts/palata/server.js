@@ -1652,6 +1652,33 @@ app.post("/api/palata/expert-certificate", (req, res) => {
   });
 });
 
+// ── GET /api/palata/expertise-directions — list active expertise directions from PostgreSQL ──
+
+async function handleExpertiseDirectionsList(_req, res) {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(`
+      SELECT id, name, slug, sort_order, is_active, created_at, updated_at
+      FROM public.palata_expertise_directions
+      WHERE is_active = true
+      ORDER BY sort_order ASC, name ASC
+    `);
+    res.json({ success: true, rows });
+  } catch (err) {
+    console.error("[EXPERTISE-DIRECTIONS] query failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/expertise-directions", (_req, res) => {
+  handleExpertiseDirectionsList(_req, res).catch(err => {
+    console.error("[EXPERTISE-DIRECTIONS] unhandled error", { stack: err.stack });
+    res.status(500).json({ success: false, error: "LIST_FAILED", message: String(err) });
+  });
+});
+
 // ── POST /api/palata/requests — create a new request (palata_requests + status event) ──
 
 async function handleCreateRequest(req, res) {

@@ -309,14 +309,14 @@ async function logEmailEvent(
 function useDirectionsMap() {
   const [map, setMap] = useState<Record<string, string>>({});
   useEffect(() => {
-    supabase.from("palata_expertise_directions")
-      .select("id, name")
-      .eq("is_active", true)
-      .then(({ data }) => {
+    fetch("/api/palata/expertise-directions")
+      .then(r => r.json())
+      .then(b => {
         const m: Record<string, string> = {};
-        for (const d of data ?? []) m[d.id] = d.name;
+        for (const d of (b.rows ?? []) as { id: string; name: string }[]) m[d.id] = d.name;
         setMap(m);
-      });
+      })
+      .catch(() => {});
   }, []);
   return map;
 }
@@ -720,9 +720,10 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   const [editDirections, setEditDirections] = useState<Array<{ id: string; name: string }>>([]);
   const [editRegions, setEditRegions]       = useState<Array<{ id: string; name: string }>>([]);
   useEffect(() => {
-    supabase.from("palata_expertise_directions")
-      .select("id, name").eq("is_active", true).order("sort_order")
-      .then(({ data: d }) => setEditDirections(d ?? []));
+    fetch("/api/palata/expertise-directions")
+      .then(r => r.json())
+      .then(b => setEditDirections(b.rows ?? []))
+      .catch(() => {});
     supabase.from("palata_regions")
       .select("id, name").order("sort_order").order("name")
       .then(({ data: d }) => setEditRegions(d ?? []));

@@ -118,10 +118,10 @@ export default function CustomerDashboard() {
   const [allDirections, setAllDirections] = useState<Array<{ id: string; name: string; slug: string }>>([]);
 
   useEffect(() => {
-    supabase.from("palata_expertise_directions")
-      .select("id, name, slug")
-      .eq("is_active", true)
-      .then(({ data }) => setAllDirections(data ?? []));
+    fetch("/api/palata/expertise-directions")
+      .then(r => r.json())
+      .then(b => setAllDirections(b.rows ?? []))
+      .catch(() => {});
   }, []);
   const directionMap = Object.fromEntries(allDirections.map(d => [d.id, d.name]));
   const slugMap = Object.fromEntries(allDirections.map(d => [d.slug, d.name]));
@@ -1072,12 +1072,14 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
   const [blockedByInWork, setBlockedByInWork] = useState(false);
 
   useEffect(() => {
-    supabase.from("palata_expertise_directions").select("slug, name").eq("is_active", true)
-      .then(({ data }) => {
+    fetch("/api/palata/expertise-directions")
+      .then(r => r.json())
+      .then(b => {
         const m: Record<string, string> = {};
-        for (const d of data ?? []) if (d.slug) m[d.slug] = d.name;
+        for (const d of (b.rows ?? []) as { slug: string | null; name: string }[]) if (d.slug) m[d.slug] = d.name;
         setSlugMap(m);
-      });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

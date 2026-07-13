@@ -68,12 +68,10 @@ export default function NewRequest() {
   const [allRegions, setAllRegions] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
-    supabase.from("palata_expertise_directions")
-      .select("id, name")
-      .order("sort_order")
-      .then(({ data, error }) => {
-        if (!error) setDirections(data ?? []);
-      });
+    fetch("/api/palata/expertise-directions")
+      .then(r => r.json())
+      .then(b => { if (b.success) setDirections(b.rows ?? []); })
+      .catch(() => {});
   }, [authState.kind]);
 
   useEffect(() => {

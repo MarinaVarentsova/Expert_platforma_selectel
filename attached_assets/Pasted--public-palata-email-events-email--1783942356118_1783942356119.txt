@@ -1,0 +1,69 @@
+Мигрируем только таблицу:
+
+public.palata_email_events
+
+Важно:
+это таблица журналирования email-событий.
+Не менять саму отправку писем, notify(), Resend/Unisender и шаблоны.
+Меняем только запись и чтение журнала.
+
+1. Найти все обращения:
+
+supabase.from("palata_email_events")
+
+По последнему аудиту осталось 5 обращений:
+- actionItems.ts — INSERT через logEmailEvent()
+- ExpertDashboard.tsx — INSERT
+- RequestDetail.tsx — INSERT через logEmail()
+- RequestDetail.tsx — SELECT
+- AdminEmailEvents.tsx — SELECT
+
+2. Сначала показать фактическую структуру таблицы по schema/migration-файлам:
+- поля;
+- типы;
+- nullable;
+- defaults;
+- enum/constraints.
+
+3. Создать backend endpoints через pg.Pool и PALATA_DATABASE_URL:
+
+POST /api/palata/email-events
+- вставка одной записи журнала;
+- Bearer token опционален;
+- actor/sender user_id, если используется, брать из токена либо из текущей бизнес-логики;
+- не менять текущий payload и значения.
+
+GET /api/palata/email-events
+- поддержать только фактические фильтры текущих SELECT;
+- для AdminEmailEvents — доступ только admin;
+- для RequestDetail — выдавать события только по request_id и только авторизованному пользователю, который имеет доступ к заявке.
+
+Если текущая структура использования отличается — сделать минимальные endpoints под найденные call-sites, без рефакторинга.
+
+4. Во всех 5 местах заменить Supabase на fetch к новым endpoints.
+
+5. Не менять:
+- отправку писем;
+- notify();
+- auth-service;
+- Unisender;
+- palata_requests;
+- palata_request_matches;
+- другие таблицы;
+- UI.
+
+6. Проверки:
+
+node --check artifacts/palata/server.js
+pnpm --filter ./artifacts/palata run typecheck
+pnpm --filter ./artifacts/palata run build
+
+7. В отчёте показать:
+- все 5 старых обращений;
+- фактическую схему таблицы;
+- новые endpoints;
+- полный SQL INSERT;
+- полный SQL SELECT;
+- правила доступа;
+- подтверждение, что supabase.from("palata_email_events") больше не осталось;
+- результаты трёх проверок.

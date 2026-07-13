@@ -533,9 +533,10 @@ export default function RequestDetail() {
     async function load() {
       const [reqRes, filesRes, matchesRes, eventsRes, contactsRes, emailEventsRes] = await Promise.all([
         supabase.from("palata_requests").select("*").eq("id", id!).single(),
-        supabase.from("palata_request_files")
-          .select("id, file_name, mime_type, size_bytes, bucket_path, created_at")
-          .eq("request_id", id!).order("created_at"),
+        fetch(`/api/palata/request-files?request_id=${encodeURIComponent(id!)}`)
+          .then(r => r.json())
+          .then(b => ({ data: (b.rows ?? []) as RequestFile[], error: null }))
+          .catch(() => ({ data: [] as RequestFile[], error: null })),
         supabase.from("palata_request_matches")
           .select("id, expert_id, matching_round, status, decline_reason, decline_note, can_start_from_date, proposed_at, responded_at")
           .eq("request_id", id!).order("matching_round").order("proposed_at"),

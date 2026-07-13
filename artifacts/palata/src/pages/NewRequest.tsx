@@ -299,17 +299,19 @@ export default function NewRequest() {
             return null;
           }
 
-          const { error: fileError } = await supabase
-            .from("palata_request_files")
-            .insert({
+          const fileInsRes = await fetch("/api/palata/request-files", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
               request_id: requestId,
               bucket_path: path,
               file_name: file.name,
               mime_type: file.type,
               size_bytes: file.size,
               uploader_id: currentUserId,
-            });
-          if (fileError) console.warn("File record error:", fileError.message);
+            }),
+          }).then(r => r.json()).catch(() => ({ success: false }));
+          if (!fileInsRes.success) console.warn("File record error: insert failed");
           return path;
         });
         await Promise.all(uploads);

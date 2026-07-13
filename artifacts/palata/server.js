@@ -1652,6 +1652,70 @@ app.post("/api/palata/expert-certificate", (req, res) => {
   });
 });
 
+// ── GET /api/palata/request-files — list files for a request ──
+
+async function handleRequestFilesQuery(req, res) {
+  const { request_id } = req.query;
+  if (!request_id) {
+    return res.status(400).json({ success: false, error: "MISSING_REQUEST_ID" });
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT id, request_id, uploader_id, bucket_path, file_name, mime_type, size_bytes, created_at
+       FROM public.palata_request_files
+       WHERE request_id = $1
+       ORDER BY created_at`,
+      [request_id],
+    );
+    res.json({ success: true, rows });
+  } catch (err) {
+    console.error("[REQUEST-FILES] query failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/request-files", (req, res) => {
+  handleRequestFilesQuery(req, res).catch(err => {
+    console.error("[REQUEST-FILES] query unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+// ── POST /api/palata/request-files — insert a file record ──
+
+async function handleRequestFilesInsert(req, res) {
+  const { request_id, uploader_id, bucket_path, file_name, mime_type, size_bytes } = req.body ?? {};
+  if (!request_id || !bucket_path || !file_name) {
+    return res.status(400).json({ success: false, error: "MISSING_REQUIRED_FIELDS" });
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `INSERT INTO public.palata_request_files
+         (request_id, uploader_id, bucket_path, file_name, mime_type, size_bytes)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [request_id, uploader_id ?? null, bucket_path, file_name, mime_type ?? null, size_bytes ?? null],
+    );
+    res.json({ success: true, id: rows[0]?.id });
+  } catch (err) {
+    console.error("[REQUEST-FILES] insert failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "INSERT_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/request-files", (req, res) => {
+  handleRequestFilesInsert(req, res).catch(err => {
+    console.error("[REQUEST-FILES] insert unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── GET /api/palata/customer-ratings — query customer ratings ──
 
 async function handleCustomerRatingsQuery(req, res) {

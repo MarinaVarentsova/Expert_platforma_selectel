@@ -47,22 +47,26 @@ export default function AdminEmailEvents() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
 
-    let q = supabase
-      .from("palata_email_events")
-      .select("id, recipient_id, email_address, template_name, subject, context, sent_at, delivered_at, opened_at, error", { count: "exact" })
-      .order("sent_at", { ascending: false })
-      .limit(300);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? "";
 
-    if (fTemplate)  q = q.eq("template_name", fTemplate);
-    if (fMode === "test") q = q.eq("error", "TEST_MODE");
-    if (fMode === "real") q = q.neq("error", "TEST_MODE").is("error", null);
-    if (fRecipient) q = q.ilike("email_address", `%${fRecipient}%`);
+    const params = new URLSearchParams();
+    if (fTemplate)  params.set("template", fTemplate);
+    if (fMode)      params.set("mode", fMode);
+    if (fRecipient) params.set("recipient", fRecipient);
 
-    const { data, error: err, count } = await q;
-    if (err) { setError(err.message); setLoading(false); return; }
+    let fetchRes: { success: boolean; rows?: Row[]; total?: number; error?: string };
+    try {
+      fetchRes = await fetch(`/api/palata/email-events?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.json());
+    } catch {
+      setError("Ошибка загрузки"); setLoading(false); return;
+    }
+    if (!fetchRes.success) { setError(fetchRes.error ?? "Ошибка запроса"); setLoading(false); return; }
 
-    const items = (data ?? []) as Row[];
-    setTotal(count ?? items.length);
+    const items = (fetchRes.rows ?? []) as Row[];
+    setTotal(fetchRes.total ?? items.length);
 
     const recipientIds = [...new Set(items.map(r => r.recipient_id).filter(Boolean))] as string[];
 

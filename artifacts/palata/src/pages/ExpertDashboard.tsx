@@ -442,15 +442,19 @@ export default function ExpertDashboard() {
       actor_id: null, note: `Эксперт оценил заказчика: ${form.score}/5`,
     });
     if (item.customer_email && item.customer_id) {
-      await supabase.from("palata_email_events").insert({
-        recipient_id: item.customer_id,
-        email_address: item.customer_email,
-        template_name: "customer_rated_by_expert",
-        subject: `Эксперт оставил вам оценку — ${form.score} из 5`,
-        context: { request_id: item.request_id, score: form.score },
-        sent_at: new Date().toISOString(),
-        error: "TEST_MODE",
-      });
+      await fetch("/api/palata/email-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient_id: item.customer_id,
+          email_address: item.customer_email,
+          template_name: "customer_rated_by_expert",
+          subject: `Эксперт оставил вам оценку — ${form.score} из 5`,
+          context: { request_id: item.request_id, score: form.score },
+          sent_at: new Date().toISOString(),
+          error: "TEST_MODE",
+        }),
+      }).catch(() => {});
     }
     setRatingForm(item.match_id, { kind: "done" });
     setRatedMatchIds(prev => new Set([...prev, item.match_id]));

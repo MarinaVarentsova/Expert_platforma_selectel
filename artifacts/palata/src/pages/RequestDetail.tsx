@@ -293,15 +293,19 @@ async function logEmailEvent(
   subject: string,
   context: Record<string, unknown>,
 ) {
-  await supabase.from("palata_email_events").insert({
-    recipient_id: recipientId ?? null,
-    email_address: emailAddress,
-    template_name: templateName,
-    subject,
-    context,
-    sent_at: new Date().toISOString(),
-    error: "TEST_MODE",
-  });
+  await fetch("/api/palata/email-events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      recipient_id: recipientId ?? null,
+      email_address: emailAddress,
+      template_name: templateName,
+      subject,
+      context,
+      sent_at: new Date().toISOString(),
+      error: "TEST_MODE",
+    }),
+  }).catch(() => {});
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -541,11 +545,11 @@ export default function RequestDetail() {
         supabase.from("palata_request_contacts")
           .select("id, request_id, expert_id, revealed_at, customer_phone, customer_email, expert_phone, expert_email")
           .eq("request_id", id!),
-        supabase.from("palata_email_events")
-          .select("id, recipient_id, email_address, template_name, subject, context, sent_at, error")
-          .contains("context", { request_id: id! })
-          .order("sent_at", { ascending: false })
-          .limit(50),
+        supabase.auth.getSession().then(({ data: { session } }) =>
+          fetch(`/api/palata/email-events?request_id=${encodeURIComponent(id!)}`, {
+            headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
+          }).then(r => r.json()).catch(() => ({ success: false, rows: [] as EmailEvent[] }))
+        ),
       ]);
 
       if (!reqRes.data || reqRes.error) {
@@ -560,7 +564,7 @@ export default function RequestDetail() {
       const events = (eventsRes.data as StatusEvent[]) ?? [];
       const files = (filesRes.data as RequestFile[]) ?? [];
       const contacts = (contactsRes.data as ContactRecord[]) ?? [];
-      const emailEvents = (emailEventsRes.data as EmailEvent[]) ?? [];
+      const emailEvents = ((emailEventsRes as { rows?: EmailEvent[] }).rows ?? []) as EmailEvent[];
 
       const expertIds = [...new Set(matches.map(m => m.expert_id))];
       const actorIds = events.map(e => e.actor_id).filter(Boolean) as string[];

@@ -114,13 +114,17 @@ export async function logEmailTestEvent(
   subject: string,
   context: Record<string, unknown>,
 ) {
-  return supabase.from("palata_email_events").insert({
-    recipient_id: recipientId,
-    email_address: email,
-    template_name: template,
-    subject,
-    context,
-    sent_at: new Date().toISOString(),
-    error: "TEST_MODE",
+  return fetch("/api/palata/email-events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      recipient_id: recipientId,
+      email_address: email,
+      template_name: template,
+      subject,
+      context,
+      sent_at: new Date().toISOString(),
+      error: "TEST_MODE",
+    }),
   });
 }

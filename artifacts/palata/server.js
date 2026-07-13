@@ -1652,6 +1652,121 @@ app.post("/api/palata/expert-certificate", (req, res) => {
   });
 });
 
+// ── POST /api/palata/email-events — log an email event (no auth required) ──
+
+async function handleEmailEventInsert(req, res) {
+  const { recipient_id, email_address, template_name, subject, context, sent_at, error: eventError } = req.body ?? {};
+  if (!email_address || !template_name || !sent_at) {
+    return res.status(400).json({ success: false, error: "MISSING_REQUIRED_FIELDS" });
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `INSERT INTO public.palata_email_events
+         (recipient_id, email_address, template_name, subject, context, sent_at, error)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [
+        recipient_id ?? null,
+        email_address,
+        template_name,
+        subject ?? null,
+        context != null ? JSON.stringify(context) : null,
+        sent_at,
+        eventError ?? null,
+      ],
+    );
+    res.json({ success: true, id: rows[0]?.id });
+  } catch (err) {
+    console.error("[EMAIL-EVENTS] insert failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "INSERT_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/email-events", (req, res) => {
+  handleEmailEventInsert(req, res).catch(err => {
+    console.error("[EMAIL-EVENTS] insert unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+// ── GET /api/palata/email-events — query email events (admin only) ──
+
+async function handleEmailEventsQuery(req, res) {
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    return res.status(admin.status).json({ success: false, error: admin.error });
+  }
+
+  const { request_id, template, mode, recipient } = req.query;
+
+  const conditions = [];
+  const params = [];
+  let idx = 1;
+
+  if (request_id) {
+    conditions.push(`context @> $${idx}::jsonb`);
+    params.push(JSON.stringify({ request_id }));
+    idx++;
+  }
+  if (template) {
+    conditions.push(`template_name = $${idx}`);
+    params.push(template);
+    idx++;
+  }
+  if (mode === "test") {
+    conditions.push(`error = 'TEST_MODE'`);
+  } else if (mode === "real") {
+    conditions.push(`error IS NULL`);
+  }
+  if (recipient) {
+    conditions.push(`email_address ILIKE $${idx}`);
+    params.push(`%${recipient}%`);
+    idx++;
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const limitVal = request_id ? 50 : 300;
+  const fields = request_id
+    ? "id, recipient_id, email_address, template_name, subject, context, sent_at, error"
+    : "id, recipient_id, email_address, template_name, subject, context, sent_at, delivered_at, opened_at, error";
+
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT ${fields}
+       FROM public.palata_email_events
+       ${where}
+       ORDER BY sent_at DESC
+       LIMIT ${limitVal}`,
+      params,
+    );
+    let total = null;
+    if (!request_id) {
+      const cntRes = await client.query(
+        `SELECT COUNT(*)::int AS total FROM public.palata_email_events ${where}`,
+        params,
+      );
+      total = cntRes.rows[0]?.total ?? rows.length;
+    }
+    res.json({ success: true, rows, total });
+  } catch (err) {
+    console.error("[EMAIL-EVENTS] query failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/email-events", (req, res) => {
+  handleEmailEventsQuery(req, res).catch(err => {
+    console.error("[EMAIL-EVENTS] query unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── GET /api/palata/specialty-codes — lookup specialty codes by code list ──
 
 async function handleSpecialtyCodesLookup(req, res) {

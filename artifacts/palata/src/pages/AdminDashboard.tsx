@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { getToken } from "@/lib/authClient";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import AdminLayout from "@/components/AdminLayout";
 import { FileText, Clock, Zap, CheckCircle2, AlertTriangle, TrendingUp, Settings, LayoutDashboard, Timer, ShieldAlert } from "lucide-react";
@@ -102,14 +103,15 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    supabase
-      .from("palata_requests")
-      .select("id, title, status, expertise_type, expertise_direction_id, matching_round, budget_min, budget_max, created_at")
-      .order("created_at", { ascending: false })
-      .then(({ data, error }) => {
-        if (error) { setState({ kind: "error", message: error.message }); return; }
-        setState({ kind: "ok", rows: (data as Request[]) ?? [] });
-      });
+    fetch("/api/palata/admin/requests", {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    })
+      .then(r => r.json())
+      .then((b: { success: boolean; rows?: Request[]; error?: string }) => {
+        if (!b.success) { setState({ kind: "error", message: b.error ?? "Ошибка загрузки" }); return; }
+        setState({ kind: "ok", rows: b.rows ?? [] });
+      })
+      .catch(e => setState({ kind: "error", message: String(e) }));
   }, []);
 
   if (guard.status === "loading" || guard.status === "redirecting") {

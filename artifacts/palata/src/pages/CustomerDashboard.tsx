@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { getToken } from "@/lib/authClient";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -216,15 +217,15 @@ export default function CustomerDashboard() {
     if (guard.status !== "ok") return;
     const userId = guard.user.id;
 
-    supabase
-      .from("palata_requests")
-      .select("id, title, status, expertise_type, expertise_direction_id, matching_round, urgency, created_at")
-      .eq("customer_id", userId)
-      .order("created_at", { ascending: false })
-      .then(({ data, error }) => {
-        if (error) { setRequestState({ kind: "error", message: error.message }); return; }
-        setRequestState({ kind: "ok", rows: (data as Request[]) ?? [] });
-      });
+    fetch("/api/palata/requests/customer", {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    })
+      .then(r => r.json())
+      .then((b: { success: boolean; rows?: Request[]; error?: string }) => {
+        if (!b.success) { setRequestState({ kind: "error", message: b.error ?? "Ошибка загрузки" }); return; }
+        setRequestState({ kind: "ok", rows: b.rows ?? [] });
+      })
+      .catch(e => setRequestState({ kind: "error", message: String(e) }));
 
     fetch(`/api/palata/customer-profile/${encodeURIComponent(userId)}`)
       .then(r => r.json())
@@ -265,14 +266,15 @@ export default function CustomerDashboard() {
   function reloadRequests() {
     if (guard.status !== "ok") return;
     const userId = guard.user.id;
-    supabase
-      .from("palata_requests")
-      .select("id, title, status, expertise_type, expertise_direction_id, matching_round, urgency, created_at")
-      .eq("customer_id", userId)
-      .order("created_at", { ascending: false })
-      .then(({ data, error }) => {
-        if (!error) setRequestState({ kind: "ok", rows: (data as Request[]) ?? [] });
-      });
+    fetch("/api/palata/requests/customer", {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    })
+      .then(r => r.json())
+      .then((b: { success: boolean; rows?: Request[]; error?: string }) => {
+        if (!b.success) return;
+        setRequestState({ kind: "ok", rows: b.rows ?? [] });
+      })
+      .catch(() => {});
   }
 
   function reloadActionItems() {

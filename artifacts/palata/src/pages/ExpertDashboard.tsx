@@ -172,14 +172,11 @@ export default function ExpertDashboard() {
 
   const loadPendingRatings = async (userId: string) => {
     // Fetch completed matches
-    const { data: rawMatches, error: matchErr } = await supabase
-      .from("palata_request_matches")
-      .select(`
-        id, request_id, responded_at,
-        palata_requests ( title, customer_id )
-      `)
-      .eq("expert_id", userId)
-      .eq("status", "completed");
+    const pendingRes = await fetch("/api/palata/requests/expert/matches?status=completed", {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    }).then(r => r.json()).catch(() => ({ success: false, rows: [] }));
+    const matchErr = pendingRes.success ? null : { message: pendingRes.error ?? "Ошибка загрузки" };
+    const rawMatches = pendingRes.success ? (pendingRes.rows ?? []) : null;
 
     if (matchErr) { setPendingRatingsState({ kind: "error", message: matchErr.message }); return; }
 
@@ -263,18 +260,15 @@ export default function ExpertDashboard() {
     const userId = guard.user.id;
 
     // ── Critical queries: needed for first visible render ──────────────────
-    supabase
-      .from("palata_request_matches")
-      .select(`
-        id, request_id, status, matching_round, decline_reason, responded_at,
-        palata_requests ( title, expertise_direction_id, urgency, customer_id, status )
-      `)
-      .eq("expert_id", userId)
-      .order("matching_round", { ascending: true })
-      .then(({ data, error }) => {
-        if (error) { setMatchState({ kind: "error", message: error.message }); return; }
-        setMatchState({ kind: "ok", rows: (data as unknown as Match[]) ?? [] });
-      });
+    fetch("/api/palata/requests/expert/matches", {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    })
+      .then(r => r.json())
+      .then((b: { success: boolean; rows?: unknown[]; error?: string }) => {
+        if (!b.success) { setMatchState({ kind: "error", message: b.error ?? "Ошибка загрузки" }); return; }
+        setMatchState({ kind: "ok", rows: (b.rows as unknown as Match[]) ?? [] });
+      })
+      .catch(e => setMatchState({ kind: "error", message: String(e) }));
 
     fetch(`/api/palata/expert-profile/${userId}`)
       .then(r => r.json())
@@ -312,19 +306,14 @@ export default function ExpertDashboard() {
   function reloadMatches(): Promise<void> {
     if (guard.status !== "ok") return Promise.resolve();
     const userId = guard.user.id;
-    return Promise.resolve(
-      supabase
-        .from("palata_request_matches")
-        .select(`
-          id, request_id, status, matching_round, decline_reason, responded_at,
-          palata_requests ( title, expertise_direction_id, urgency, customer_id, status )
-        `)
-        .eq("expert_id", userId)
-        .order("matching_round", { ascending: true })
-        .then(({ data, error }) => {
-          if (!error) setMatchState({ kind: "ok", rows: (data as unknown as Match[]) ?? [] });
-        }),
-    );
+    return fetch("/api/palata/requests/expert/matches", {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    })
+      .then(r => r.json())
+      .then((b: { success: boolean; rows?: unknown[] }) => {
+        if (b.success) setMatchState({ kind: "ok", rows: (b.rows as unknown as Match[]) ?? [] });
+      })
+      .catch(() => {});
   }
 
   function reloadActionItems() {
@@ -757,14 +746,11 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
     // Show all requests except "неактуально" (cancelled) and "в работе" (completed / in_work)
     const HIDDEN_STATUSES = ["cancelled", "completed", "in_work"];
 
-    const { data: rawOrders, error } = await supabase
-      .from("palata_requests")
-      .select("id, title, status, expertise_direction_id, region_id, requires_travel, description, created_at, customer_id")
-      .not("status", "in", `(${HIDDEN_STATUSES.join(",")})`)
-      .order("created_at", { ascending: false })
-      .limit(200);
+    const marketRes = await fetch("/api/palata/requests/expert/market", {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED", orders: [], myMatches: [] }));
 
-    if (error) { setState({ kind: "error", message: error.message }); return; }
+    if (!marketRes.success) { setState({ kind: "error", message: marketRes.error ?? "Ошибка загрузки" }); return; }
 
     type RawOrder = {
       id: string; title: string; status: string;
@@ -773,23 +759,15 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
       created_at: string; customer_id: string | null;
     };
 
-    const allOrders = (rawOrders ?? []) as RawOrder[];
+    const allOrders = (marketRes.orders ?? []) as RawOrder[];
 
     if (allOrders.length === 0) {
       setState({ kind: "ok", orders: [], myMatchStatuses: {} });
       return;
     }
 
-    const eligibleIds = allOrders.map(o => o.id);
-
     // Fetch only this expert's matches to show their personal status on each card
-    const { data: matches } = await supabase
-      .from("palata_request_matches")
-      .select("request_id, expert_id, status")
-      .in("request_id", eligibleIds)
-      .eq("expert_id", userId);
-
-    const matchList = (matches ?? []) as Array<{ request_id: string; expert_id: string; status: string }>;
+    const matchList = (marketRes.myMatches ?? []) as Array<{ request_id: string; expert_id: string; status: string }>;
 
     const myMatchStatuses: Record<string, string> = {};
     matchList.forEach(m => { myMatchStatuses[m.request_id] = m.status; });

@@ -1178,37 +1178,18 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleCompleteWork(match: Match) {
     setMS(match.id, { kind: "submitting" });
     try {
-      const completedAt = new Date().toISOString();
-      const { error: me } = await supabase.from("palata_request_matches")
-        .update({ status: "completed", responded_at: completedAt }).eq("id", match.id);
-      if (me) throw me;
-      const { error: re } = await supabase.from("palata_requests")
-        .update({ status: "completed" }).eq("id", r.id);
-      if (re) throw re;
+      const cwRes = await fetch(`/api/palata/requests/${r.id}/complete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken() ?? ""}`,
+        },
+      }).then(res => res.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
 
-      // Contact record → completed
-      await supabase.from("palata_request_contacts")
-        .update({ expert_status: "completed", expert_status_updated_at: completedAt })
-        .eq("request_id", r.id)
-        .eq("expert_id", match.expert_id);
+      if (!cwRes.success) throw new Error(cwRes.error ?? "TX_FAILED");
 
-      await logEvent("request", r.id, r.status, "completed", "Работа завершена экспертом");
-
-      // Action item for customer: expert_completed_order
-      if (r.customer_id) {
-        await createActionItem({
-          request_id:          r.id,
-          expert_id:           match.expert_id,
-          customer_id:         r.customer_id,
-          assigned_to_user_id: r.customer_id,
-          assigned_role:       "customer",
-          action_type:         "expert_completed_order",
-          title:               "Эксперт завершил заказ",
-          description:         "Эксперт завершил работу по заказу. Оцените эксперта.",
-          payload:             { request_id: r.id, expert_id: match.expert_id, completed_at: completedAt },
-        });
-      }
-
+      // notify + email — те же получатели и шаблоны, что были раньше,
+      // вызываются после успешного COMMIT
       const completedExpert = usersMap[match.expert_id];
       const payloads: NotifyItem[] = [];
       if (customerEmail) payloads.push(mkNotify({ type: "request_completed", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: completedExpert?.full_name ?? undefined, currentStatus: "completed" }));

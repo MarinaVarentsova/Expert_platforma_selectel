@@ -2601,6 +2601,140 @@ app.post("/api/palata/requests/:requestId/take-work", (req, res) => {
   });
 });
 
+// ── POST /api/palata/requests/:requestId/complete — expert completes work ────────
+async function handleCompleteWork(req, res) {
+  // 1. Bearer token required
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  // 2. Verify token → get expertId
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[COMPLETE-WORK] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const expertId = meBody.user.id;
+  const { requestId } = req.params;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const completedAt = new Date().toISOString();
+
+    // ── 1. Load request ───────────────────────────────────────────────────
+    const requestRow = (await client.query(
+      `SELECT id, status, customer_id, title
+       FROM public.palata_requests
+       WHERE id = $1 LIMIT 1`,
+      [requestId],
+    )).rows[0];
+
+    if (!requestRow) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+    }
+
+    const custId    = requestRow.customer_id;
+    const oldStatus = requestRow.status;
+    const shortReqId = `#${requestId.slice(0, 8).toUpperCase()}`;
+
+    // ── 2. Find expert's active match ─────────────────────────────────────
+    const matchRow = (await client.query(
+      `SELECT id FROM public.palata_request_matches
+       WHERE request_id = $1 AND expert_id = $2
+       ORDER BY matching_round DESC, proposed_at DESC
+       LIMIT 1`,
+      [requestId, expertId],
+    )).rows[0];
+
+    const matchId = matchRow?.id ?? null;
+
+    // ── 3. Match → completed ──────────────────────────────────────────────
+    if (matchId) {
+      await client.query(
+        `UPDATE public.palata_request_matches
+         SET status = 'completed', responded_at = $1
+         WHERE id = $2`,
+        [completedAt, matchId],
+      );
+    }
+
+    // ── 4. Request → completed ────────────────────────────────────────────
+    await client.query(
+      `UPDATE public.palata_requests
+       SET status = 'completed', updated_at = $1
+       WHERE id = $2`,
+      [completedAt, requestId],
+    );
+
+    // ── 5. Contact record → completed ─────────────────────────────────────
+    await client.query(
+      `UPDATE public.palata_request_contacts
+       SET expert_status = 'completed', expert_status_updated_at = $1
+       WHERE request_id = $2 AND expert_id = $3`,
+      [completedAt, requestId, expertId],
+    );
+
+    // ── 6. Status event (mirrors logEvent) ────────────────────────────────
+    await client.query(
+      `INSERT INTO public.palata_status_events
+         (entity_type, entity_id, old_status, new_status, actor_id, note)
+       VALUES ('request', $1, $2, 'completed', null, 'Работа завершена экспертом')`,
+      [requestId, oldStatus],
+    );
+
+    // ── 7. Action item for customer: expert_completed_order ───────────────
+    if (custId) {
+      await client.query(
+        `INSERT INTO public.palata_action_items
+           (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+            action_type, title, description, payload, status, is_read, is_resolved)
+         VALUES ($1,$2,$3,$3,'customer','expert_completed_order',
+                 'Эксперт завершил заказ',
+                 'Эксперт завершил работу по заказу. Оцените эксперта.',$4,
+                 'open',false,false)`,
+        [
+          requestId,
+          expertId,
+          custId,
+          JSON.stringify({ request_id: requestId, expert_id: expertId, completed_at: completedAt }),
+        ],
+      );
+    }
+
+    await client.query("COMMIT");
+
+    return res.json({ success: true });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    console.error("[COMPLETE-WORK] tx failed", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/requests/:requestId/complete", (req, res) => {
+  handleCompleteWork(req, res).catch(err => {
+    console.error("[COMPLETE-WORK] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── GET /api/palata/requests/customer — customer's own request list ──────────────
 async function handleCustomerRequests(req, res) {
   const authHeader = req.headers["authorization"] ?? "";

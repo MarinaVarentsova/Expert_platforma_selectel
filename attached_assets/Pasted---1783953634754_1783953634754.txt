@@ -1,0 +1,86 @@
+Берём следующий бизнес-сценарий: «Эксперт завершает работу».
+
+Критически важно:
+это только переключение источника данных.
+Бизнес-логику не менять.
+
+Не менять:
+- статусы;
+- порядок действий;
+- guards;
+- тексты;
+- email-шаблоны;
+- UI;
+- получателей уведомлений;
+- текущую обработку ошибок.
+
+Сначала провести точный аудит текущего handleCompleteWork в ExpertDashboard.tsx и RequestDetail.tsx:
+
+- все SELECT;
+- все UPDATE;
+- все INSERT;
+- все вызовы actionItems.ts;
+- все status_events;
+- все email-вызовы;
+- порядок операций;
+- все проверки.
+
+После аудита сразу реализовать один backend endpoint:
+
+POST /api/palata/requests/:requestId/complete
+
+Bearer token обязателен.
+expert_id брать только из /api/auth/me.
+Не принимать expert_id из body.
+
+В одной PostgreSQL-транзакции через PALATA_DATABASE_URL выполнить только те операции, которые сейчас делает сценарий завершения:
+
+BEGIN;
+
+1. Проверить заявку и её текущий статус.
+2. Найти активный match текущего эксперта.
+3. Обновить match в status='completed' и responded_at=now().
+4. Обновить palata_requests:
+   status='completed',
+   updated_at=now().
+5. Обновить palata_request_contacts:
+   expert_status='completed',
+   expert_status_updated_at=now().
+6. Выполнить те же resolve/cancel/insert операции в palata_action_items, которые сейчас делает frontend.
+7. Вставить тот же palata_status_events с теми же значениями.
+8. Получить те же данные, которые нужны frontend для email после COMMIT.
+
+COMMIT;
+
+При любой ошибке:
+ROLLBACK.
+
+Email/notify не включать в транзакцию.
+После успешного ответа endpoint frontend должен выполнить те же email-вызовы тем же получателям и с теми же шаблонами, как сейчас.
+
+Во frontend заменить только Supabase-операции внутри сценария завершения на один fetch к новому endpoint.
+
+Не менять другие сценарии:
+- take-work;
+- выбор эксперта;
+- предложение даты;
+- отказ;
+- matching;
+- отмена;
+- admin actions.
+
+Не переносить actionItems.ts глобально.
+Только action items, относящиеся к complete-work, выполнить внутри нового endpoint.
+
+В отчёте показать:
+1. старый порядок действий;
+2. точное сопоставление Supabase-вызов → SQL;
+3. полный SQL транзакции;
+4. какие action items включены;
+5. какие данные endpoint возвращает для email;
+6. подтверждение, что email остаётся после COMMIT;
+7. изменённые файлы;
+8. подтверждение, что другие сценарии не менялись;
+9. node --check;
+10. typecheck;
+11. build.

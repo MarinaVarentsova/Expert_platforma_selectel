@@ -1652,6 +1652,41 @@ app.post("/api/palata/expert-certificate", (req, res) => {
   });
 });
 
+// ── GET /api/palata/specialty-codes — lookup specialty codes by code list ──
+
+async function handleSpecialtyCodesLookup(req, res) {
+  const rawCodes = (req.query.codes ?? "").trim();
+  if (!rawCodes) {
+    return res.json({ success: true, rows: [] });
+  }
+  const codeList = rawCodes.split(",").map(c => c.trim()).filter(Boolean);
+  if (codeList.length === 0) {
+    return res.json({ success: true, rows: [] });
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT code, expertise_direction_id
+       FROM public.palata_specialty_codes
+       WHERE code = ANY($1)`,
+      [codeList],
+    );
+    res.json({ success: true, rows });
+  } catch (err) {
+    console.error("[SPECIALTY-CODES] query failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/specialty-codes", (req, res) => {
+  handleSpecialtyCodesLookup(req, res).catch(err => {
+    console.error("[SPECIALTY-CODES] unhandled error", { stack: err.stack });
+    res.status(500).json({ success: false, error: "LOOKUP_FAILED", message: String(err) });
+  });
+});
+
 // ── GET /api/palata/certificates — lookup certificates by number fragment ──
 
 async function handleCertificatesLookup(req, res) {

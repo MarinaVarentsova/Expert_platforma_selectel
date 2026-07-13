@@ -1,4 +1,3 @@
-import { supabase } from "./supabaseClient";
 
 export type CertStatus =
   | "idle"
@@ -126,19 +125,20 @@ export async function verifyCertificate(
   let directionIds: string[] = [];
 
   if (rawCodes.length > 0) {
-    const { data: scodes, error: scodesError } = await supabase
-      .from("palata_specialty_codes")
-      .select("code, expertise_direction_id")
-      .in("code", rawCodes);
+    const scodesRes = await fetch(
+      `/api/palata/specialty-codes?codes=${encodeURIComponent(rawCodes.join(","))}`,
+    )
+      .then(r => r.json())
+      .catch(() => ({ success: false, rows: [] as { code: string; expertise_direction_id: string }[] }));
 
-    if (scodesError) {
-      console.warn("[certificates] palata_specialty_codes lookup failed:", scodesError.message, "codes:", rawCodes);
+    if (!scodesRes.success) {
+      console.warn("[certificates] palata_specialty_codes lookup failed, codes:", rawCodes);
     }
 
     directionIds = [
       ...new Set(
-        (scodes ?? [])
-          .map((s: { expertise_direction_id: string }) => s.expertise_direction_id)
+        ((scodesRes.rows ?? []) as { code: string; expertise_direction_id: string }[])
+          .map(s => s.expertise_direction_id)
           .filter(Boolean),
       ),
     ];

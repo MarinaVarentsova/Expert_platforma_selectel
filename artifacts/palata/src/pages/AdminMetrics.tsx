@@ -293,7 +293,10 @@ export default function AdminMetrics() {
             .catch(() => ({ data: [] as { user_id: string; palata_registry_verified: boolean; centrsudexpert_verified: boolean }[], error: null })),
           supabase.from("palata_request_matches")
             .select("request_id, expert_id, status"),
-          supabase.from("palata_expert_ratings").select("score"),
+          fetch("/api/palata/expert-ratings")
+            .then(r => r.json())
+            .then(b => ({ data: (b.rows ?? []) as { score: number }[], error: null }))
+            .catch(() => ({ data: [] as { score: number }[], error: null })),
           supabase.from("palata_customer_ratings").select("score"),
           fetch("/api/palata/customer-profile")
             .then(r => r.json())

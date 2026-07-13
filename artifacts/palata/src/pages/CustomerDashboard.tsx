@@ -164,11 +164,10 @@ export default function CustomerDashboard() {
     const reqIds = [...new Set(rows.map(a => a.request_id))];
 
     // Filter out already rated
-    const { data: ratings } = await supabase
-      .from("palata_expert_ratings")
-      .select("request_id")
-      .eq("customer_id", userId)
-      .in("request_id", reqIds);
+    const ratingsRes = await fetch(
+      `/api/palata/expert-ratings?customer_id=${encodeURIComponent(userId)}&request_ids=${encodeURIComponent(reqIds.join(","))}`,
+    ).then(r => r.json()).catch(() => ({ success: false, rows: [] as { request_id: string }[] }));
+    const ratings = (ratingsRes.rows ?? []) as { request_id: string }[];
 
     const ratedIds = new Set((ratings ?? []).map((r: { request_id: string }) => r.request_id));
     setRatedRequestIds(ratedIds);
@@ -341,14 +340,18 @@ export default function CustomerDashboard() {
     setRatingForm(item.request_id, { kind: "submitting" });
 
     // 1. Insert rating
-    const { error } = await supabase.from("palata_expert_ratings").insert({
-      request_id: item.request_id,
-      expert_id:  item.assigned_expert_id,
-      customer_id: user.id,
-      score:      form.score,
-      comment:    form.comment || null,
-    });
-    if (error) { setRatingForm(item.request_id, { kind: "idle", score: 5, comment: "" }); return; }
+    const insRes = await fetch("/api/palata/expert-ratings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        request_id: item.request_id,
+        expert_id:  item.assigned_expert_id,
+        customer_id: user.id,
+        score:      form.score,
+        comment:    form.comment || null,
+      }),
+    }).then(r => r.json()).catch(() => ({ success: false }));
+    if (!insRes.success) { setRatingForm(item.request_id, { kind: "idle", score: 5, comment: "" }); return; }
 
     // 2. Resolve the expert_completed_order action item
     await resolveActionItem(item.action_item_id);

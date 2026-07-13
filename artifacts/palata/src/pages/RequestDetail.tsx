@@ -581,7 +581,10 @@ export default function RequestDetail() {
         userIds.length > 0
           ? supabase.from("palata_users").select("id, full_name, email").in("id", userIds)
           : Promise.resolve({ data: [] as User[], error: null }),
-        supabase.from("palata_expert_ratings").select("*").eq("request_id", id!),
+        fetch(`/api/palata/expert-ratings?request_id=${encodeURIComponent(id!)}`)
+          .then(r => r.json())
+          .then(b => ({ data: (b.rows ?? []) as ExpertRating[], error: null }))
+          .catch(() => ({ data: [] as ExpertRating[], error: null })),
         supabase.from("palata_customer_ratings").select("*").eq("request_id", id!),
         request.customer_id
           ? supabase.from("palata_customer_ratings").select("score").eq("customer_id", request.customer_id)
@@ -1296,14 +1299,18 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     const score = ratingUI.score;
     const comment = ratingUI.comment;
     setRatingUI({ kind: "submitting" });
-    const { error } = await supabase.from("palata_expert_ratings").insert({
-      request_id: r.id,
-      expert_id: expertId,
-      customer_id: userId,
-      score,
-      comment: comment || null,
-    });
-    if (error) { setRatingUI({ kind: "idle", score: 5, comment: "" }); return; }
+    const insRes = await fetch("/api/palata/expert-ratings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        request_id: r.id,
+        expert_id: expertId,
+        customer_id: userId,
+        score,
+        comment: comment || null,
+      }),
+    }).then(r => r.json()).catch(() => ({ success: false }));
+    if (!insRes.success) { setRatingUI({ kind: "idle", score: 5, comment: "" }); return; }
     await logEvent("request", r.id, r.status, r.status, `Заказчик оценил эксперта: ${score}/5`);
     const expertUser = usersMap[expertId];
     if (expertUser?.email) {

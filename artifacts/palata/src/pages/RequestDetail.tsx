@@ -531,32 +531,30 @@ export default function RequestDetail() {
     setState({ kind: "loading" });
 
     async function load() {
-      const [reqRes, filesRes, matchesRes, eventsRes, contactsRes, emailEventsRes] = await Promise.all([
-        supabase.from("palata_requests").select("*").eq("id", id!).single(),
+      const [detailRes, filesRes, emailEventsRes] = await Promise.all([
+        fetch(`/api/palata/requests/${encodeURIComponent(id!)}/detail`, {
+          headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+        }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" })),
         fetch(`/api/palata/request-files?request_id=${encodeURIComponent(id!)}`)
           .then(r => r.json())
           .then(b => ({ data: (b.rows ?? []) as RequestFile[], error: null }))
           .catch(() => ({ data: [] as RequestFile[], error: null })),
-        supabase.from("palata_request_matches")
-          .select("id, expert_id, matching_round, status, decline_reason, decline_note, can_start_from_date, proposed_at, responded_at")
-          .eq("request_id", id!).order("matching_round").order("proposed_at"),
-        supabase.from("palata_status_events")
-          .select("id, entity_type, old_status, new_status, actor_id, note, created_at")
-          .eq("entity_id", id!).order("created_at"),
-        supabase.from("palata_request_contacts")
-          .select("id, request_id, expert_id, revealed_at, customer_phone, customer_email, expert_phone, expert_email")
-          .eq("request_id", id!),
         fetch(`/api/palata/email-events?request_id=${encodeURIComponent(id!)}`, {
           headers: { Authorization: `Bearer ${getToken() ?? ""}` },
         }).then(r => r.json()).catch(() => ({ success: false, rows: [] as EmailEvent[] })),
       ]);
 
-      if (!reqRes.data || reqRes.error) {
-        setState(reqRes.error?.code === "PGRST116"
+      if (!detailRes.success) {
+        setState(detailRes.error === "REQUEST_NOT_FOUND"
           ? { kind: "not_found" }
-          : { kind: "error", message: reqRes.error?.message ?? "Неизвестная ошибка" });
+          : { kind: "error", message: detailRes.error ?? "Неизвестная ошибка" });
         return;
       }
+
+      const reqRes     = { data: detailRes.request,  error: null };
+      const matchesRes  = { data: detailRes.matches,  error: null };
+      const contactsRes = { data: detailRes.contacts, error: null };
+      const eventsRes   = { data: detailRes.events,   error: null };
 
       const request = reqRes.data as Request;
       const matches = (matchesRes.data as Match[]) ?? [];

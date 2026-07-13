@@ -1,0 +1,239 @@
+Следующий этап: миграция только чтения блока «Заявка».
+
+Критически важно:
+это только переключение источника данных.
+
+Supabase SELECT
+→ backend API
+→ PostgreSQL через PALATA_DATABASE_URL
+
+Запрещено менять:
+- бизнес-логику;
+- статусы;
+- условия отображения;
+- роли;
+- права;
+- обработчики действий;
+- UPDATE / INSERT / DELETE;
+- matching;
+- action items;
+- UI;
+- порядок вызовов;
+- обработку ошибок.
+
+==================================================
+Цель
+==================================================
+
+Переключить чтение данных для страницы RequestDetail.tsx с Supabase на PostgreSQL.
+
+Работаем только с SELECT из таблиц:
+
+- public.palata_requests
+- public.palata_request_matches
+- public.palata_request_contacts
+- public.palata_status_events
+
+palata_request_files и palata_email_events уже мигрированы — их не менять.
+
+palata_action_items пока не менять.
+
+==================================================
+1. Аудит текущей загрузки RequestDetail
+==================================================
+
+Найти в RequestDetail.tsx основной Promise.all / load-функцию.
+
+Показать текущие SELECT:
+
+1. palata_requests
+2. palata_request_matches
+3. palata_request_contacts
+4. palata_status_events
+
+Для каждого:
+- поля;
+- фильтры;
+- сортировку;
+- ожидаемый формат данных.
+
+Перед изменениями убедиться, что нижележащая логика использует:
+- requestRes.data
+- matchesRes.data
+- contactsRes.data
+- eventsRes.data
+
+==================================================
+2. Создать один endpoint
+==================================================
+
+Добавить:
+
+GET /api/palata/requests/:requestId/detail
+
+Он должен только читать данные.
+
+Bearer token обязателен.
+
+Проверить токен через /api/auth/me.
+
+Не придумывать новую бизнес-логику доступа.
+
+Повторить текущую модель доступа страницы:
+- admin видит заявку;
+- customer видит свою заявку;
+- expert видит заявку, если он назначен или есть запись в palata_request_matches.
+
+==================================================
+3. SQL
+==================================================
+
+В endpoint выполнить четыре SELECT.
+
+A. Заявка:
+
+SELECT *
+FROM public.palata_requests
+WHERE id = $1
+LIMIT 1;
+
+B. Матчи:
+
+SELECT
+  id,
+  request_id,
+  expert_id,
+  matching_round,
+  status,
+  decline_reason,
+  decline_note,
+  can_start_from_date,
+  proposed_at,
+  responded_at,
+  created_at,
+  updated_at
+FROM public.palata_request_matches
+WHERE request_id = $1
+ORDER BY matching_round ASC, proposed_at ASC;
+
+C. Контакты:
+
+SELECT
+  id,
+  request_id,
+  expert_id,
+  revealed_at,
+  customer_phone,
+  customer_email,
+  expert_phone,
+  expert_email,
+  contact_opened_at,
+  expert_status,
+  expert_status_updated_at,
+  failure_reason,
+  expert_comment
+FROM public.palata_request_contacts
+WHERE request_id = $1
+ORDER BY revealed_at ASC;
+
+D. События:
+
+SELECT
+  id,
+  entity_type,
+  entity_id,
+  old_status,
+  new_status,
+  actor_id,
+  note,
+  created_at
+FROM public.palata_status_events
+WHERE entity_type = 'request'
+  AND entity_id = $1
+ORDER BY created_at ASC;
+
+==================================================
+4. Формат ответа
+==================================================
+
+Вернуть:
+
+{
+  success: true,
+  request: {...},
+  matches: [...],
+  contacts: [...],
+  events: [...]
+}
+
+Если заявки нет:
+
+{
+  success: false,
+  error: "REQUEST_NOT_FOUND"
+}
+
+==================================================
+5. Frontend
+==================================================
+
+В RequestDetail.tsx заменить только четыре Supabase SELECT на один fetch:
+
+GET /api/palata/requests/:id/detail
+
+После ответа сформировать совместимые объекты:
+
+requestRes = { data: body.request, error: null }
+matchesRes = { data: body.matches, error: null }
+contactsRes = { data: body.contacts, error: null }
+eventsRes = { data: body.events, error: null }
+
+Вся нижележащая логика должна остаться без изменений.
+
+Не менять уже мигрированные:
+- request-files;
+- email-events;
+- ratings;
+- users;
+- справочники.
+
+==================================================
+6. Не делать
+==================================================
+
+Не переносить:
+- UPDATE palata_requests;
+- INSERT/UPDATE palata_request_matches;
+- INSERT/UPDATE palata_request_contacts;
+- INSERT palata_status_events;
+- action items;
+- matching;
+- обработчики кнопок RequestDetail;
+- CustomerDashboard;
+- ExpertDashboard;
+- AdminDashboard.
+
+==================================================
+7. Проверки
+==================================================
+
+Выполнить:
+
+node --check artifacts/palata/server.js
+pnpm --filter ./artifacts/palata run typecheck
+pnpm --filter ./artifacts/palata run build
+
+==================================================
+8. Отчёт
+==================================================
+
+Показать:
+
+1. четыре старых Supabase SELECT;
+2. новый endpoint;
+3. полный SQL каждого SELECT;
+4. правила доступа;
+5. изменённые файлы;
+6. подтверждение, что UPDATE/INSERT/DELETE не менялись;
+7. подтверждение, что остальная логика RequestDetail.tsx не менялась;
+8. результаты трёх проверок.

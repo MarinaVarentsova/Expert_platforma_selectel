@@ -1,0 +1,85 @@
+Берём сценарий D — «Эксперт берёт заявку в работу».
+
+Сценарий G actionItems.ts отдельно НЕ переносить.
+
+Критически важно:
+переключаем только источник данных и сохраняем текущую бизнес-логику один в один.
+
+Не менять:
+- статусы;
+- условия и guards;
+- порядок действий;
+- тексты;
+- уведомления;
+- UI;
+- состав получателей;
+- бизнес-правила;
+- текущую обработку ошибок.
+
+Сначала провести точный аудит текущего handleTakeWork в ExpertDashboard.tsx:
+- все SELECT;
+- все UPDATE;
+- все вызовы actionItems.ts;
+- все вызовы status_events;
+- все email/notify;
+- порядок операций;
+- все guards.
+
+После аудита сразу реализовать один backend endpoint:
+
+POST /api/palata/requests/:requestId/take-work
+
+Bearer token обязателен.
+expert_id брать только из /api/auth/me.
+Не принимать expert_id из body.
+
+Внутри одной PostgreSQL-транзакции через PALATA_DATABASE_URL выполнить только те операции, которые сейчас делает handleTakeWork:
+
+BEGIN;
+
+1. Проверить заявку и её текущий статус.
+2. Найти активный match текущего эксперта.
+3. Обновить его в status='accepted_work'.
+4. Закрыть остальные активные matches как 'closed_by_other_expert'.
+5. Обновить palata_requests:
+   status='in_work',
+   assigned_expert_id=current expert.
+6. Обновить palata_request_contacts для текущего эксперта:
+   expert_status='accepted_work',
+   expert_status_updated_at=now().
+7. Выполнить те же resolve/cancel/insert операции в palata_action_items, которые сейчас выполняет frontend.
+8. Если текущая логика пишет palata_status_events — вставить такое же событие с теми же значениями.
+
+COMMIT;
+
+При любой ошибке:
+ROLLBACK.
+
+Email/notify не включать в транзакцию:
+после успешного ответа endpoint frontend должен отправлять те же письма тем же получателям, как сейчас.
+
+Во frontend заменить только Supabase-операции внутри handleTakeWork на один fetch к новому endpoint.
+
+Не менять другие сценарии:
+- выбор эксперта;
+- предложение даты;
+- отказ;
+- matching;
+- завершение;
+- отмена;
+- admin actions.
+
+Не переносить actionItems.ts глобально.
+Только операции action items, относящиеся к take-work, выполнить внутри нового endpoint.
+
+В отчёте показать:
+1. старый порядок действий handleTakeWork;
+2. точное сопоставление «старый Supabase-вызов → новый SQL»;
+3. полный SQL транзакции;
+4. какие action items включены;
+5. что email остался после COMMIT;
+6. изменённые файлы;
+7. подтверждение, что другие сценарии не менялись;
+8. node --check;
+9. typecheck;
+10. build.

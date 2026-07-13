@@ -2388,6 +2388,219 @@ app.get("/api/palata/requests/:requestId/detail", (req, res) => {
   });
 });
 
+// ── POST /api/palata/requests/:requestId/take-work — expert takes request into work ──
+async function handleTakeWork(req, res) {
+  // 1. Bearer token required
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  // 2. Verify token
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[TAKE-WORK] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const expertId = meBody.user.id;
+  const { requestId } = req.params;
+  const { actionItemId, canStartFrom = null } = req.body ?? {};
+
+  if (!actionItemId) {
+    return res.status(400).json({ success: false, error: "MISSING_ACTION_ITEM_ID" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const now = new Date().toISOString();
+
+    // ── 1. Load request (authoritative source) ────────────────────────────
+    const requestRow = (await client.query(
+      `SELECT id, status, customer_id, title
+       FROM public.palata_requests
+       WHERE id = $1 LIMIT 1`,
+      [requestId],
+    )).rows[0];
+
+    if (!requestRow) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+    }
+
+    const custId = requestRow.customer_id;
+    const requestTitle = requestRow.title;
+    const shortId = `#${requestId.slice(0, 8).toUpperCase()}`;
+    const orderLabel = requestTitle ? `«${requestTitle}»` : shortId;
+
+    // ── 2. Find this expert's active match ────────────────────────────────
+    const matchRow = (await client.query(
+      `SELECT id FROM public.palata_request_matches
+       WHERE request_id = $1 AND expert_id = $2
+       ORDER BY matching_round DESC, proposed_at DESC
+       LIMIT 1`,
+      [requestId, expertId],
+    )).rows[0];
+
+    const matchId = matchRow?.id ?? null;
+
+    // ── 3. Update expert's match → accepted_work ──────────────────────────
+    if (matchId) {
+      await client.query(
+        `UPDATE public.palata_request_matches
+         SET status = 'accepted_work', responded_at = $1
+         WHERE id = $2`,
+        [now, matchId],
+      );
+    }
+
+    // ── 4. Find other active matches for this request ─────────────────────
+    // (mirrors: .neq("expert_id", userId).not("status","in","(declined,closed_by_other_expert,withdrawn,completed)"))
+    const otherMatchRows = (await client.query(
+      `SELECT id, expert_id, responded_at, status
+       FROM public.palata_request_matches
+       WHERE request_id = $1
+         AND expert_id != $2
+         AND status NOT IN ('declined','closed_by_other_expert','withdrawn','completed')`,
+      [requestId, expertId],
+    )).rows;
+
+    // Only close experts who were actually involved (responded_at set).
+    // Auto-matched experts (responded_at = null) are left untouched.
+    const involvedMatches = otherMatchRows.filter(m => m.responded_at !== null);
+
+    // ── 5. Close involved matches ─────────────────────────────────────────
+    if (involvedMatches.length > 0) {
+      const involvedIds = involvedMatches.map(m => m.id);
+      await client.query(
+        `UPDATE public.palata_request_matches
+         SET status = 'closed_by_other_expert'
+         WHERE id = ANY($1::uuid[])`,
+        [involvedIds],
+      );
+    }
+
+    // ── 6. Request → in_work ──────────────────────────────────────────────
+    await client.query(
+      `UPDATE public.palata_requests
+       SET status = 'in_work', updated_at = $1
+       WHERE id = $2`,
+      [now, requestId],
+    );
+
+    // ── 7. Contact record → accepted_work ─────────────────────────────────
+    await client.query(
+      `UPDATE public.palata_request_contacts
+       SET expert_status = 'accepted_work', expert_status_updated_at = $1
+       WHERE request_id = $2 AND expert_id = $3`,
+      [now, requestId, expertId],
+    );
+
+    // ── 8. Resolve this expert's action item ──────────────────────────────
+    await client.query(
+      `UPDATE public.palata_action_items
+       SET is_resolved = true, status = 'resolved', resolved_at = $1
+       WHERE id = $2`,
+      [now, actionItemId],
+    );
+
+    // ── 9. Cancel all other open action items for this request ────────────
+    // (mirrors cancelRequestActionItems(requestId, exceptId=actionItemId))
+    await client.query(
+      `UPDATE public.palata_action_items
+       SET is_resolved = true, status = 'cancelled', resolved_at = $1
+       WHERE request_id = $2
+         AND is_resolved = false
+         AND id != $3`,
+      [now, requestId, actionItemId],
+    );
+
+    // ── 10. Notify involved experts: other_expert_took_order ──────────────
+    for (const om of involvedMatches) {
+      await client.query(
+        `INSERT INTO public.palata_action_items
+           (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+            action_type, title, description, payload, status, is_read, is_resolved)
+         VALUES ($1,$2,$3,$4,'expert','other_expert_took_order',
+                 'На заказ назначен другой эксперт',$5,$6,'open',false,false)`,
+        [
+          requestId,
+          om.expert_id,
+          custId,
+          om.expert_id,
+          `По заказу ${orderLabel} был выбран другой эксперт.`,
+          JSON.stringify({ request_id: requestId }),
+        ],
+      );
+    }
+
+    // ── 11. Action item for customer: expert_started_work ─────────────────
+    if (custId) {
+      await client.query(
+        `INSERT INTO public.palata_action_items
+           (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+            action_type, title, description, payload, status, is_read, is_resolved)
+         VALUES ($1,$2,$3,$3,'customer','expert_started_work',
+                 'Эксперт взял заказ в работу',$4,$5,'open',false,false)`,
+        [
+          requestId,
+          expertId,
+          custId,
+          `Эксперт подтвердил готовность и приступил к заказу ${shortId}`,
+          JSON.stringify({ expert_id: expertId, can_start_from: canStartFrom }),
+        ],
+      );
+    }
+
+    // ── 14. Status event (mirrors logStatusEvent) ─────────────────────────
+    await client.query(
+      `INSERT INTO public.palata_status_events
+         (entity_type, entity_id, old_status, new_status, actor_id, note)
+       VALUES ('request',$1,'expert_selection','in_work',null,'expert_took_work')`,
+      [requestId],
+    );
+
+    // ── Fetch customer email for frontend to use in email notifications ───
+    let custEmail = null;
+    if (custId) {
+      const emailRow = (await client.query(
+        `SELECT email FROM public.palata_users WHERE id = $1 LIMIT 1`,
+        [custId],
+      )).rows[0];
+      custEmail = emailRow?.email ?? null;
+    }
+
+    await client.query("COMMIT");
+
+    return res.json({ success: true, custId, custEmail });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    console.error("[TAKE-WORK] tx failed", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/requests/:requestId/take-work", (req, res) => {
+  handleTakeWork(req, res).catch(err => {
+    console.error("[TAKE-WORK] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── GET /api/palata/requests/customer — customer's own request list ──────────────
 async function handleCustomerRequests(req, res) {
   const authHeader = req.headers["authorization"] ?? "";

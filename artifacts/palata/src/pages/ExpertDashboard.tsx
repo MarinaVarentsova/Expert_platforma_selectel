@@ -2343,106 +2343,37 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
 
   async function handleTakeWork() {
     setBusy(true);
-    const now = new Date().toISOString();
-    const matchId = await getMatchId();
 
     console.log("[take-work] START", { requestId: item.request_id, currentExpertId: userId });
 
-    // 1. Expert match → accepted_work
-    if (matchId) {
-      await supabase.from("palata_request_matches")
-        .update({ status: "accepted_work", responded_at: now })
-        .eq("id", matchId);
+    const twRes = await fetch(`/api/palata/requests/${item.request_id}/take-work`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken() ?? ""}`,
+      },
+      body: JSON.stringify({
+        actionItemId: item.id,
+        canStartFrom,
+      }),
+    }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
+
+    if (!twRes.success) {
+      console.error("[take-work] FAILED", { error: twRes.error });
+      setBusy(false);
+      return;
     }
 
-    // 2. Find + close other active matches; store those explicitly selected by customer
-    const custId = custIdFromPayload ?? req?.customer_id ?? null;
-    const { data: otherMatchData2 } = await supabase
-      .from("palata_request_matches")
-      .select("id, expert_id, responded_at, status")
-      .eq("request_id", item.request_id)
-      .neq("expert_id", userId)
-      .not("status", "in", "(declined,closed_by_other_expert,withdrawn,completed)");
-    const otherMatches2 = (otherMatchData2 ?? []) as Array<{ id: string; expert_id: string; responded_at: string | null; status: string }>;
+    console.log("[take-work] TX OK — sending emails");
 
-    console.log("[take-work] ALL MATCHES");
-    console.table(otherMatches2.map(x => ({ expert: x.expert_id, status: x.status, responded_at: x.responded_at })));
-
-    // Only close experts who were actually involved (responded_at set).
-    // Auto-matched experts (responded_at = null) are left untouched.
-    const involvedMatches = otherMatches2.filter(m => m.responded_at !== null);
-
-    console.log("[take-work] WILL CLOSE OTHER EXPERTS");
-    for (const m of otherMatches2) {
-      if (m.responded_at !== null) {
-        console.log("[take-work] UPDATE", { expertId: m.expert_id, oldStatus: m.status, newStatus: "closed_by_other_expert" });
-      } else {
-        console.log("[take-work] SKIP", { expertId: m.expert_id, reason: "AUTO_MATCH", responded_at: m.responded_at });
-      }
+    // Emails after COMMIT: same recipients, same templates as before
+    const custId = (twRes.custId as string | null) ?? custIdFromPayload ?? req?.customer_id ?? null;
+    if (custId && twRes.custEmail) {
+      await logEmailTestEvent(custId, twRes.custEmail as string, "expert_started_work",
+        "Эксперт взял ваш заказ в работу",
+        { request_id: item.request_id, expert_id: userId });
     }
 
-    if (involvedMatches.length > 0) {
-      await supabase.from("palata_request_matches")
-        .update({ status: "closed_by_other_expert" })
-        .in("id", involvedMatches.map(m => m.id));
-    }
-
-    // 3. Request → in_work
-    await supabase.from("palata_requests")
-      .update({ status: "in_work", updated_at: now })
-      .eq("id", item.request_id);
-
-    // 4. Contact record → accepted_work
-    await supabase.from("palata_request_contacts")
-      .update({ expert_status: "accepted_work", expert_status_updated_at: now })
-      .eq("request_id", item.request_id)
-      .eq("expert_id", userId);
-
-    // 5. Resolve expert's action item; cancel others for this request
-    await resolveActionItem(item.id);
-    await cancelRequestActionItems(item.request_id!, item.id);
-
-    // 5b. Notify only involved experts (responded_at set), not bare auto-matched ones
-    const orderLabel = req?.title ? `«${req.title}»` : shortId;
-    for (const om of involvedMatches) {
-      console.log("[take-work] SEND NOTIFICATION", { expertId: om.expert_id, notificationType: "other_expert_took_order" });
-      await createActionItem({
-        request_id:          item.request_id,
-        expert_id:           om.expert_id,
-        customer_id:         custId,
-        assigned_to_user_id: om.expert_id,
-        assigned_role:       "expert",
-        action_type:         "other_expert_took_order",
-        title:               "На заказ назначен другой эксперт",
-        description:         `По заказу ${orderLabel} был выбран другой эксперт.`,
-        payload:             { request_id: item.request_id },
-      });
-    }
-
-    // 6. Action item for customer: expert_started_work
-    if (custId) {
-      await createActionItem({
-        request_id:          item.request_id,
-        expert_id:           userId,
-        customer_id:         custId,
-        assigned_to_user_id: custId,
-        assigned_role:       "customer",
-        action_type:         "expert_started_work",
-        title:               "Эксперт взял заказ в работу",
-        description:         `Эксперт подтвердил готовность и приступил к заказу ${shortId}`,
-        payload:             { expert_id: userId, can_start_from: canStartFrom },
-      });
-
-      const custEmail = await getCustomerEmail(custId);
-      if (custEmail) {
-        await logEmailTestEvent(custId, custEmail, "expert_started_work",
-          "Эксперт взял ваш заказ в работу",
-          { request_id: item.request_id, expert_id: userId });
-      }
-    }
-
-    // 7. Events
-    await logStatusEvent(item.request_id!, "expert_selection", "in_work", "expert_took_work");
     if (userEmail) {
       await logEmailTestEvent(userId, userEmail, "expert_accepted_work",
         "Вы взяли заказ в работу",

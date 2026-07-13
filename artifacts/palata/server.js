@@ -2735,6 +2735,223 @@ app.post("/api/palata/requests/:requestId/complete", (req, res) => {
   });
 });
 
+// ── POST /api/palata/requests/:requestId/select-expert ────────────────────────────
+//    source="dashboard" → ExpertsMatchedCard in CustomerDashboard
+//    source="detail"    → handleSelectExpert in RequestDetail
+async function handleSelectExpert(req, res) {
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[SELECT-EXPERT] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const customerId = meBody.user.id;
+  const { requestId } = req.params;
+  const { expertId, matchId, actionItemId = null, source, expertName = null } = req.body ?? {};
+
+  if (!expertId || !matchId || !source) {
+    return res.status(400).json({ success: false, error: "MISSING_PARAMS" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const now = new Date().toISOString();
+
+    // ── 1. Load request ───────────────────────────────────────────────────
+    const requestRow = (await client.query(
+      `SELECT id, status, customer_id, title
+       FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+      [requestId],
+    )).rows[0];
+
+    if (!requestRow) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+    }
+    if (requestRow.customer_id !== customerId) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({ success: false, error: "NOT_OWNER" });
+    }
+
+    // ── Guard: dashboard — request not already closed ─────────────────────
+    if (source === "dashboard") {
+      const s = requestRow.status;
+      if (s === "in_work" || s === "completed" || s === "cancelled") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, error: "REQUEST_ALREADY_CLOSED", freshStatus: s });
+      }
+    }
+
+    // ── Guard: detail — no expert has accepted_work yet ───────────────────
+    if (source === "detail") {
+      const inWorkRow = (await client.query(
+        `SELECT id FROM public.palata_request_matches
+         WHERE request_id = $1 AND status = 'accepted_work' LIMIT 1`,
+        [requestId],
+      )).rows[0];
+      if (inWorkRow) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, error: "EXPERT_ALREADY_TOOK_WORK" });
+      }
+    }
+
+    const reqTitle   = requestRow.title ?? "";
+    const oldStatus  = requestRow.status;
+    const shortReqId = `#${requestId.slice(0, 8).toUpperCase()}`;
+    const noteName   = expertName ?? expertId.slice(0, 8);
+
+    // ── 2. Load customer contact info ─────────────────────────────────────
+    const custRow = (await client.query(
+      `SELECT email, phone FROM public.palata_users WHERE id = $1 LIMIT 1`,
+      [customerId],
+    )).rows[0];
+    const custEmail = custRow?.email ?? null;
+    const custPhone = custRow?.phone ?? null;
+
+    // ── 3. Load expert email ──────────────────────────────────────────────
+    const expertRow = (await client.query(
+      `SELECT email FROM public.palata_users WHERE id = $1 LIMIT 1`,
+      [expertId],
+    )).rows[0];
+    const expertEmail = expertRow?.email ?? null;
+
+    // ── 4. Update match status ────────────────────────────────────────────
+    //   dashboard → contacts_opened  |  detail → proposed
+    const matchStatus = source === "dashboard" ? "contacts_opened" : "proposed";
+    await client.query(
+      `UPDATE public.palata_request_matches
+       SET status = $1, responded_at = $2
+       WHERE id = $3`,
+      [matchStatus, now, matchId],
+    );
+
+    // ── 5. Update request (dashboard only) ───────────────────────────────
+    if (source === "dashboard") {
+      await client.query(
+        `UPDATE public.palata_requests
+         SET assigned_expert_id = $1, status = 'expert_selection', updated_at = $2
+         WHERE id = $3`,
+        [expertId, now, requestId],
+      );
+    }
+
+    // ── 6. Upsert palata_request_contacts ─────────────────────────────────
+    const existingContactRow = (await client.query(
+      `SELECT id FROM public.palata_request_contacts
+       WHERE request_id = $1 AND expert_id = $2 LIMIT 1`,
+      [requestId, expertId],
+    )).rows[0];
+
+    if (existingContactRow) {
+      await client.query(
+        `UPDATE public.palata_request_contacts
+         SET revealed_at = $1, customer_email = $2, customer_phone = $3,
+             expert_email = $4, expert_phone = NULL
+         WHERE id = $5`,
+        [now, custEmail, custPhone, expertEmail, existingContactRow.id],
+      );
+    } else {
+      // Ignore insert errors — contacts are a convenience; match status is source of truth
+      await client.query(
+        `INSERT INTO public.palata_request_contacts
+           (request_id, expert_id, customer_id, revealed_at,
+            customer_email, customer_phone, expert_email, expert_phone)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,NULL)
+         ON CONFLICT DO NOTHING`,
+        [requestId, expertId, customerId, now, custEmail, custPhone, expertEmail],
+      );
+    }
+
+    // ── 7. Resolve action item (if provided) ──────────────────────────────
+    if (actionItemId) {
+      await client.query(
+        `UPDATE public.palata_action_items
+         SET is_resolved = true, status = 'resolved', resolved_at = $1
+         WHERE id = $2`,
+        [now, actionItemId],
+      );
+    }
+
+    // ── 8. Insert action item for expert: customer_selected_you ──────────
+    if (source === "dashboard") {
+      await client.query(
+        `INSERT INTO public.palata_action_items
+           (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+            action_type, title, description, payload, status, is_read, is_resolved)
+         VALUES ($1,$2,$3,$2,'expert','customer_selected_you',
+                 'Заказчик выбрал вас',
+                 'Заказчик выбрал вас для работы над заказом. Ознакомьтесь с деталями и примите решение.',
+                 $4,'open',false,false)`,
+        [requestId, expertId, customerId,
+         JSON.stringify({ customer_id: customerId, request_id: requestId })],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO public.palata_action_items
+           (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+            action_type, title, description, payload, status, is_read, is_resolved)
+         VALUES ($1,$2,$3,$2,'expert','customer_selected_you',$4,$5,$6,'open',false,false)`,
+        [
+          requestId, expertId, customerId,
+          `Вас выбрали по заказу «${reqTitle}»`,
+          `Заказчик выбрал вас для связи по заказу ${shortReqId}`,
+          JSON.stringify({ request_id: requestId, expert_id: expertId, customer_id: customerId, contact_opened_at: now }),
+        ],
+      );
+    }
+
+    // ── 9. Insert status event ────────────────────────────────────────────
+    if (source === "dashboard") {
+      await client.query(
+        `INSERT INTO public.palata_status_events
+           (entity_type, entity_id, old_status, new_status, actor_id, note)
+         VALUES ('request',$1,'matching','expert_selection',null,$2)`,
+        [requestId, `Заказчик выбрал эксперта: ${noteName}`],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO public.palata_status_events
+           (entity_type, entity_id, old_status, new_status, actor_id, note)
+         VALUES ('request',$1,$2,'expert_selected_by_customer',null,$3)`,
+        [requestId, oldStatus, `Заказчик выбрал эксперта ${noteName}`],
+      );
+    }
+
+    await client.query("COMMIT");
+    return res.json({ success: true });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    console.error("[SELECT-EXPERT] tx failed", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/requests/:requestId/select-expert", (req, res) => {
+  handleSelectExpert(req, res).catch(err => {
+    console.error("[SELECT-EXPERT] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── GET /api/palata/requests/customer — customer's own request list ──────────────
 async function handleCustomerRequests(req, res) {
   const authHeader = req.headers["authorization"] ?? "";

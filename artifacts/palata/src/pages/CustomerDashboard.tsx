@@ -1182,89 +1182,39 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
   }, [item.request_id]);
 
   async function handleSelect(expert: MatchedExpert) {
-    // Fresh DB check — guard against stale UI when another expert already took the work
-    console.log("[choose-expert] fresh assigned check", { requestId: item.request_id, expertId: expert.expert_id });
-    const { data: reqCheck } = await supabase
-      .from("palata_requests").select("status").eq("id", item.request_id).maybeSingle();
-    const freshStatus = (reqCheck as { status: string } | null)?.status;
-    if (freshStatus === "in_work" || freshStatus === "completed" || freshStatus === "cancelled") {
-      console.log("[choose-expert] blocked because request already assigned", { freshStatus });
-      setBlockedByInWork(true);
-      return;
-    }
+    console.log("[choose-expert] select", { requestId: item.request_id, expertId: expert.expert_id });
 
     // Optimistic: immediately mark as selected so button deactivates before any network call
     setSelectedExpertId(expert.expert_id);
     setSelecting(expert.expert_id);
-    const now = new Date().toISOString();
 
-    // 1. Match → contacts_opened (customer selected this expert)
-    await supabase.from("palata_request_matches").update({
-      status: "contacts_opened", responded_at: now,
-    }).eq("id", expert.match_id);
+    const seRes = await fetch(`/api/palata/requests/${item.request_id}/select-expert`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken() ?? ""}`,
+      },
+      body: JSON.stringify({
+        expertId:     expert.expert_id,
+        matchId:      expert.match_id,
+        actionItemId: item.id,
+        source:       "dashboard",
+        expertName:   expert.expert_name ?? null,
+      }),
+    }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
 
-    // 2. Request: keep expert_selection, set assigned_expert_id
-    await supabase.from("palata_requests").update({
-      assigned_expert_id: expert.expert_id, status: "expert_selection",
-    }).eq("id", item.request_id);
-
-    // 3. Open contacts immediately — fetch customer contact info
-    const { data: custUserData } = await supabase
-      .from("palata_users")
-      .select("email, phone")
-      .eq("id", userId)
-      .maybeSingle();
-    const custU = custUserData as { email: string | null; phone: string | null } | null;
-
-    // Use only base columns that exist in all schema versions
-    const baseContactPayload = {
-      revealed_at: now,
-      customer_email: custU?.email ?? null,
-      customer_phone: custU?.phone ?? null,
-      expert_email: expert.expert_email ?? null,
-    };
-
-    const { data: existingContact } = await supabase
-      .from("palata_request_contacts")
-      .select("id")
-      .eq("request_id", item.request_id)
-      .eq("expert_id", expert.expert_id)
-      .maybeSingle();
-
-    if (existingContact) {
-      await supabase.from("palata_request_contacts")
-        .update(baseContactPayload)
-        .eq("id", (existingContact as { id: string }).id);
-    } else {
-      await supabase.from("palata_request_contacts").insert({
-        request_id: item.request_id,
-        expert_id: expert.expert_id,
-        customer_id: userId,
-        ...baseContactPayload,
-      });
-      // Ignore insert errors — contacts are a convenience; match status is the source of truth
+    if (!seRes.success) {
+      // Guard: request already closed — mirrors the original fresh-status check
+      if (seRes.error === "REQUEST_ALREADY_CLOSED") {
+        console.log("[choose-expert] blocked because request already assigned", { freshStatus: seRes.freshStatus });
+        setBlockedByInWork(true);
+      }
+      setSelectedExpertId(null);
+      setSelecting(null);
+      return;
     }
 
-    // 4. Action item for expert
-    await createActionItem({
-      request_id: item.request_id,
-      expert_id: expert.expert_id,
-      customer_id: userId,
-      assigned_to_user_id: expert.expert_id,
-      assigned_role: "expert",
-      action_type: "customer_selected_you",
-      title: "Заказчик выбрал вас",
-      description: "Заказчик выбрал вас для работы над заказом. Ознакомьтесь с деталями и примите решение.",
-      payload: { customer_id: userId, request_id: item.request_id },
-    });
-
-    // 5. Resolve customer's action item
-    await resolveActionItem(item.id);
-
-    // 6. Events
-    await logStatusEvent(item.request_id!, "matching", "expert_selection",
-      `Заказчик выбрал эксперта: ${expert.expert_name ?? expert.expert_id}`);
-
+    // Email after COMMIT — same recipient and template as before
     if (expert.expert_email) {
       await logEmailTestEvent(expert.expert_id, expert.expert_email,
         "customer_selected_you", "Заказчик выбрал вас для работы",

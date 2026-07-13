@@ -1,0 +1,109 @@
+Берём следующий бизнес-сценарий: «Заказчик выбирает эксперта».
+
+Критически важно:
+только переключение источника данных.
+Бизнес-логику сохранить один в один.
+
+Не менять:
+- статусы;
+- guards;
+- порядок действий;
+- тексты;
+- UI;
+- email/notify;
+- состав получателей;
+- обработку ошибок.
+
+Сначала провести точный аудит текущего сценария выбора эксперта в:
+- CustomerDashboard.tsx;
+- RequestDetail.tsx, если там есть аналогичный обработчик.
+
+Показать:
+- все SELECT;
+- все UPDATE;
+- все INSERT;
+- action items;
+- status events;
+- email/notify;
+- текущий порядок операций.
+
+После аудита реализовать один backend endpoint:
+
+POST /api/palata/requests/:requestId/select-expert
+
+Bearer token обязателен.
+customer_id брать только из /api/auth/me.
+expert_id можно принимать из body, потому что это выбранный эксперт.
+action_item_id принимать только если текущий сценарий его реально использует.
+
+В одной PostgreSQL-транзакции выполнить только текущую логику:
+
+BEGIN;
+
+1. Проверить заявку:
+   - существует;
+   - принадлежит текущему customer_id;
+   - текущий статус допускает выбор эксперта.
+
+2. Проверить выбранный match:
+   - request_id совпадает;
+   - expert_id совпадает;
+   - текущий status соответствует старому guard.
+
+3. Обновить выбранный match тем же статусом и теми же полями, что сейчас.
+
+4. Обновить palata_requests:
+   - assigned_expert_id;
+   - status;
+   - updated_at,
+   строго как в текущем сценарии.
+
+5. Создать или обновить palata_request_contacts:
+   - request_id;
+   - expert_id;
+   - revealed_at;
+   - customer_phone;
+   - customer_email;
+   - expert_phone;
+   - expert_email;
+   с теми же значениями, что сейчас.
+
+6. Выполнить те же операции с palata_action_items:
+   - resolve;
+   - cancel;
+   - insert,
+   только если они есть в текущем сценарии.
+
+7. Вставить тот же status event, если он есть в текущем сценарии.
+
+COMMIT;
+
+При ошибке:
+ROLLBACK.
+
+Email/notify оставить на frontend после успешного COMMIT.
+
+Во frontend заменить только Supabase-операции внутри сценария выбора эксперта на один fetch к новому endpoint.
+
+Не менять:
+- take-work;
+- complete;
+- decline;
+- matching;
+- подтверждение даты;
+- admin actions;
+- actionItems.ts глобально.
+
+В отчёте показать:
+1. старый порядок операций;
+2. Supabase-вызов → SQL;
+3. полный SQL транзакции;
+4. точные статусы до/после;
+5. логику contacts;
+6. action items;
+7. что email остался после COMMIT;
+8. изменённые файлы;
+9. подтверждение, что другие сценарии не менялись;
+10. node --check;
+11. typecheck;
+12. build.

@@ -1,0 +1,92 @@
+Нужен auth-паттерн из server.js — ищу существующий пример с Bearer:
+
+
+3 actions
+Читаю конкретный пример полного Bearer-auth блока и requireAdmin:
+
+
+2 actions
+Теперь нахожу, где в server.js разместить новый endpoint (рядом с palata_requests):
+
+
+4 actions
+Всё понял. Добавляю endpoint в server.js и меняю RequestDetail.tsx параллельно:
+
+
+3 actions
+Запускаю все три проверки:
+
+
+3 actions
+Правильно — все оставшиеся обращения это UPDATE/INSERT в обработчиках кнопок, которые трогать запрещено. Запускаю typecheck и build:
+
+
+2 actions
+Отчёт по миграции чтения RequestDetail.tsx:
+
+1. Четыре старых Supabase SELECT
+#	Таблица	Поля	Фильтр	Сортировка
+A	palata_requests	*	id = id (single)	—
+B	palata_request_matches	id, expert_id, matching_round, status, decline_reason, decline_note, can_start_from_date, proposed_at, responded_at	request_id = id	matching_round ASC, proposed_at ASC
+C	palata_status_events	id, entity_type, old_status, new_status, actor_id, note, created_at	entity_id = id	created_at ASC
+D	palata_request_contacts	id, request_id, expert_id, revealed_at, customer_phone, customer_email, expert_phone, expert_email	request_id = id	—
+Все четыре вызывались в одном Promise.all и результат сразу использовался: reqRes.data, matchesRes.data, eventsRes.data, contactsRes.data.
+
+2. Новый endpoint
+GET /api/palata/requests/:requestId/detail
+3. Полный SQL каждого SELECT
+A. Заявка:
+
+SELECT * FROM public.palata_requests
+WHERE id = $1
+LIMIT 1
+
+B. Матчи:
+
+SELECT id, request_id, expert_id, matching_round, status, decline_reason, decline_note,
+       can_start_from_date, proposed_at, responded_at, created_at, updated_at
+FROM public.palata_request_matches
+WHERE request_id = $1
+ORDER BY matching_round ASC, proposed_at ASC
+
+C. Контакты:
+
+SELECT id, request_id, expert_id, revealed_at, customer_phone, customer_email,
+       expert_phone, expert_email, contact_opened_at, expert_status,
+       expert_status_updated_at, failure_reason, expert_comment
+FROM public.palata_request_contacts
+WHERE request_id = $1
+ORDER BY revealed_at ASC
+
+D. События:
+
+SELECT id, entity_type, entity_id, old_status, new_status, actor_id, note, created_at
+FROM public.palata_status_events
+WHERE entity_type = 'request' AND entity_id = $1
+ORDER BY created_at ASC
+
+4. Правила доступа
+Повторяют текущую модель страницы:
+
+Роль	Условие доступа
+admin	всегда
+customer	palata_requests.customer_id = authUserId
+expert	есть запись в palata_request_matches WHERE request_id = requestId AND expert_id = authUserId
+Если доступ не разрешён → 403 FORBIDDEN. Токен обязателен → 401 MISSING_TOKEN / INVALID_TOKEN.
+
+5. Изменённые файлы
+artifacts/palata/server.js — добавлен handleRequestDetail, маршрут GET /api/palata/requests/:requestId/detail
+
+artifacts/palata/src/pages/RequestDetail.tsx — в функции load() заменён Promise.all из 6 элементов на 3 (detailRes + filesRes + emailEventsRes). После получения ответа строятся совместимые объекты reqRes, matchesRes, contactsRes, eventsRes — вся нижележащая логика не тронута.
+
+6. Подтверждение: UPDATE/INSERT/DELETE не менялись
+В RequestDetail.tsx осталось 20 обращений к этим таблицам через Supabase — все они UPDATE/INSERT в обработчиках кнопок (строки 283, 766, 872, 905, 914, 930, 935, 989, 1001, 1050, 1112, 1129, 1135, 1182, 1185, 1190, 1247, 1259, 1271, 1290). Ни одно из них не тронуто.
+
+7. Подтверждение: остальная логика RequestDetail.tsx не менялась
+Всё что ниже строки 567 (построение expertIds, actorIds, userIds, второй Promise.all, setState, рендер) — без изменений. filesRes и emailEventsRes также остались в тех же позициях с той же семантикой.
+
+8. Результаты трёх проверок
+Команда	Результат
+node --check artifacts/palata/server.js	✅ синтаксис корректен
+pnpm --filter ./artifacts/palata run typecheck	✅ без ошибок
+pnpm --filter ./artifacts/palata run build	✅ собрано за 13 с (1842 модуля)

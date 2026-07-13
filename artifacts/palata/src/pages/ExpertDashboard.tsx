@@ -289,14 +289,13 @@ export default function ExpertDashboard() {
       supabase.from("palata_users").select("phone").eq("id", userId).single()
         .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
 
-      supabase.from("palata_expert_documents")
-        .select("id, doc_type, file_name, bucket_path, mime_type, size_bytes, verified, created_at")
-        .eq("expert_id", userId)
-        .order("created_at", { ascending: false })
-        .then(({ data, error }) => {
-          if (error) { setDocsState({ kind: "error", message: error.message }); return; }
-          setDocsState({ kind: "ok", docs: (data ?? []) as ExpertDocument[] });
-        });
+      fetch(`/api/palata/expert-documents/${encodeURIComponent(userId)}`)
+        .then(r => r.json())
+        .then(b => {
+          if (!b.success) { setDocsState({ kind: "error", message: b.message ?? "Ошибка загрузки" }); return; }
+          setDocsState({ kind: "ok", docs: (b.rows ?? []) as ExpertDocument[] });
+        })
+        .catch(e => { setDocsState({ kind: "error", message: String(e) }); });
 
       loadPendingRatings(userId);
 
@@ -367,14 +366,13 @@ export default function ExpertDashboard() {
   function reloadDocs() {
     if (guard.status !== "ok") return;
     const uid = guard.user.id;
-    supabase.from("palata_expert_documents")
-      .select("id, doc_type, file_name, bucket_path, mime_type, size_bytes, verified, created_at")
-      .eq("expert_id", uid)
-      .order("created_at", { ascending: false })
-      .then(({ data, error }) => {
-        if (error) { setDocsState({ kind: "error", message: error.message }); return; }
-        setDocsState({ kind: "ok", docs: (data ?? []) as ExpertDocument[] });
-      });
+    fetch(`/api/palata/expert-documents/${encodeURIComponent(uid)}`)
+      .then(r => r.json())
+      .then(b => {
+        if (!b.success) { setDocsState({ kind: "error", message: b.message ?? "Ошибка загрузки" }); return; }
+        setDocsState({ kind: "ok", docs: (b.rows ?? []) as ExpertDocument[] });
+      })
+      .catch(e => { setDocsState({ kind: "error", message: String(e) }); });
   }
 
   useEffect(() => {
@@ -1850,16 +1848,20 @@ function DocumentsSection({
 
     if (storErr) { setUploadErr(storErr.message); setUploading(false); return; }
 
-    const { error: dbErr } = await supabase.from("palata_expert_documents").insert({
-      expert_id:   userId,
-      doc_type:    docType,
-      bucket_path: path,
-      file_name:   file.name,
-      mime_type:   file.type || null,
-      size_bytes:  file.size,
-    });
+    const dbRes = await fetch("/api/palata/expert-documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expert_id:   userId,
+        doc_type:    docType,
+        bucket_path: path,
+        file_name:   file.name,
+        mime_type:   file.type || null,
+        size_bytes:  file.size,
+      }),
+    }).then(r => r.json()).catch(() => ({ success: false, message: "network error" }));
 
-    if (dbErr) { setUploadErr(dbErr.message); setUploading(false); return; }
+    if (!dbRes.success) { setUploadErr(dbRes.message ?? "Ошибка сохранения"); setUploading(false); return; }
 
     setUploading(false);
     e.target.value = "";
@@ -1868,7 +1870,8 @@ function DocumentsSection({
 
   async function handleDelete(doc: ExpertDocument) {
     await supabase.storage.from("palata-expert-documents").remove([doc.bucket_path]);
-    await supabase.from("palata_expert_documents").delete().eq("id", doc.id);
+    await fetch(`/api/palata/expert-documents/${encodeURIComponent(doc.id)}`, { method: "DELETE" })
+      .then(r => r.json()).catch(() => null);
     onReload();
   }
 

@@ -1652,6 +1652,100 @@ app.post("/api/palata/expert-certificate", (req, res) => {
   });
 });
 
+// ── GET /api/palata/expert-documents/:expertId — list documents for an expert ──
+
+async function handleExpertDocumentsQuery(req, res) {
+  const { expertId } = req.params;
+  if (!expertId) {
+    return res.status(400).json({ success: false, error: "MISSING_EXPERT_ID" });
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT id, expert_id, doc_type, bucket_path, file_name, mime_type, size_bytes,
+              verified, verified_by, verified_at, created_at, updated_at
+       FROM public.palata_expert_documents
+       WHERE expert_id = $1
+       ORDER BY created_at DESC`,
+      [expertId],
+    );
+    res.json({ success: true, rows });
+  } catch (err) {
+    console.error("[EXPERT-DOCUMENTS] query failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/expert-documents/:expertId", (req, res) => {
+  handleExpertDocumentsQuery(req, res).catch(err => {
+    console.error("[EXPERT-DOCUMENTS] query unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+// ── POST /api/palata/expert-documents — insert a document record ──
+
+async function handleExpertDocumentsInsert(req, res) {
+  const { expert_id, doc_type, bucket_path, file_name, mime_type, size_bytes } = req.body ?? {};
+  if (!expert_id || !doc_type || !bucket_path || !file_name) {
+    return res.status(400).json({ success: false, error: "MISSING_REQUIRED_FIELDS" });
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `INSERT INTO public.palata_expert_documents
+         (expert_id, doc_type, bucket_path, file_name, mime_type, size_bytes)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [expert_id, doc_type, bucket_path, file_name, mime_type ?? null, size_bytes ?? null],
+    );
+    res.json({ success: true, id: rows[0]?.id });
+  } catch (err) {
+    console.error("[EXPERT-DOCUMENTS] insert failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "INSERT_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/expert-documents", (req, res) => {
+  handleExpertDocumentsInsert(req, res).catch(err => {
+    console.error("[EXPERT-DOCUMENTS] insert unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+// ── DELETE /api/palata/expert-documents/:id — delete a document record ──
+
+async function handleExpertDocumentsDelete(req, res) {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ success: false, error: "MISSING_ID" });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `DELETE FROM public.palata_expert_documents WHERE id = $1`,
+      [id],
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[EXPERT-DOCUMENTS] delete failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "DELETE_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.delete("/api/palata/expert-documents/:id", (req, res) => {
+  handleExpertDocumentsDelete(req, res).catch(err => {
+    console.error("[EXPERT-DOCUMENTS] delete unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── GET /api/palata/request-files — list files for a request ──
 
 async function handleRequestFilesQuery(req, res) {

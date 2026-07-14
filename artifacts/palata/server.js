@@ -2952,6 +2952,188 @@ app.post("/api/palata/requests/:requestId/select-expert", (req, res) => {
   });
 });
 
+// ── POST /api/palata/requests/:requestId/decline ─────────────────────────────────
+async function handleDeclineRequest(req, res) {
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[DECLINE-REQUEST] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const expertId = meBody.user.id;
+  const { requestId } = req.params;
+  const {
+    reason,
+    note = null,
+    matchId: bodyMatchId = null,
+    customerId: bodyCustomerId = null,
+    expertName = null,
+    requestTitle = null,
+    actionItemId = null,
+  } = req.body ?? {};
+
+  if (!reason) {
+    return res.status(400).json({ success: false, error: "MISSING_REASON" });
+  }
+
+  const DECLINE_LABEL_RU = {
+    busy:          "Занят",
+    not_competent: "Вне компетенции",
+    location:      "Регион не подходит",
+    conflict:      "Конфликт интересов",
+    conditions:    "Условия не подходят",
+    other:         "Другое",
+  };
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const now = new Date().toISOString();
+
+    // 1. Resolve match id (use provided or lookup)
+    let matchId = bodyMatchId;
+    if (!matchId) {
+      const mRow = (await client.query(
+        `SELECT id FROM public.palata_request_matches
+         WHERE request_id = $1 AND expert_id = $2 LIMIT 1`,
+        [requestId, expertId],
+      )).rows[0];
+      if (!mRow) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ success: false, error: "Match record not found" });
+      }
+      matchId = mRow.id;
+    }
+
+    // 2. Update match → declined
+    await client.query(
+      `UPDATE public.palata_request_matches
+       SET status = 'declined', decline_reason = $1, decline_note = $2, responded_at = $3
+       WHERE id = $4`,
+      [reason, note || null, now, matchId],
+    );
+
+    // 3. Resolve customer_id (use provided or lookup)
+    let customerId = bodyCustomerId;
+    if (!customerId) {
+      const reqRow = (await client.query(
+        `SELECT customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+        [requestId],
+      )).rows[0];
+      customerId = reqRow?.customer_id ?? null;
+    }
+
+    // 4. Resolve action item if provided
+    if (actionItemId) {
+      await client.query(
+        `UPDATE public.palata_action_items
+         SET is_resolved = true, status = 'resolved', resolved_at = $1
+         WHERE id = $2`,
+        [now, actionItemId],
+      );
+    }
+
+    // 5. Notify customer via action item (if customerId present)
+    if (customerId) {
+      const declineLabel = DECLINE_LABEL_RU[reason] ?? reason;
+      const orderRef = requestTitle
+        ? `вашем заказе «${requestTitle}»`
+        : "вашем заказе";
+      const description = expertName
+        ? `Эксперт ${expertName} отказался от участия в ${orderRef}.`
+        : `Эксперт отказался от участия в ${orderRef}.`;
+      await client.query(
+        `INSERT INTO public.palata_action_items
+           (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+            action_type, title, description, payload, status, is_read, is_resolved)
+         VALUES ($1,$2,$3,$3,'customer','expert_declined',
+                 'Эксперт отказался от заказа',$4,$5,'open',false,false)`,
+        [
+          requestId, expertId, customerId,
+          description,
+          JSON.stringify({
+            request_id: requestId,
+            expert_id: expertId,
+            expert_name: expertName,
+            decline_reason: declineLabel,
+            decline_note: note || null,
+          }),
+        ],
+      );
+    }
+
+    // 6. Status event: request expert_selection → matching, note='expert_declined'
+    await client.query(
+      `INSERT INTO public.palata_status_events
+         (entity_type, entity_id, old_status, new_status, actor_id, note)
+       VALUES ('request', $1, 'expert_selection', 'matching', null, 'expert_declined')`,
+      [requestId],
+    );
+
+    // 7. Check allDeclined:
+    //    all non-(closed_by_other_expert|withdrawn) matches are 'declined' or 'withdrawn'
+    const matchesRows = (await client.query(
+      `SELECT id, status FROM public.palata_request_matches
+       WHERE request_id = $1
+         AND status NOT IN ('closed_by_other_expert','withdrawn')`,
+      [requestId],
+    )).rows;
+
+    const allDeclined =
+      matchesRows.length > 0 &&
+      matchesRows.every(m => m.status === "declined" || m.status === "withdrawn");
+
+    let requestData = null;
+    if (allDeclined) {
+      const rdRow = (await client.query(
+        `SELECT expertise_direction_id, region_id, requires_travel, customer_id
+         FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+        [requestId],
+      )).rows[0];
+      if (rdRow) {
+        requestData = {
+          expertise_direction_id: rdRow.expertise_direction_id ?? null,
+          region_id: rdRow.region_id ?? null,
+          requires_travel: rdRow.requires_travel ?? false,
+          customer_id: rdRow.customer_id ?? null,
+        };
+      }
+    }
+
+    await client.query("COMMIT");
+    return res.json({ success: true, allDeclined, requestData });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    console.error("[DECLINE-REQUEST] tx failed", { stack: err.stack });
+    return res.status(500).json({ success: false, error: err.message ?? "TX_FAILED" });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/requests/:requestId/decline", (req, res) => {
+  handleDeclineRequest(req, res).catch(err => {
+    console.error("[DECLINE-REQUEST] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── POST /api/palata/requests/:requestId/apply-market ────────────────────────────
 async function handleApplyMarket(req, res) {
   const authHeader = req.headers["authorization"] ?? "";

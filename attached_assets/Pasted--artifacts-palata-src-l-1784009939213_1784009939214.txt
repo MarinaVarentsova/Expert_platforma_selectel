@@ -1,0 +1,104 @@
+Берём следующий бизнес-сценарий:
+«Эксперт отказывается от заявки».
+
+Файл:
+artifacts/palata/src/lib/declineRequest.ts
+
+Критически важно:
+только переключение источника данных.
+Бизнес-логику сохранить один в один.
+
+Не менять:
+- статусы;
+- причины отказа;
+- guards;
+- условия allDeclined;
+- порядок действий;
+- action item типы;
+- status events;
+- повторный matching;
+- email/notify;
+- UI;
+- тексты и обработку ошибок.
+
+Сначала провести точный аудит declineRequest():
+
+- как определяется match_id;
+- какие поля обновляются в palata_request_matches;
+- как определяется allDeclined;
+- какие SELECT идут в palata_requests;
+- какие action items создаются;
+- какие status events создаются;
+- когда вызывается повторный runMatching();
+- какие данные нужны frontend после COMMIT.
+
+После аудита реализовать endpoint:
+
+POST /api/palata/requests/:requestId/decline
+
+Bearer token обязателен.
+expert_id брать только из /api/auth/me.
+Не принимать expert_id из body.
+
+Из body принимать только текущие данные отказа:
+- decline_reason;
+- decline_note;
+- остальные фактически используемые поля.
+
+В одной PostgreSQL-транзакции выполнить только текущую логику отказа:
+
+BEGIN;
+
+1. Проверить заявку.
+2. Найти текущий match эксперта по request_id + expert_id.
+3. Обновить его:
+   status='declined',
+   decline_reason,
+   decline_note,
+   responded_at=now().
+4. Создать те же action items, которые сейчас создаёт declineRequest().
+5. Проверить остальные активные matches заявки по тем же условиям.
+6. Определить allDeclined тем же способом.
+7. Если allDeclined:
+   - выполнить те же UPDATE заявки;
+   - вставить тот же status event;
+   - вернуть данные, необходимые для повторного matching.
+8. Если не allDeclined:
+   - не менять заявку сверх текущей логики.
+
+COMMIT;
+
+При ошибке:
+ROLLBACK.
+
+Важно:
+runMatching() не вызывать внутри транзакции и не переносить на сервер в этой задаче.
+
+После успешного ответа:
+- если allDeclined=true, frontend вызывает тот же runMatching(), как сейчас;
+- email/notify остаются на frontend после COMMIT.
+
+Не менять:
+- matching.ts;
+- take-work;
+- complete;
+- select-expert;
+- start-date;
+- apply-market;
+- admin actions;
+- actionItems.ts глобально.
+
+В отчёте показать:
+1. старый порядок declineRequest();
+2. Supabase-вызов → SQL;
+3. полный SQL транзакции;
+4. точное условие allDeclined;
+5. статусы до/после;
+6. action items;
+7. какие данные endpoint возвращает;
+8. подтверждение, что runMatching остаётся после COMMIT на frontend;
+9. изменённые файлы;
+10. подтверждение, что другие сценарии не менялись;
+11. node --check;
+12. typecheck;
+13. build.

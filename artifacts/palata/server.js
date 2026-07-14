@@ -3021,13 +3021,18 @@ async function handleDeclineRequest(req, res) {
       matchId = mRow.id;
     }
 
-    // 2. Update match → declined
-    await client.query(
+    // 2. Update match → declined (guarded by request_id + expert_id from token)
+    const updateResult = await client.query(
       `UPDATE public.palata_request_matches
        SET status = 'declined', decline_reason = $1, decline_note = $2, responded_at = $3
-       WHERE id = $4`,
-      [reason, note || null, now, matchId],
+       WHERE id = $4 AND request_id = $5 AND expert_id = $6
+       RETURNING id`,
+      [reason, note || null, now, matchId, requestId, expertId],
     );
+    if (updateResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, error: "MATCH_NOT_FOUND" });
+    }
 
     // 3. Resolve customer_id (use provided or lookup)
     let customerId = bodyCustomerId;

@@ -2952,6 +2952,84 @@ app.post("/api/palata/requests/:requestId/select-expert", (req, res) => {
   });
 });
 
+// ── POST /api/palata/requests/:requestId/start-date/check ────────────────────────
+async function handleCheckStartDate(req, res) {
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[CHECK-START-DATE] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const customerId = meBody.user.id;
+  const { requestId } = req.params;
+  const { actionItemId } = req.body ?? {};
+
+  if (!actionItemId) {
+    return res.status(400).json({ success: false, error: "MISSING_PARAMS" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const requestRow = (await client.query(
+      `SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+      [requestId],
+    )).rows[0];
+
+    if (!requestRow) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+    }
+    if (requestRow.customer_id !== customerId) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({ success: false, error: "NOT_OWNER" });
+    }
+
+    if (requestRow.status === "in_work") {
+      await client.query(
+        `UPDATE public.palata_action_items
+         SET is_resolved = true, status = 'resolved', resolved_at = $1
+         WHERE id = $2`,
+        [new Date().toISOString(), actionItemId],
+      );
+      await client.query("COMMIT");
+      return res.json({ success: true, alreadyInWork: true });
+    }
+
+    await client.query("COMMIT");
+    return res.json({ success: true, alreadyInWork: false });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    console.error("[CHECK-START-DATE] tx failed", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/requests/:requestId/start-date/check", (req, res) => {
+  handleCheckStartDate(req, res).catch(err => {
+    console.error("[CHECK-START-DATE] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── POST /api/palata/requests/:requestId/start-date/approve ──────────────────────
 async function handleApprovStartDate(req, res) {
   const authHeader = req.headers["authorization"] ?? "";

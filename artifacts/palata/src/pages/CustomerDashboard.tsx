@@ -1318,11 +1318,15 @@ function ExpertCanStartCard({ item, userId, onDone }: {
 
   useEffect(() => {
     async function load() {
-      const [{ data: reqData }, { data: expertData }] = await Promise.all([
-        supabase.from("palata_requests")
-          .select("title, status")
-          .eq("id", item.request_id)
-          .maybeSingle(),
+      const [checkRes, { data: expertData }] = await Promise.all([
+        fetch(`/api/palata/requests/${item.request_id}/start-date/check`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken() ?? ""}`,
+          },
+          body: JSON.stringify({ actionItemId: item.id }),
+        }).then(r => r.json()).catch(() => ({ success: false })),
         expertId
           ? supabase.from("palata_users")
               .select("full_name, email")
@@ -1330,14 +1334,10 @@ function ExpertCanStartCard({ item, userId, onDone }: {
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
       ]);
-      const r = reqData as { title: string; status: string } | null;
-      setReqTitle(r?.title ?? null);
-      setReqStatus(r?.status ?? null);
 
-      // Guard: if request is already in_work, auto-resolve this action item
-      if (r?.status === "in_work") {
+      // Guard: if request is already in_work, action item was auto-resolved on server
+      if (checkRes.alreadyInWork) {
         setBlockedByInWork(true);
-        await resolveActionItem(item.id);
         setLoading(false);
         onDone();
         return;

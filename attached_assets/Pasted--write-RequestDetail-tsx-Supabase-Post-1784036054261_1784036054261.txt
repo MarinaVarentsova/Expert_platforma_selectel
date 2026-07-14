@@ -1,0 +1,89 @@
+Следующий этап: полностью переключить оставшиеся write-сценарии RequestDetail.tsx с Supabase на PostgreSQL.
+
+Критически важно:
+только замена источника данных.
+Бизнес-логику, статусы, guards, UI, тексты и порядок действий не менять.
+
+Работаем только с оставшимися Supabase UPDATE/INSERT в:
+
+- palata_requests
+- palata_request_matches
+- palata_request_contacts
+- palata_status_events
+- palata_action_items
+
+Файл:
+artifacts/palata/src/pages/RequestDetail.tsx
+
+Сначала провести точный аудит оставшихся обработчиков:
+
+1. редактирование заявки;
+2. заказчик завершает заявку;
+3. заказчик отменяет заявку;
+4. эксперт предлагает дату старта;
+5. эксперт берёт заявку в работу, если в RequestDetail ещё остался старый сценарий;
+6. admin меняет статус;
+7. admin назначает эксперта;
+8. admin возвращает в matching;
+9. admin закрывает заявку;
+10. все вызовы logEvent/createActionItem/resolveActionItem/cancelRequestActionItems внутри этих обработчиков.
+
+Для каждого сценария показать:
+- старый порядок операций;
+- таблицы;
+- статусы до/после;
+- guards;
+- action items;
+- status events;
+- email/notify.
+
+После аудита реализовать отдельный backend endpoint на каждый бизнес-сценарий.
+
+Примеры:
+
+PATCH /api/palata/requests/:requestId
+POST /api/palata/requests/:requestId/customer-complete
+POST /api/palata/requests/:requestId/cancel
+POST /api/palata/requests/:requestId/can-start
+POST /api/palata/admin/requests/:requestId/status
+POST /api/palata/admin/requests/:requestId/assign
+POST /api/palata/admin/requests/:requestId/rematch
+POST /api/palata/admin/requests/:requestId/close
+
+Каждый сценарий выполнять одной PostgreSQL-транзакцией через PALATA_DATABASE_URL.
+
+Правила:
+
+- Bearer token обязателен;
+- customer_id / expert_id брать из auth/me;
+- admin endpoints только через requireAdmin;
+- не доверять user_id из body;
+- UPDATE match ограничивать request_id + expert_id;
+- при любой ошибке ROLLBACK;
+- email/notify оставить на frontend после COMMIT.
+
+Не переносить actionItems.ts глобально отдельно.
+Включать нужные action items и status events внутрь соответствующего endpoint.
+
+Не менять:
+- matching.ts;
+- уже перенесённые take-work / complete / select-expert / start-date / decline / apply-market;
+- CustomerDashboard;
+- ExpertDashboard;
+- NewRequest;
+- Register.tsx;
+- Storage;
+- почтовик.
+
+После изменений:
+
+1. показать все обработчики RequestDetail, которые переведены;
+2. показать endpoint каждого сценария;
+3. полный SQL каждой транзакции;
+4. action items и status events;
+5. подтверждение, что email остался после COMMIT;
+6. подтверждение, что supabase.from("palata_requests"), palata_request_matches, palata_request_contacts в RequestDetail больше не осталось;
+7. показать остатки supabase.from("palata_status_events") и supabase.from("palata_action_items");
+8. node --check;
+9. typecheck;
+10. build.

@@ -2651,11 +2651,7 @@ async function handleTakeWork(req, res) {
 
   const expertId = meBody.user.id;
   const { requestId } = req.params;
-  const { actionItemId, canStartFrom = null } = req.body ?? {};
-
-  if (!actionItemId) {
-    return res.status(400).json({ success: false, error: "MISSING_ACTION_ITEM_ID" });
-  }
+  const { actionItemId = null, canStartFrom = null } = req.body ?? {};
 
   const client = await pool.connect();
   try {
@@ -2728,12 +2724,12 @@ async function handleTakeWork(req, res) {
       );
     }
 
-    // ── 6. Request → in_work ──────────────────────────────────────────────
+    // ── 6. Request → in_work, set assigned_expert_id ────────────────────
     await client.query(
       `UPDATE public.palata_requests
-       SET status = 'in_work', updated_at = $1
+       SET status = 'in_work', assigned_expert_id = $3, updated_at = $1
        WHERE id = $2`,
-      [now, requestId],
+      [now, requestId, expertId],
     );
 
     // ── 7. Contact record → accepted_work ─────────────────────────────────
@@ -2744,24 +2740,35 @@ async function handleTakeWork(req, res) {
       [now, requestId, expertId],
     );
 
-    // ── 8. Resolve this expert's action item ──────────────────────────────
-    await client.query(
-      `UPDATE public.palata_action_items
-       SET is_resolved = true, status = 'resolved', resolved_at = $1
-       WHERE id = $2`,
-      [now, actionItemId],
-    );
+    // ── 8. Resolve this expert's action item (if provided) ───────────────
+    if (actionItemId) {
+      await client.query(
+        `UPDATE public.palata_action_items
+         SET is_resolved = true, status = 'resolved', resolved_at = $1
+         WHERE id = $2`,
+        [now, actionItemId],
+      );
+    }
 
     // ── 9. Cancel all other open action items for this request ────────────
-    // (mirrors cancelRequestActionItems(requestId, exceptId=actionItemId))
-    await client.query(
-      `UPDATE public.palata_action_items
-       SET is_resolved = true, status = 'cancelled', resolved_at = $1
-       WHERE request_id = $2
-         AND is_resolved = false
-         AND id != $3`,
-      [now, requestId, actionItemId],
-    );
+    if (actionItemId) {
+      await client.query(
+        `UPDATE public.palata_action_items
+         SET is_resolved = true, status = 'cancelled', resolved_at = $1
+         WHERE request_id = $2
+           AND is_resolved = false
+           AND id != $3`,
+        [now, requestId, actionItemId],
+      );
+    } else {
+      await client.query(
+        `UPDATE public.palata_action_items
+         SET is_resolved = true, status = 'cancelled', resolved_at = $1
+         WHERE request_id = $2
+           AND is_resolved = false`,
+        [now, requestId],
+      );
+    }
 
     // ── 10. Notify involved experts: other_expert_took_order ──────────────
     for (const om of involvedMatches) {
@@ -4702,6 +4709,333 @@ app.get("/api/palata/request-contacts", (req, res) => {
     console.error("[REQUEST-CONTACTS] unhandled", { stack: err.stack });
     res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
   });
+});
+
+// ── PATCH /api/palata/requests/:requestId — edit request fields ───────────────
+
+async function handlePatchRequest(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const authHeader = req.headers["authorization"] ?? "";
+  if (!authHeader.startsWith("Bearer ") || !authHeader.slice(7)) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } });
+    const meText = await meRes.text(); try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+  } catch (err) { console.error("[PATCH-REQUEST] auth/me unreachable", { stack: err.stack }); return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" }); }
+  const callerId = meBody.user.id;
+  const { requestId } = req.params;
+  const { title, description, materials_available, expertise_direction_id, region_id, urgency, requires_travel } = req.body ?? {};
+  if (!String(title ?? "").trim()) return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "title обязателен" });
+  console.log("[PATCH-REQUEST] update", { callerId, requestId });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const reqRow = (await client.query("SELECT customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
+    const callerRow = (await client.query("SELECT role FROM public.palata_users WHERE id = $1 LIMIT 1", [callerId])).rows[0];
+    const isAdmin = callerRow?.role === "admin";
+    if (reqRow.customer_id !== callerId && !isAdmin) { await client.query("ROLLBACK"); return res.status(403).json({ success: false, error: "FORBIDDEN" }); }
+    await client.query(
+      `UPDATE public.palata_requests SET title = $2, description = $3, materials_available = $4, expertise_direction_id = $5, region_id = $6, urgency = $7, requires_travel = $8, updated_at = NOW() WHERE id = $1`,
+      [requestId, String(title).trim(), String(description ?? "").trim() || null, String(materials_available ?? "").trim() || null, expertise_direction_id || null, region_id || null, urgency ?? "normal", requires_travel ?? false],
+    );
+    await client.query("COMMIT");
+    console.log("[PATCH-REQUEST] success", { callerId, requestId });
+    return res.json({ success: true });
+  } catch (err) { try { await client.query("ROLLBACK"); } catch {} console.error("[PATCH-REQUEST] tx failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) }); }
+  finally { client.release(); }
+}
+app.patch("/api/palata/requests/:requestId", (req, res) => {
+  handlePatchRequest(req, res).catch(err => { console.error("[PATCH-REQUEST] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
+});
+
+// ── POST /api/palata/requests/:requestId/customer-complete ────────────────────
+
+async function handleCustomerComplete(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const authHeader = req.headers["authorization"] ?? "";
+  if (!authHeader.startsWith("Bearer ") || !authHeader.slice(7)) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } });
+    const meText = await meRes.text(); try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+  } catch (err) { console.error("[CUSTOMER-COMPLETE] auth/me unreachable", { stack: err.stack }); return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" }); }
+  const callerId = meBody.user.id;
+  const { requestId } = req.params;
+  console.log("[CUSTOMER-COMPLETE] completing", { callerId, requestId });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const reqRow = (await client.query("SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
+    if (reqRow.customer_id !== callerId) { await client.query("ROLLBACK"); return res.status(403).json({ success: false, error: "FORBIDDEN" }); }
+    const oldStatus = reqRow.status;
+    await client.query("UPDATE public.palata_requests SET status = 'completed', updated_at = NOW() WHERE id = $1", [requestId]);
+    await client.query("INSERT INTO public.palata_status_events (entity_type, entity_id, old_status, new_status, actor_id, note) VALUES ('request', $1, $2, 'completed', null, null)", [requestId, oldStatus]);
+    await client.query("COMMIT");
+    console.log("[CUSTOMER-COMPLETE] success", { callerId, requestId, oldStatus });
+    return res.json({ success: true });
+  } catch (err) { try { await client.query("ROLLBACK"); } catch {} console.error("[CUSTOMER-COMPLETE] tx failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) }); }
+  finally { client.release(); }
+}
+app.post("/api/palata/requests/:requestId/customer-complete", (req, res) => {
+  handleCustomerComplete(req, res).catch(err => { console.error("[CUSTOMER-COMPLETE] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
+});
+
+// ── POST /api/palata/requests/:requestId/cancel — customer cancels ─────────────
+
+async function handleCustomerCancel(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const authHeader = req.headers["authorization"] ?? "";
+  if (!authHeader.startsWith("Bearer ") || !authHeader.slice(7)) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } });
+    const meText = await meRes.text(); try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+  } catch (err) { console.error("[CUSTOMER-CANCEL] auth/me unreachable", { stack: err.stack }); return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" }); }
+  const callerId = meBody.user.id;
+  const { requestId } = req.params;
+  console.log("[CUSTOMER-CANCEL] cancelling", { callerId, requestId });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const reqRow = (await client.query("SELECT id, status, customer_id, title FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
+    if (reqRow.customer_id !== callerId) { await client.query("ROLLBACK"); return res.status(403).json({ success: false, error: "FORBIDDEN" }); }
+    const oldStatus = reqRow.status;
+    const requestTitle = reqRow.title ?? "";
+    const shortReqId = `#${requestId.slice(0, 8).toUpperCase()}`;
+    await client.query("UPDATE public.palata_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1", [requestId]);
+    const terminalStatuses = ["declined", "completed", "withdrawn", "closed_by_other_expert", "customer_declined_start_date"];
+    const activeMatchRows = (await client.query(
+      "SELECT id, expert_id FROM public.palata_request_matches WHERE request_id = $1 AND status != ALL($2::text[])",
+      [requestId, terminalStatuses],
+    )).rows;
+    if (activeMatchRows.length > 0) {
+      await client.query(
+        "UPDATE public.palata_request_matches SET status = 'closed_by_other_expert', decline_reason = 'customer_cancelled' WHERE id = ANY($1::uuid[])",
+        [activeMatchRows.map(m => m.id)],
+      );
+    }
+    await client.query("UPDATE public.palata_action_items SET is_resolved = true, status = 'cancelled', resolved_at = NOW() WHERE request_id = $1 AND is_resolved = false", [requestId]);
+    const uniqueExpertIds = [...new Set(activeMatchRows.map(m => m.expert_id))];
+    for (const expertId of uniqueExpertIds) {
+      await client.query(
+        `INSERT INTO public.palata_action_items (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role, action_type, title, description, payload, status, is_read, is_resolved)
+         VALUES ($1,$2,$3,$2,'expert','customer_cancelled_order','Заказчик отменил заказ',$4,$5,'open',false,false)`,
+        [requestId, expertId, callerId, `Заказ «${requestTitle}» (${shortReqId}) был отменён заказчиком.`, JSON.stringify({ requestTitle })],
+      );
+    }
+    await client.query("INSERT INTO public.palata_status_events (entity_type, entity_id, old_status, new_status, actor_id, note) VALUES ('request', $1, $2, 'cancelled', null, null)", [requestId, oldStatus]);
+    await client.query("COMMIT");
+    console.log("[CUSTOMER-CANCEL] success", { callerId, requestId, oldStatus, affectedExperts: uniqueExpertIds.length });
+    return res.json({ success: true });
+  } catch (err) { try { await client.query("ROLLBACK"); } catch {} console.error("[CUSTOMER-CANCEL] tx failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) }); }
+  finally { client.release(); }
+}
+app.post("/api/palata/requests/:requestId/cancel", (req, res) => {
+  handleCustomerCancel(req, res).catch(err => { console.error("[CUSTOMER-CANCEL] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
+});
+
+// ── POST /api/palata/requests/:requestId/can-start — expert proposes start date ─
+
+async function handleExpertCanStart(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const authHeader = req.headers["authorization"] ?? "";
+  if (!authHeader.startsWith("Bearer ") || !authHeader.slice(7)) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } });
+    const meText = await meRes.text(); try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+  } catch (err) { console.error("[CAN-START] auth/me unreachable", { stack: err.stack }); return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" }); }
+  const expertId = meBody.user.id;
+  const { requestId } = req.params;
+  const { matchId, date, canStartFromFormatted } = req.body ?? {};
+  if (!matchId || !date) return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "matchId и date обязательны" });
+  console.log("[CAN-START] expert proposes date", { expertId, requestId, matchId, date });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const reqRow = (await client.query("SELECT id, customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
+    const matchRow = (await client.query("SELECT id, status FROM public.palata_request_matches WHERE id = $1 AND expert_id = $2 AND request_id = $3 LIMIT 1", [matchId, expertId, requestId])).rows[0];
+    if (!matchRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "MATCH_NOT_FOUND" }); }
+    const oldMatchStatus = matchRow.status;
+    await client.query("UPDATE public.palata_request_matches SET status = 'can_start_from', can_start_from_date = $2, responded_at = NOW() WHERE id = $1", [matchId, date]);
+    const formattedDate = canStartFromFormatted ?? date;
+    await client.query("INSERT INTO public.palata_status_events (entity_type, entity_id, old_status, new_status, actor_id, note) VALUES ('match', $1, $2, 'can_start_from', null, $3)", [matchId, oldMatchStatus, `Может взять с ${formattedDate}`]);
+    const custId = reqRow.customer_id;
+    if (custId) {
+      await client.query(
+        `INSERT INTO public.palata_action_items (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role, action_type, title, description, payload, status, is_read, is_resolved)
+         VALUES ($1,$2,$3,$3,'customer','expert_can_start_from','Эксперт предложил дату начала',$4,$5,'open',false,false)`,
+        [requestId, expertId, custId, `Эксперт может начать работу с ${formattedDate}`, JSON.stringify({ request_id: requestId, expert_id: expertId, can_start_from: date })],
+      );
+    }
+    await client.query("COMMIT");
+    console.log("[CAN-START] success", { expertId, requestId, matchId });
+    return res.json({ success: true });
+  } catch (err) { try { await client.query("ROLLBACK"); } catch {} console.error("[CAN-START] tx failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) }); }
+  finally { client.release(); }
+}
+app.post("/api/palata/requests/:requestId/can-start", (req, res) => {
+  handleExpertCanStart(req, res).catch(err => { console.error("[CAN-START] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
+});
+
+// ── Admin helper ───────────────────────────────────────────────────────────────
+
+async function requireAdminCaller(req, res) {
+  const authHeader = req.headers["authorization"] ?? "";
+  if (!authHeader.startsWith("Bearer ") || !authHeader.slice(7)) { res.status(401).json({ success: false, error: "MISSING_TOKEN" }); return null; }
+  const token = authHeader.slice(7);
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } });
+    const meText = await meRes.text(); try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) { res.status(401).json({ success: false, error: "INVALID_TOKEN" }); return null; }
+  } catch { res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" }); return null; }
+  const callerId = meBody.user.id;
+  const callerRow = (await pool.query("SELECT role FROM public.palata_users WHERE id = $1 LIMIT 1", [callerId])).rows[0];
+  if (callerRow?.role !== "admin") { res.status(403).json({ success: false, error: "FORBIDDEN" }); return null; }
+  return callerId;
+}
+
+// ── POST /api/palata/admin/requests/:requestId/status ────────────────────────
+
+async function handleAdminSetStatus(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const callerId = await requireAdminCaller(req, res);
+  if (!callerId) return;
+  const { requestId } = req.params;
+  const { status: newStatus } = req.body ?? {};
+  if (!newStatus) return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "status обязателен" });
+  console.log("[ADMIN-SET-STATUS]", { callerId, requestId, newStatus });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const reqRow = (await client.query("SELECT status FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
+    await client.query("UPDATE public.palata_requests SET status = $2, updated_at = NOW() WHERE id = $1", [requestId, newStatus]);
+    await client.query("INSERT INTO public.palata_status_events (entity_type, entity_id, old_status, new_status, actor_id, note) VALUES ('request', $1, $2, $3, null, 'Статус изменён администратором')", [requestId, reqRow.status, newStatus]);
+    await client.query("COMMIT");
+    console.log("[ADMIN-SET-STATUS] success", { callerId, requestId, old: reqRow.status, new: newStatus });
+    return res.json({ success: true });
+  } catch (err) { try { await client.query("ROLLBACK"); } catch {} console.error("[ADMIN-SET-STATUS] tx failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) }); }
+  finally { client.release(); }
+}
+app.post("/api/palata/admin/requests/:requestId/status", (req, res) => {
+  handleAdminSetStatus(req, res).catch(err => { console.error("[ADMIN-SET-STATUS] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
+});
+
+// ── POST /api/palata/admin/requests/:requestId/assign ────────────────────────
+
+async function handleAdminAssignExpert(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const callerId = await requireAdminCaller(req, res);
+  if (!callerId) return;
+  const { requestId } = req.params;
+  const { expertId, expertName } = req.body ?? {};
+  if (!expertId) return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "expertId обязателен" });
+  console.log("[ADMIN-ASSIGN]", { callerId, requestId, expertId });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const reqRow = (await client.query("SELECT status FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
+    await client.query("UPDATE public.palata_requests SET assigned_expert_id = $2, updated_at = NOW() WHERE id = $1", [requestId, expertId]);
+    const note = `Назначен эксперт: ${expertName ?? expertId}`;
+    await client.query("INSERT INTO public.palata_status_events (entity_type, entity_id, old_status, new_status, actor_id, note) VALUES ('request', $1, $2, $2, null, $3)", [requestId, reqRow.status, note]);
+    await client.query("COMMIT");
+    console.log("[ADMIN-ASSIGN] success", { callerId, requestId, expertId });
+    return res.json({ success: true });
+  } catch (err) { try { await client.query("ROLLBACK"); } catch {} console.error("[ADMIN-ASSIGN] tx failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) }); }
+  finally { client.release(); }
+}
+app.post("/api/palata/admin/requests/:requestId/assign", (req, res) => {
+  handleAdminAssignExpert(req, res).catch(err => { console.error("[ADMIN-ASSIGN] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
+});
+
+// ── POST /api/palata/admin/requests/:requestId/rematch ────────────────────────
+
+async function handleAdminRematch(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const callerId = await requireAdminCaller(req, res);
+  if (!callerId) return;
+  const { requestId } = req.params;
+  console.log("[ADMIN-REMATCH]", { callerId, requestId });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const reqRow = (await client.query("SELECT status, matching_round FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
+    const oldStatus = reqRow.status;
+    const newRound = (reqRow.matching_round ?? 0) + 1;
+    await client.query("UPDATE public.palata_requests SET status = 'matching', matching_round = $2, updated_at = NOW() WHERE id = $1", [requestId, newRound]);
+    await client.query("INSERT INTO public.palata_status_events (entity_type, entity_id, old_status, new_status, actor_id, note) VALUES ('request', $1, $2, 'matching', null, $3)", [requestId, oldStatus, `Возвращён в подбор администратором (раунд ${newRound})`]);
+    await client.query("COMMIT");
+    console.log("[ADMIN-REMATCH] success", { callerId, requestId, newRound });
+    return res.json({ success: true, newRound });
+  } catch (err) { try { await client.query("ROLLBACK"); } catch {} console.error("[ADMIN-REMATCH] tx failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) }); }
+  finally { client.release(); }
+}
+app.post("/api/palata/admin/requests/:requestId/rematch", (req, res) => {
+  handleAdminRematch(req, res).catch(err => { console.error("[ADMIN-REMATCH] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
+});
+
+// ── POST /api/palata/admin/requests/:requestId/comment ───────────────────────
+
+async function handleAdminAddComment(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const callerId = await requireAdminCaller(req, res);
+  if (!callerId) return;
+  const { requestId } = req.params;
+  const { comment, currentStatus } = req.body ?? {};
+  if (!String(comment ?? "").trim()) return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "comment обязателен" });
+  console.log("[ADMIN-COMMENT]", { callerId, requestId });
+  try {
+    await pool.query(
+      "INSERT INTO public.palata_status_events (entity_type, entity_id, old_status, new_status, actor_id, note) VALUES ('request', $1, $2, $2, null, $3)",
+      [requestId, currentStatus ?? null, `[Администратор] ${String(comment).trim()}`],
+    );
+    console.log("[ADMIN-COMMENT] success", { callerId, requestId });
+    return res.json({ success: true });
+  } catch (err) { console.error("[ADMIN-COMMENT] failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) }); }
+}
+app.post("/api/palata/admin/requests/:requestId/comment", (req, res) => {
+  handleAdminAddComment(req, res).catch(err => { console.error("[ADMIN-COMMENT] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
+});
+
+// ── POST /api/palata/admin/requests/:requestId/close ─────────────────────────
+
+async function handleAdminCloseRequest(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+  const callerId = await requireAdminCaller(req, res);
+  if (!callerId) return;
+  const { requestId } = req.params;
+  console.log("[ADMIN-CLOSE]", { callerId, requestId });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const reqRow = (await client.query("SELECT status FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
+    await client.query("UPDATE public.palata_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1", [requestId]);
+    await client.query("INSERT INTO public.palata_status_events (entity_type, entity_id, old_status, new_status, actor_id, note) VALUES ('request', $1, $2, 'cancelled', null, 'Закрыт администратором')", [requestId, reqRow.status]);
+    await client.query("COMMIT");
+    console.log("[ADMIN-CLOSE] success", { callerId, requestId });
+    return res.json({ success: true });
+  } catch (err) { try { await client.query("ROLLBACK"); } catch {} console.error("[ADMIN-CLOSE] tx failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) }); }
+  finally { client.release(); }
+}
+app.post("/api/palata/admin/requests/:requestId/close", (req, res) => {
+  handleAdminCloseRequest(req, res).catch(err => { console.error("[ADMIN-CLOSE] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
 });
 
 app.use(express.static(STATIC_DIR));

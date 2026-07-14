@@ -9,10 +9,6 @@ import { getToken } from "@/lib/authClient";
 import { runMatching } from "@/lib/matching";
 import { notify, type NotifyItem } from "@/lib/notifyApi";
 import {
-  resolveActionItem,
-  createActionItem,
-  cancelRequestActionItems,
-  logStatusEvent,
   logEmailTestEvent,
   type ActionItem,
 } from "@/lib/actionItems";
@@ -764,18 +760,20 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setEditSaving(true);
     setEditError(null);
     try {
-      const { error: upErr } = await supabase.from("palata_requests").update({
-        title: editTitle.trim(),
-        description: editDescription.trim() || null,
-        materials_available: editMaterials.trim() || null,
-        expertise_direction_id: editDirId || null,
-        region_id: editRegionId || null,
-        urgency: editUrgency,
-        requires_travel: editTravel,
-        updated_at: new Date().toISOString(),
-      }).eq("id", r.id);
-      if (upErr) throw new Error(upErr.message);
-
+      const res = await fetch(`/api/palata/requests/${r.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          description: editDescription.trim() || null,
+          materials_available: editMaterials.trim() || null,
+          expertise_direction_id: editDirId || null,
+          region_id: editRegionId || null,
+          urgency: editUrgency,
+          requires_travel: editTravel,
+        }),
+      }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
+      if (!res.success) throw new Error(res.message ?? res.error ?? "TX_FAILED");
       setEditingRequest(false);
       onReload();
     } catch (e) {
@@ -937,44 +935,15 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleOrderStatus(newStatus: "completed" | "cancelled") {
     setCustUI({ kind: "submitting" });
     try {
-      const { error } = await supabase.from("palata_requests")
-        .update({ status: newStatus }).eq("id", r.id);
-      if (error) throw error;
+      const endpoint = newStatus === "completed"
+        ? `/api/palata/requests/${r.id}/customer-complete`
+        : `/api/palata/requests/${r.id}/cancel`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+      }).then(resp => resp.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
+      if (!res.success) throw new Error(res.error ?? "TX_FAILED");
 
-      // When cancelled: close all active matches, notify each affected expert
-      if (newStatus === "cancelled") {
-        const terminalStatuses = ["declined", "completed", "withdrawn", "closed_by_other_expert", "customer_declined_start_date"];
-        const activeMatches = matches.filter(m => !terminalStatuses.includes(m.status));
-        const activeMatchIds = activeMatches.map(m => m.id);
-
-        // 1. Close matches (request becomes hidden on expert kanban via HIDDEN_STATUSES)
-        if (activeMatchIds.length > 0) {
-          await supabase.from("palata_request_matches")
-            .update({ status: "closed_by_other_expert", decline_reason: "customer_cancelled" })
-            .in("id", activeMatchIds);
-        }
-
-        // 2. Cancel all open action items for this request (clears expert inbox)
-        await cancelRequestActionItems(r.id);
-
-        // 3. Create "customer_cancelled_order" action item for each affected expert
-        const uniqueExpertIds = [...new Set(activeMatches.map(m => m.expert_id))];
-        for (const expertId of uniqueExpertIds) {
-          await createActionItem({
-            request_id:          r.id,
-            expert_id:           expertId,
-            customer_id:         r.customer_id ?? null,
-            assigned_to_user_id: expertId,
-            assigned_role:       "expert",
-            action_type:         "customer_cancelled_order",
-            title:               "Заказчик отменил заказ",
-            description:         `Заказ «${r.title}» (#${shortId(r.id)}) был отменён заказчиком.`,
-            payload:             { requestTitle: r.title },
-          });
-        }
-      }
-
-      await logEvent("request", r.id, r.status, newStatus);
       const emailType = newStatus === "completed" ? "request_completed" : "request_cancelled";
       const payloads: NotifyItem[] = [];
       if (customerEmail) payloads.push(mkNotify({ type: emailType, recipientEmail: customerEmail, recipientType: "customer", currentStatus: newStatus }));
@@ -998,29 +967,14 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleCanStart(match: Match, date: string) {
     setMS(match.id, { kind: "submitting" });
     try {
-      const { error } = await supabase.from("palata_request_matches")
-        .update({ status: "can_start_from", can_start_from_date: date, responded_at: new Date().toISOString() })
-        .eq("id", match.id);
-      if (error) throw error;
-      await logEvent("match", match.id, match.status, "can_start_from", `Может взять с ${fmtDate(date)}`);
+      const res = await fetch(`/api/palata/requests/${r.id}/can-start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+        body: JSON.stringify({ matchId: match.id, date, canStartFromFormatted: fmtDate(date) }),
+      }).then(resp => resp.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
+      if (!res.success) throw new Error(res.error ?? "TX_FAILED");
 
       const expertUser = usersMap[match.expert_id];
-
-      // Create action item for customer so it appears in "Требуют действия"
-      if (r.customer_id) {
-        await createActionItem({
-          request_id:          r.id,
-          expert_id:           match.expert_id,
-          customer_id:         r.customer_id,
-          assigned_to_user_id: r.customer_id,
-          assigned_role:       "customer",
-          action_type:         "expert_can_start_from",
-          title:               "Эксперт предложил дату начала",
-          description:         `${expertUser?.full_name ?? "Эксперт"} может начать работу с ${fmtDate(date)}`,
-          payload:             { request_id: r.id, expert_id: match.expert_id, can_start_from: date, expert_name: expertUser?.full_name ?? null },
-        });
-      }
-
       if (customerEmail) {
         notify(mkNotify({ type: "expert_can_take", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: expertUser?.full_name ?? undefined, canStartFrom: fmtDate(date) }));
       }
@@ -1060,57 +1014,20 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleTakeWork(match: Match) {
     setMS(match.id, { kind: "submitting" });
     try {
-      const { error: me } = await supabase.from("palata_request_matches")
-        .update({ status: "accepted_work", responded_at: new Date().toISOString() })
-        .eq("id", match.id);
-      if (me) throw me;
-      // Only close experts who were actually involved in this request.
-      // responded_at = NULL → auto-matched only, do not touch.
-      // responded_at ≠ NULL → customer selected or expert responded, can be closed.
-      const otherActiveMatches = matches.filter(m => m.id !== match.id && m.responded_at !== null);
-
-      console.log("[close-others] START", { requestId: r.id, acceptedExpertId: match.expert_id });
-      console.table(otherActiveMatches.map(m => ({ matchId: m.id, expertId: m.expert_id, status: m.status, responded_at: (m as unknown as Record<string,unknown>).responded_at ?? "N/A" })));
-
-      // 2. Close other active matches → closed_by_other_expert
-      if (otherActiveMatches.length > 0) {
-        for (const m of otherActiveMatches) {
-          console.log("[close-others] CLOSE", { expertId: m.expert_id, oldStatus: m.status, reason: "INVOLVED" });
-        }
-        await supabase.from("palata_request_matches")
-          .update({ status: "closed_by_other_expert" })
-          .in("id", otherActiveMatches.map(m => m.id));
+      const res = await fetch(`/api/palata/requests/${r.id}/take-work`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+        body: JSON.stringify({ actionItemId: null }),
+      }).then(resp => resp.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
+      if (!res.success && res.error === "EXPERT_ALREADY_TOOK_WORK") {
+        setShowAlreadyInWorkModal(true);
+        setMS(match.id, { kind: "idle" });
+        return;
       }
+      if (!res.success) throw new Error(res.error ?? "TX_FAILED");
 
-      // 3. Request → in_work
-      const { error: re } = await supabase.from("palata_requests")
-        .update({ status: "in_work", assigned_expert_id: match.expert_id }).eq("id", r.id);
-      if (re) throw re;
-
-      // 4. Cancel ALL open action items for this request:
-      //    — customer's notifications from other experts
-      //    — declined experts' remaining items
-      //    — other experts' customer_selected_you / propose items
-      await cancelRequestActionItems(r.id);
-
-      // 5. Create "other expert took order" notification for each non-declined active expert
-      for (const om of otherActiveMatches) {
-        console.log("[close-others] NOTIFY", { expertId: om.expert_id, status: om.status });
-        await createActionItem({
-          request_id:          r.id,
-          expert_id:           om.expert_id,
-          customer_id:         r.customer_id,
-          assigned_to_user_id: om.expert_id,
-          assigned_role:       "expert",
-          action_type:         "other_expert_took_order",
-          title:               "На заказ назначен другой эксперт",
-          description:         `По заказу «${r.title}» был выбран другой эксперт.`,
-          payload:             { request_id: r.id },
-        });
-      }
-
-      await logEvent("request", r.id, r.status, "in_work", "Эксперт взял в работу");
       const takenExpert = usersMap[match.expert_id];
+      const otherActiveMatches = matches.filter(m => m.id !== match.id && m.responded_at !== null);
       const payloads: NotifyItem[] = [];
       if (customerEmail) payloads.push(mkNotify({ type: "request_in_progress", recipientEmail: customerEmail, recipientType: "customer", expertId: match.expert_id, expertName: takenExpert?.full_name ?? undefined, currentStatus: "in_work" }));
       for (const om of otherActiveMatches) {
@@ -1176,10 +1093,12 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleAdminStatusChange() {
     if (adminStatus === r.status) return;
     setAdminSubmitting(true); setAdminError(null);
-    const { error } = await supabase.from("palata_requests")
-      .update({ status: adminStatus }).eq("id", r.id);
-    if (error) { setAdminError(error.message); setAdminSubmitting(false); return; }
-    await logEvent("request", r.id, r.status, adminStatus, "Статус изменён администратором");
+    const res = await fetch(`/api/palata/admin/requests/${r.id}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+      body: JSON.stringify({ status: adminStatus }),
+    }).then(resp => resp.json()).catch(() => ({ success: false, message: "FETCH_FAILED" }));
+    if (!res.success) { setAdminError(res.message ?? res.error ?? "Ошибка"); setAdminSubmitting(false); return; }
     setAdminSubmitting(false);
     onReload();
   }
@@ -1188,22 +1107,24 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     const match = matches.find(m => m.id === adminAssignMatchId);
     if (!match) return;
     setAdminSubmitting(true); setAdminError(null);
-    const { error } = await supabase.from("palata_requests")
-      .update({ assigned_expert_id: match.expert_id }).eq("id", r.id);
-    if (error) { setAdminError(error.message); setAdminSubmitting(false); return; }
     const expertName = userName(usersMap[match.expert_id]) ?? match.expert_id;
-    await logEvent("request", r.id, r.status, r.status, `Назначен эксперт: ${expertName}`);
+    const res = await fetch(`/api/palata/admin/requests/${r.id}/assign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+      body: JSON.stringify({ expertId: match.expert_id, expertName }),
+    }).then(resp => resp.json()).catch(() => ({ success: false, message: "FETCH_FAILED" }));
+    if (!res.success) { setAdminError(res.message ?? res.error ?? "Ошибка"); setAdminSubmitting(false); return; }
     setAdminSubmitting(false);
     onReload();
   }
 
   async function handleAdminReturnToMatching() {
     setAdminSubmitting(true); setAdminError(null);
-    const newRound = r.matching_round + 1;
-    const { error } = await supabase.from("palata_requests")
-      .update({ status: "matching", matching_round: newRound }).eq("id", r.id);
-    if (error) { setAdminError(error.message); setAdminSubmitting(false); return; }
-    await logEvent("request", r.id, r.status, "matching", `Возвращён в подбор администратором (раунд ${newRound})`);
+    const res = await fetch(`/api/palata/admin/requests/${r.id}/rematch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+    }).then(resp => resp.json()).catch(() => ({ success: false, message: "FETCH_FAILED" }));
+    if (!res.success) { setAdminError(res.message ?? res.error ?? "Ошибка"); setAdminSubmitting(false); return; }
     setAdminSubmitting(false);
     onReload();
   }
@@ -1211,7 +1132,11 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleAdminComment() {
     if (!adminComment.trim()) return;
     setAdminSubmitting(true); setAdminError(null);
-    await logEvent("request", r.id, r.status, r.status, `[Администратор] ${adminComment.trim()}`);
+    await fetch(`/api/palata/admin/requests/${r.id}/comment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+      body: JSON.stringify({ comment: adminComment.trim(), currentStatus: r.status }),
+    }).then(resp => resp.json()).catch(() => {});
     setAdminComment("");
     setAdminSubmitting(false);
     onReload();
@@ -1219,10 +1144,11 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   async function handleAdminClose() {
     setAdminSubmitting(true); setAdminError(null);
-    const { error } = await supabase.from("palata_requests")
-      .update({ status: "cancelled" }).eq("id", r.id);
-    if (error) { setAdminError(error.message); setAdminSubmitting(false); return; }
-    await logEvent("request", r.id, r.status, "cancelled", "Закрыт администратором");
+    const res = await fetch(`/api/palata/admin/requests/${r.id}/close`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+    }).then(resp => resp.json()).catch(() => ({ success: false, message: "FETCH_FAILED" }));
+    if (!res.success) { setAdminError(res.message ?? res.error ?? "Ошибка"); setAdminSubmitting(false); return; }
     setAdminSubmitting(false);
     onReload();
   }

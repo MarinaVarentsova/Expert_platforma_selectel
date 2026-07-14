@@ -379,6 +379,120 @@ app.get("/api/palata/users/me", (req, res) => {
   });
 });
 
+// ── GET /api/palata/users?ids=id1,id2,... ────────────────────────────────────
+// Returns id, email, full_name, phone, role, is_active for requested IDs.
+// Access rules:
+//   admin  → any IDs
+//   non-admin → own ID always; other IDs only when connected via requests/matches
+async function handleUsersList(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  // ── Auth ─────────────────────────────────────────────────────────────────
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[USERS] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const callerId = meBody.user.id;
+
+  // ── Parse requested IDs ───────────────────────────────────────────────────
+  const idsRaw = typeof req.query?.ids === "string" ? req.query.ids.trim() : "";
+  const requestedIds = idsRaw ? idsRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
+  if (requestedIds.length === 0) {
+    return res.status(400).json({ success: false, error: "MISSING_IDS" });
+  }
+
+  console.log("[USERS] list", { callerId, requestedCount: requestedIds.length });
+
+  try {
+    // ── Caller's role ─────────────────────────────────────────────────────
+    const callerRow = (await pool.query(
+      `SELECT role FROM public.palata_users WHERE id = $1 LIMIT 1`,
+      [callerId],
+    )).rows[0];
+    const callerRole = callerRow?.role ?? null;
+
+    let allowedIds;
+    if (callerRole === "admin") {
+      allowedIds = requestedIds;
+    } else {
+      // Own ID is always allowed
+      const ownIds    = requestedIds.filter(id => id === callerId);
+      const otherIds  = requestedIds.filter(id => id !== callerId);
+
+      if (otherIds.length === 0) {
+        allowedIds = ownIds;
+      } else {
+        // Cross-table check: only IDs the caller participates with
+        // (as expert or customer in requests/matches)
+        const verifiedRows = (await pool.query(
+          `SELECT DISTINCT uid FROM (
+             SELECT customer_id AS uid FROM public.palata_requests
+               WHERE expert_id = $1 AND customer_id = ANY($2)
+             UNION
+             SELECT expert_id AS uid FROM public.palata_requests
+               WHERE customer_id = $1 AND expert_id = ANY($2)
+             UNION
+             SELECT r.customer_id AS uid
+               FROM public.palata_request_matches rm
+               JOIN public.palata_requests r ON r.id = rm.request_id
+               WHERE rm.expert_id = $1 AND r.customer_id = ANY($2)
+             UNION
+             SELECT rm.expert_id AS uid
+               FROM public.palata_request_matches rm
+               JOIN public.palata_requests r ON r.id = rm.request_id
+               WHERE r.customer_id = $1 AND rm.expert_id = ANY($2)
+           ) t`,
+          [callerId, otherIds],
+        )).rows;
+
+        const verifiedSet = new Set(verifiedRows.map(r => r.uid));
+        allowedIds = [...ownIds, ...otherIds.filter(id => verifiedSet.has(id))];
+      }
+    }
+
+    if (allowedIds.length === 0) {
+      return res.json({ success: true, rows: [] });
+    }
+
+    // ── Fetch user rows ───────────────────────────────────────────────────
+    const { rows } = await pool.query(
+      `SELECT id, email, full_name, phone, role, is_active
+       FROM public.palata_users WHERE id = ANY($1)`,
+      [allowedIds],
+    );
+
+    console.log("[USERS] success", { callerId, returned: rows.length });
+    return res.json({ success: true, rows });
+  } catch (err) {
+    console.error("[USERS] error", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  }
+}
+
+app.get("/api/palata/users", (req, res) => {
+  handleUsersList(req, res).catch(err => {
+    console.error("[USERS] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 async function requireAdmin(req) {
   const authHeader = req.headers["authorization"] ?? "";
   const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;

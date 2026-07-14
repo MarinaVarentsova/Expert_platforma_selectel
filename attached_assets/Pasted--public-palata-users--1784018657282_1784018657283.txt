@@ -1,0 +1,121 @@
+Следующий этап: миграция только чтения таблицы public.palata_users.
+
+Критически важно:
+это только переключение источника данных.
+
+Supabase SELECT
+→ backend API
+→ PostgreSQL через PALATA_DATABASE_URL.
+
+Не менять:
+- бизнес-логику;
+- роли;
+- регистрацию;
+- auth-service;
+- UPDATE пользователей;
+- UI;
+- фильтры;
+- сортировки;
+- обработку ошибок;
+- email/notify.
+
+Работаем только с SELECT по palata_users.
+
+По последнему аудиту осталось 21 SELECT в файлах:
+
+matching.ts
+AdminActionItems.tsx
+AdminDashboard.tsx
+AdminEmailEvents.tsx
+AdminEvents.tsx
+AdminExperts.tsx
+CustomerDashboard.tsx
+ExpertDashboard.tsx
+RequestDetail.tsx
+
+1. Найти все текущие SELECT к:
+
+supabase.from("palata_users")
+
+Для каждого показать:
+- файл;
+- поля;
+- фильтры;
+- .eq / .in;
+- сортировку;
+- ожидаемый формат ответа.
+
+2. Создать минимальные backend endpoints через pg.Pool и PALATA_DATABASE_URL.
+
+Допустимо использовать один endpoint:
+
+GET /api/palata/users
+
+Поддержать только фактически нужные query-параметры:
+
+- ids=id1,id2,...
+- id=<uuid>
+- role=<role>
+- is_active=true/false
+
+Возвращать только поля, которые реально запрашивают текущие call-sites:
+
+id
+email
+full_name
+phone
+role
+is_active
+
+Если текущий код использует дополнительные поля — сначала показать их и добавить только при необходимости.
+
+3. Доступ:
+
+- публичный список всех пользователей не делать;
+- для запросов по конкретным ids — Bearer token обязателен;
+- admin может читать любые ids;
+- customer/expert могут читать только тех пользователей, которые участвуют с ними в заявках или matches, строго в пределах текущей бизнес-логики;
+- для server-side matching поиск admin-пользователей выполнять внутри уже существующего matching endpoint, не через публичный frontend endpoint.
+
+Важно:
+не менять текущую бизнес-логику доступа, только перенести её с Supabase/RLS на backend.
+
+4. Во frontend заменить только SELECT к palata_users на fetch к новым endpoint.
+
+Не менять два UPDATE:
+
+- AdminExperts.tsx — update full_name/phone;
+- CustomerDashboard.tsx — update full_name/phone;
+- ExpertDashboard.tsx — update full_name/phone.
+
+Их оставить на Supabase как отдельный следующий этап.
+
+5. Не менять:
+
+- Register.tsx;
+- authClient.ts;
+- auth-service;
+- palata_expert_profiles;
+- заявки;
+- matching;
+- actionItems;
+- email;
+- другие таблицы.
+
+6. Проверки:
+
+node --check artifacts/palata/server.js
+pnpm --filter ./artifacts/palata run typecheck
+pnpm --filter ./artifacts/palata run build
+
+7. В отчёте показать:
+
+1. все найденные SELECT;
+2. какие заменены;
+3. новые endpoints;
+4. полный SQL SELECT;
+5. правила доступа;
+6. изменённые файлы;
+7. подтверждение, что UPDATE palata_users не менялись;
+8. подтверждение, что supabase.from("palata_users") осталось только в UPDATE и Register.tsx, если он там есть;
+9. результаты трёх проверок.

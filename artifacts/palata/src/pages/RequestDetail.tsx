@@ -3,6 +3,7 @@ import { useParams, Link, useLocation } from "wouter";
 import { ClipboardList, Zap, Star, User, Briefcase, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrentUser } from "@/lib/useAuth";
+import { fetchUsers } from "@/lib/users";
 import { getToken } from "@/lib/authClient";
 
 import { runMatching } from "@/lib/matching";
@@ -577,7 +578,7 @@ export default function RequestDetail() {
               .catch(() => ({ data: [] as ExpertProfile[], error: null }))
           : Promise.resolve({ data: [] as ExpertProfile[], error: null }),
         userIds.length > 0
-          ? supabase.from("palata_users").select("id, full_name, email").in("id", userIds)
+          ? fetchUsers(userIds).then(rows => ({ data: rows, error: null }))
           : Promise.resolve({ data: [] as User[], error: null }),
         fetch(`/api/palata/expert-ratings?request_id=${encodeURIComponent(id!)}`)
           .then(r => r.json())

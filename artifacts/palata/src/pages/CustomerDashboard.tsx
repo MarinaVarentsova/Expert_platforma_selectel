@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { getToken } from "@/lib/authClient";
+import { fetchUsers } from "@/lib/users";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -184,7 +185,7 @@ export default function CustomerDashboard() {
     const unratedReqIds = [...new Set(unrated.map(a => a.request_id))];
 
     const [{ data: experts }, { data: reqs }] = await Promise.all([
-      supabase.from("palata_users").select("id, full_name, email").in("id", expertIds),
+      fetchUsers(expertIds).then(rows => ({ data: rows, error: null })),
       supabase.from("palata_requests").select("id, title").in("id", unratedReqIds),
     ]);
 
@@ -286,8 +287,8 @@ export default function CustomerDashboard() {
   function reloadProfile() {
     if (guard.status !== "ok") return;
     const uid = guard.user.id;
-    supabase.from("palata_users").select("phone").eq("id", uid).single()
-      .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
+    fetchUsers([uid])
+      .then(rows => setUserPhone((rows[0] as { phone: string | null } | undefined)?.phone ?? null));
     fetch(`/api/palata/customer-profile/${encodeURIComponent(uid)}`)
       .then(r => r.json())
       .then((b: { success: boolean; profile?: CustomerProfile | null }) => {
@@ -1103,7 +1104,7 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
           .then(r => r.json())
           .then(b => ({ data: (b.rows ?? []) as PRow[] }))
           .catch(() => ({ data: [] as PRow[] })),
-        supabase.from("palata_users").select("id, full_name, email").in("id", expertIds),
+        fetchUsers(expertIds).then(rows => ({ data: rows, error: null })),
         fetch(`/api/palata/expert-directions?expert_ids=${encodeURIComponent(expertIds.join(","))}`)
           .then(r => r.json())
           .then(b => ({
@@ -1328,10 +1329,7 @@ function ExpertCanStartCard({ item, userId, onDone }: {
           body: JSON.stringify({ actionItemId: item.id }),
         }).then(r => r.json()).catch(() => ({ success: false })),
         expertId
-          ? supabase.from("palata_users")
-              .select("full_name, email")
-              .eq("id", expertId)
-              .maybeSingle()
+          ? fetchUsers([expertId]).then(rows => ({ data: rows[0] ?? null, error: null }))
           : Promise.resolve({ data: null, error: null }),
       ]);
 

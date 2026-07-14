@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchUsers } from "@/lib/users";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RefreshCw } from "lucide-react";
@@ -79,7 +80,7 @@ export default function AdminEmailEvents() {
 
     const [uRes, rRes] = await Promise.all([
       recipientIds.length
-        ? supabase.from("palata_users").select("id, full_name, email").in("id", recipientIds)
+        ? fetchUsers(recipientIds).then(rows => ({ data: rows, error: null }))
         : Promise.resolve({ data: [] }),
       requestIds.length
         ? supabase.from("palata_requests").select("id, title").in("id", requestIds)

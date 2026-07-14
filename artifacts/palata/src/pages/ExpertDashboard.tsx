@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchUsers } from "@/lib/users";
 import { runMatching } from "@/lib/matching";
 import { declineRequest } from "@/lib/declineRequest";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -214,7 +215,7 @@ export default function ExpertDashboard() {
         .then(b => ({ data: (b.rows ?? []) as { request_id: string }[] }))
         .catch(() => ({ data: [] as { request_id: string }[] })),
       allCustomerIds.length > 0
-        ? supabase.from("palata_users").select("id, full_name, email").in("id", allCustomerIds)
+        ? fetchUsers(allCustomerIds).then(rows => ({ data: rows, error: null }))
         : Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string }[] }),
     ]);
 
@@ -280,8 +281,8 @@ export default function ExpertDashboard() {
 
     // ── Background queries: deferred so critical requests get first pick ───
     const bgTimer = setTimeout(() => {
-      supabase.from("palata_users").select("phone").eq("id", userId).single()
-        .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
+      fetchUsers([userId])
+        .then(rows => setUserPhone((rows[0] as { phone: string | null } | undefined)?.phone ?? null));
 
       fetch(`/api/palata/expert-documents/${encodeURIComponent(userId)}`)
         .then(r => r.json())
@@ -343,8 +344,8 @@ export default function ExpertDashboard() {
   function reloadProfile() {
     if (guard.status !== "ok") return;
     const uid = guard.user.id;
-    supabase.from("palata_users").select("phone").eq("id", uid).single()
-      .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
+    fetchUsers([uid])
+      .then(rows => setUserPhone((rows[0] as { phone: string | null } | undefined)?.phone ?? null));
     fetch(`/api/palata/expert-profile/${uid}`)
       .then(r => r.json())
       .then(b => {
@@ -784,7 +785,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
 
     const [{ data: customers }, { data: ratings }] = await Promise.all([
       customerIds.length > 0
-        ? supabase.from("palata_users").select("id, full_name, email").in("id", customerIds)
+        ? fetchUsers(customerIds).then(rows => ({ data: rows, error: null }))
         : Promise.resolve({ data: [] }),
       customerIds.length > 0
         ? fetch(`/api/palata/customer-ratings?customer_ids=${encodeURIComponent(customerIds.join(","))}`)
@@ -2277,7 +2278,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
       const custId = custIdFromPayload ?? r?.customer_id ?? null;
       if (custId) {
         const [{ data: uData }, { data: cData }] = await Promise.all([
-          supabase.from("palata_users").select("full_name, phone").eq("id", custId).maybeSingle(),
+          fetchUsers([custId]).then(rows => ({ data: rows[0] ?? null, error: null })),
           supabase.from("palata_request_contacts")
             .select("customer_phone, customer_email")
             .eq("request_id", item.request_id)
@@ -2298,8 +2299,8 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
   }, [item.request_id, userId, custIdFromPayload]);
 
   async function getCustomerEmail(customerId: string): Promise<string | null> {
-    const { data } = await supabase.from("palata_users").select("email").eq("id", customerId).maybeSingle();
-    return (data as { email: string } | null)?.email ?? null;
+    const rows = await fetchUsers([customerId]);
+    return (rows[0] as { email: string } | undefined)?.email ?? null;
   }
 
   // Used by handleTakeWork only

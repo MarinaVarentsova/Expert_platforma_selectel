@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { getToken } from "@/lib/authClient";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
 import {
@@ -330,9 +331,13 @@ function ExpertDetailPanel({ expert: e, onClose, onSaved }: {
     setSaving(true);
     setSaveErr(null);
     const [r1, r2] = await Promise.all([
-      supabase.from("palata_users")
-        .update({ full_name: fullName.trim() || null, phone: phone.trim() || null })
-        .eq("id", e.id),
+      fetch(`/api/palata/admin/users/${encodeURIComponent(e.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+        body: JSON.stringify({ full_name: fullName.trim() || null, phone: phone.trim() || null }),
+      }).then(r => r.json()).then((b: { success: boolean; error?: string }) => ({
+        error: b.success ? null : { message: b.error ?? "user update failed" },
+      })).catch((e: unknown) => ({ error: { message: String(e) } })),
       fetch("/api/palata/expert-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

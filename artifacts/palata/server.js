@@ -493,6 +493,128 @@ app.get("/api/palata/users", (req, res) => {
   });
 });
 
+// ── PUT /api/palata/users/me ──────────────────────────────────────────────────
+// Updates full_name and phone for the authenticated user.
+// user_id is always taken from auth/me — never from request body.
+async function handleUpdateMe(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[USERS/ME] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const userId = meBody.user.id;
+  const { full_name = null, phone = null } = req.body ?? {};
+
+  console.log("[USERS/ME] update", { userId });
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE public.palata_users
+       SET full_name = $1, phone = $2, updated_at = now()
+       WHERE id = $3
+       RETURNING id, email, full_name, phone, role, is_active`,
+      [full_name ?? null, phone ?? null, userId],
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, error: "USER_NOT_FOUND" });
+    console.log("[USERS/ME] updated", { userId });
+    return res.json({ success: true, user: rows[0] });
+  } catch (err) {
+    console.error("[USERS/ME] error", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  }
+}
+
+app.put("/api/palata/users/me", (req, res) => {
+  handleUpdateMe(req, res).catch(err => {
+    console.error("[USERS/ME] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+// ── PUT /api/palata/admin/users/:userId ───────────────────────────────────────
+// Admin-only: updates full_name and phone for any user by ID.
+async function handleAdminUpdateUser(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[ADMIN/USERS] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const callerId = meBody.user.id;
+
+  // Role check
+  const callerRow = (await pool.query(
+    `SELECT role FROM public.palata_users WHERE id = $1 LIMIT 1`,
+    [callerId],
+  )).rows[0];
+  if (callerRow?.role !== "admin") {
+    return res.status(403).json({ success: false, error: "FORBIDDEN" });
+  }
+
+  const targetUserId = req.params.userId;
+  const { full_name = null, phone = null } = req.body ?? {};
+
+  console.log("[ADMIN/USERS] update", { callerId, targetUserId });
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE public.palata_users
+       SET full_name = $1, phone = $2, updated_at = now()
+       WHERE id = $3
+       RETURNING id, email, full_name, phone, role, is_active`,
+      [full_name ?? null, phone ?? null, targetUserId],
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, error: "USER_NOT_FOUND" });
+    console.log("[ADMIN/USERS] updated", { callerId, targetUserId });
+    return res.json({ success: true, user: rows[0] });
+  } catch (err) {
+    console.error("[ADMIN/USERS] error", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  }
+}
+
+app.put("/api/palata/admin/users/:userId", (req, res) => {
+  handleAdminUpdateUser(req, res).catch(err => {
+    console.error("[ADMIN/USERS] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 async function requireAdmin(req) {
   const authHeader = req.headers["authorization"] ?? "";
   const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;

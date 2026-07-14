@@ -658,9 +658,13 @@ function ProfileView({
     console.log("[profile-save] regionIds[0]:", regionIds[0]);
     console.log("[profile-save] palata_customer_profiles payload:", cpPayload);
     const [r1, r2] = await Promise.all([
-      supabase.from("palata_users")
-        .update({ full_name: fullName.trim() || null, phone: phone.trim() || null })
-        .eq("id", userId),
+      fetch("/api/palata/users/me", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+        body: JSON.stringify({ full_name: fullName.trim() || null, phone: phone.trim() || null }),
+      }).then(r => r.json()).then((b: { success: boolean; error?: string }) => ({
+        error: b.success ? null : { message: b.error ?? "user update failed" },
+      })).catch((e: unknown) => ({ error: { message: String(e) } })),
       fetch("/api/palata/customer-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

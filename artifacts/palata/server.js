@@ -2952,6 +2952,132 @@ app.post("/api/palata/requests/:requestId/select-expert", (req, res) => {
   });
 });
 
+// ── POST /api/palata/requests/:requestId/apply-market ────────────────────────────
+async function handleApplyMarket(req, res) {
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[APPLY-MARKET] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const expertId = meBody.user.id;
+  const { requestId } = req.params;
+  const { date } = req.body ?? {};
+
+  if (!date) {
+    return res.status(400).json({ success: false, error: "MISSING_DATE" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const now = new Date().toISOString();
+
+    // 1. Load request — guard in_work, get customer_id
+    const requestRow = (await client.query(
+      `SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+      [requestId],
+    )).rows[0];
+
+    if (!requestRow) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+    }
+    if (requestRow.status === "in_work") {
+      await client.query("ROLLBACK");
+      return res.json({ success: true, alreadyInWork: true });
+    }
+
+    // 2. Get expert full_name for action item description
+    const expertRow = (await client.query(
+      `SELECT full_name FROM public.palata_users WHERE id = $1 LIMIT 1`,
+      [expertId],
+    )).rows[0];
+    const expertName = expertRow?.full_name ?? "Эксперт";
+
+    // 3. Check existing match, then upsert
+    const existingMatch = (await client.query(
+      `SELECT id FROM public.palata_request_matches
+       WHERE request_id = $1 AND expert_id = $2 LIMIT 1`,
+      [requestId, expertId],
+    )).rows[0];
+
+    if (existingMatch) {
+      await client.query(
+        `UPDATE public.palata_request_matches
+         SET status = 'can_start_from', can_start_from_date = $1, responded_at = $2
+         WHERE id = $3`,
+        [date, now, existingMatch.id],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO public.palata_request_matches
+           (request_id, expert_id, status, can_start_from_date, matching_round, responded_at)
+         VALUES ($1, $2, 'can_start_from', $3, 99, $4)`,
+        [requestId, expertId, date, now],
+      );
+    }
+
+    // 4. Status event
+    const fmtRu = (d) => new Date(d).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
+    await client.query(
+      `INSERT INTO public.palata_status_events
+         (entity_type, entity_id, old_status, new_status, actor_id, note)
+       VALUES ('match', $1, 'market', 'can_start_from', null, $2)`,
+      [requestId, `Эксперт откликнулся с рынка, может начать с ${date}`],
+    );
+
+    // 5. Action item for customer (if customer_id present)
+    const customerId = requestRow.customer_id;
+    if (customerId) {
+      await client.query(
+        `INSERT INTO public.palata_action_items
+           (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+            action_type, title, description, payload, status, is_read, is_resolved)
+         VALUES ($1,$2,$3,$3,'customer','expert_can_start_from',
+                 'Эксперт предложил дату начала',$4,$5,'open',false,false)`,
+        [
+          requestId, expertId, customerId,
+          `${expertName} может начать работу с ${fmtRu(date)}`,
+          JSON.stringify({ request_id: requestId, expert_id: expertId, can_start_from: date, expert_name: expertName }),
+        ],
+      );
+    }
+
+    await client.query("COMMIT");
+    return res.json({ success: true });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    console.error("[APPLY-MARKET] tx failed", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/requests/:requestId/apply-market", (req, res) => {
+  handleApplyMarket(req, res).catch(err => {
+    console.error("[APPLY-MARKET] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── POST /api/palata/requests/:requestId/start-date/check ────────────────────────
 async function handleCheckStartDate(req, res) {
   const authHeader = req.headers["authorization"] ?? "";

@@ -826,14 +826,6 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
     setSubmitting(p => ({ ...p, [order.id]: true }));
     setCertErrors(p => ({ ...p, [order.id]: false }));
     try {
-      // ── Guard: request may have been taken while the page was open ──
-      const { data: reqCheck } = await supabase
-        .from("palata_requests").select("status").eq("id", order.id).maybeSingle();
-      if ((reqCheck as { status: string } | null)?.status === "in_work") {
-        setBlockedOrders(p => ({ ...p, [order.id]: true }));
-        return;
-      }
-
       // ── Certificate check: expert must have a valid verified cert for this direction ──
       if (order.expertise_direction_id) {
         const today = new Date().toISOString().slice(0, 10);
@@ -847,40 +839,23 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
         }
       }
 
-      const { data: existing } = await supabase
-        .from("palata_request_matches").select("id").eq("request_id", order.id).eq("expert_id", userId).maybeSingle();
+      const apRes = await fetch(`/api/palata/requests/${order.id}/apply-market`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken() ?? ""}`,
+        },
+        body: JSON.stringify({ date }),
+      }).then(r => r.json()).catch(() => ({ success: false }));
 
-      if (existing) {
-        await supabase.from("palata_request_matches")
-          .update({ status: "can_start_from", can_start_from_date: date, responded_at: new Date().toISOString() })
-          .eq("id", (existing as { id: string }).id);
-      } else {
-        await supabase.from("palata_request_matches").insert({
-          request_id: order.id, expert_id: userId,
-          status: "can_start_from", can_start_from_date: date,
-          matching_round: 99, responded_at: new Date().toISOString(),
-        });
+      // ── Guard: request was taken while the page was open ──
+      if (apRes.alreadyInWork) {
+        setBlockedOrders(p => ({ ...p, [order.id]: true }));
+        return;
       }
 
-      await supabase.from("palata_status_events").insert({
-        entity_type: "match", entity_id: order.id,
-        old_status: "market", new_status: "can_start_from",
-        actor_id: null, note: `Эксперт откликнулся с рынка, может начать с ${date}`,
-      });
+      if (!apRes.success) return;
 
-      if (order.customer_id) {
-        const { data: eu } = await supabase.from("palata_users").select("full_name").eq("id", userId).single();
-        const expertName = (eu as { full_name: string | null } | null)?.full_name ?? "Эксперт";
-        const fmtDate = (d: string) => new Date(d).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
-        await createActionItem({
-          request_id: order.id, expert_id: userId,
-          customer_id: order.customer_id, assigned_to_user_id: order.customer_id,
-          assigned_role: "customer", action_type: "expert_can_start_from",
-          title: "Эксперт предложил дату начала",
-          description: `${expertName} может начать работу с ${fmtDate(date)}`,
-          payload: { request_id: order.id, expert_id: userId, can_start_from: date, expert_name: expertName },
-        });
-      }
       await loadMarket();
     } catch (_e) {
       // silently retry

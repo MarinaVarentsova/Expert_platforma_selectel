@@ -444,10 +444,10 @@ async function handleUsersList(req, res) {
         const verifiedRows = (await pool.query(
           `SELECT DISTINCT uid FROM (
              SELECT customer_id AS uid FROM public.palata_requests
-               WHERE expert_id = $1 AND customer_id = ANY($2)
+               WHERE assigned_expert_id = $1 AND customer_id = ANY($2)
              UNION
-             SELECT expert_id AS uid FROM public.palata_requests
-               WHERE customer_id = $1 AND expert_id = ANY($2)
+             SELECT assigned_expert_id AS uid FROM public.palata_requests
+               WHERE customer_id = $1 AND assigned_expert_id = ANY($2)
              UNION
              SELECT r.customer_id AS uid
                FROM public.palata_request_matches rm

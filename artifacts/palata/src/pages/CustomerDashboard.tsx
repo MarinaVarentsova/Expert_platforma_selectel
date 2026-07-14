@@ -1358,38 +1358,35 @@ function ExpertCanStartCard({ item, userId, onDone }: {
 
   async function handleApprove() {
     if (!expertId) return;
+    setBusy("approve");
 
-    // Guard: request may have been approved by another expert while page was open
-    const { data: reqCheck } = await supabase
-      .from("palata_requests").select("status").eq("id", item.request_id).maybeSingle();
-    if ((reqCheck as { status: string } | null)?.status === "in_work") {
+    const apRes = await fetch(`/api/palata/requests/${item.request_id}/start-date/approve`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken() ?? ""}`,
+      },
+      body: JSON.stringify({
+        actionItemId: item.id,
+        expertId,
+        canStartFrom,
+      }),
+    }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
+
+    // Guard: request already in_work — mirrors original guard behaviour
+    if (apRes.alreadyInWork) {
       setBlockedByInWork(true);
-      await resolveActionItem(item.id);
+      setBusy(null);
       onDone();
       return;
     }
 
-    setBusy("approve");
+    if (!apRes.success) {
+      setBusy(null);
+      return;
+    }
 
-    // 1. Close customer's action item — request stays in expert_selection
-    await resolveActionItem(item.id);
-
-    // 2. Action item for expert: you_are_approved_for_work
-    //    Expert must still confirm before order goes to in_work
-    await createActionItem({
-      request_id:          item.request_id,
-      expert_id:           expertId,
-      customer_id:         userId,
-      assigned_to_user_id: expertId,
-      assigned_role:       "expert",
-      action_type:         "you_are_approved_for_work",
-      title:               "Вы назначены на заказ",
-      description:         "Заказчик подтвердил выбор вас как исполнителя. Подтвердите готовность взять заказ в работу.",
-      payload:             { can_start_from: canStartFrom, start_date: canStartFrom, customer_id: userId },
-    });
-
-    // 3. Events
-    await logStatusEvent(item.request_id!, "expert_selection", "expert_selection", "customer_approved_start_date");
+    // Email after COMMIT — same recipient and template as before
     if (expertId && expertEmail) {
       await logEmailTestEvent(expertId, expertEmail, "you_are_approved_for_work",
         "Заказчик подтвердил вашу кандидатуру",
@@ -1405,43 +1402,24 @@ function ExpertCanStartCard({ item, userId, onDone }: {
     if (!expertId) return;
     setBusy("decline");
 
-    // 1. Match → customer_declined_start_date + reason for ExpertCard badge
-    await supabase.from("palata_request_matches")
-      .update({ status: "customer_declined_start_date", decline_reason: "customer_declined_date" })
-      .eq("request_id", item.request_id)
-      .eq("expert_id", expertId);
+    const dcRes = await fetch(`/api/palata/requests/${item.request_id}/start-date/decline`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken() ?? ""}`,
+      },
+      body: JSON.stringify({
+        actionItemId: item.id,
+        expertId,
+      }),
+    }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
 
-    // 2. Resolve customer's action item
-    await resolveActionItem(item.id);
+    if (!dcRes.success) {
+      setBusy(null);
+      return;
+    }
 
-    // 3. New action item for customer: choose_another_expert
-    await createActionItem({
-      request_id:          item.request_id,
-      expert_id:           expertId,
-      customer_id:         userId,
-      assigned_to_user_id: userId,
-      assigned_role:       "customer",
-      action_type:         "choose_another_expert",
-      title:               "Выберите другого эксперта",
-      description:         `Вы можете выбрать другого эксперта из ранее подобранных по заказу ${shortId}`,
-      payload:             { request_id: item.request_id, excluded_expert_id: expertId },
-    });
-
-    // 4. Action item for expert: customer declined the proposed date
-    await createActionItem({
-      request_id:          item.request_id,
-      expert_id:           expertId,
-      customer_id:         userId,
-      assigned_to_user_id: expertId,
-      assigned_role:       "expert",
-      action_type:         "customer_declined_start_date",
-      title:               "Заказчик отклонил предложенную дату",
-      description:         `Заказчик не согласился с предложенной вами датой начала по заказу ${shortId}. Ваша заявка отклонена.`,
-      payload:             { request_id: item.request_id },
-    });
-
-    // 5. Events
-    await logStatusEvent(item.request_id!, "expert_selection", "expert_selection", "customer_declined_start_date");
+    // Email after COMMIT — same recipient and template as before
     if (expertId && expertEmail) {
       await logEmailTestEvent(expertId, expertEmail, "customer_declined_start_date",
         "Заказчик отклонил предложенную дату",

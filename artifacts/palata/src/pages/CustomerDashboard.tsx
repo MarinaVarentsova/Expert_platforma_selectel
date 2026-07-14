@@ -3,6 +3,7 @@ import { Link, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { getToken } from "@/lib/authClient";
 import { fetchUsers } from "@/lib/users";
+import { fetchRequests } from "@/lib/requests";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RegionMultiSelect } from "@/components/RegionMultiSelect";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -186,14 +187,14 @@ export default function CustomerDashboard() {
 
     const [{ data: experts }, { data: reqs }] = await Promise.all([
       fetchUsers(expertIds).then(rows => ({ data: rows, error: null })),
-      supabase.from("palata_requests").select("id, title").in("id", unratedReqIds),
+      fetchRequests(unratedReqIds).then(rows => ({ data: rows, error: null })),
     ]);
 
     const expertMap = Object.fromEntries(
       (experts ?? []).map((u: { id: string; full_name: string | null; email: string }) => [u.id, u])
     );
     const reqMap = Object.fromEntries(
-      (reqs ?? []).map((r: { id: string; title: string }) => [r.id, r])
+      (reqs ?? []).map((r: { id: string; title: string | null }) => [r.id, r])
     );
 
     const items: PendingExpertRating[] = unrated.map(a => {
@@ -1029,8 +1030,8 @@ function ExpertDeclinedCard({ item, onDone }: {
   const [reqTitle, setReqTitle] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.from("palata_requests").select("title").eq("id", item.request_id).maybeSingle()
-      .then(({ data }) => { if (data) setReqTitle((data as { title: string }).title); });
+    if (item.request_id) fetchRequests([item.request_id])
+      .then(rows => { if (rows[0]) setReqTitle(rows[0].title ?? null); });
   }, [item.request_id]);
 
   const expertName = (item.payload?.expert_name as string | null) ?? null;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getToken } from "@/lib/authClient";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
 
@@ -283,16 +283,21 @@ export default function AdminMetrics() {
     if (guard.status !== "ok") return;
 
     async function load() {
+      const metricsBody = await fetch("/api/palata/admin/requests/metrics", {
+        headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+      }).then(r => r.json()).catch(() => ({ success: false, requests: [], matches: [], events: [] }));
+
       const [reqRes, expRes, matchRes, expRatRes, custRatRes, custProfRes, eventsRes, dirRes, expDirRes, reqRegRes, expRegRes] =
         await Promise.all([
-          supabase.from("palata_requests")
-            .select("id, status, expertise_type, expertise_direction_id, created_at, customer_id, region_id"),
+          Promise.resolve({
+            data: (metricsBody.requests ?? []) as { id: string; status: string; expertise_type: string | null; expertise_direction_id: string | null; created_at: string; customer_id: string | null; region_id: string | null }[],
+            error: metricsBody.success ? null : { message: "metrics fetch failed" },
+          }),
           fetch("/api/palata/expert-profile")
             .then(r => r.json())
             .then(b => ({ data: (b.rows ?? []) as { user_id: string; palata_registry_verified: boolean; centrsudexpert_verified: boolean }[], error: null }))
             .catch(() => ({ data: [] as { user_id: string; palata_registry_verified: boolean; centrsudexpert_verified: boolean }[], error: null })),
-          supabase.from("palata_request_matches")
-            .select("request_id, expert_id, status"),
+          Promise.resolve({ data: (metricsBody.matches ?? []) as { request_id: string; expert_id: string; status: string }[] }),
           fetch("/api/palata/expert-ratings")
             .then(r => r.json())
             .then(b => ({ data: (b.rows ?? []) as { score: number }[], error: null }))
@@ -308,10 +313,7 @@ export default function AdminMetrics() {
               error: b.success ? null : { message: "customer-profile list failed" },
             }))
             .catch((e: unknown) => ({ data: [] as { user_id: string }[], error: { message: String(e) } })),
-          supabase.from("palata_status_events")
-            .select("entity_id, entity_type, new_status, created_at")
-            .eq("entity_type", "request")
-            .eq("new_status", "completed"),
+          Promise.resolve({ data: (metricsBody.events ?? []) as { entity_id: string; entity_type: string; new_status: string; created_at: string }[] }),
           fetch("/api/palata/expertise-directions")
             .then(r => r.json())
             .then(b => ({ data: (b.rows ?? []) as { id: string; name: string }[], error: null as { message: string } | null }))

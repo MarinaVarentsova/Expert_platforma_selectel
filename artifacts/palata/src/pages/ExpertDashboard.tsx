@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchUsers } from "@/lib/users";
+import { fetchRequests } from "@/lib/requests";
 import { runMatching } from "@/lib/matching";
 import { declineRequest } from "@/lib/declineRequest";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -2283,11 +2284,13 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
       if (custId) {
         const [{ data: uData }, { data: cData }] = await Promise.all([
           fetchUsers([custId]).then(rows => ({ data: rows[0] ?? null, error: null })),
-          supabase.from("palata_request_contacts")
-            .select("customer_phone, customer_email")
-            .eq("request_id", item.request_id)
-            .eq("expert_id", userId)
-            .maybeSingle(),
+          fetch(`/api/palata/request-contacts?request_id=${encodeURIComponent(item.request_id ?? "")}`, {
+            headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+          }).then(r => r.json())
+            .then((b: { success: boolean; contact?: { customer_phone: string | null; customer_email: string | null } | null }) => ({
+              data: b.contact ?? null, error: null,
+            }))
+            .catch(() => ({ data: null, error: null })),
         ]);
         const u = uData as { full_name: string | null; phone: string | null } | null;
         const c = cData as { customer_phone: string | null; customer_email: string | null } | null;
@@ -2507,8 +2510,8 @@ function CustomerDeclinedDateCard({ item, onDone }: { item: ActionItem; onDone: 
   const [reqTitle, setReqTitle] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.from("palata_requests").select("title").eq("id", item.request_id).single()
-      .then(({ data }) => { if (data) setReqTitle((data as { title: string }).title); });
+    if (item.request_id) fetchRequests([item.request_id])
+      .then(rows => { if (rows[0]) setReqTitle(rows[0].title ?? null); });
   }, [item.request_id]);
 
   async function handleAck() {
@@ -2549,8 +2552,8 @@ function OtherExpertTookCard({ item, onDone }: { item: ActionItem; onDone: () =>
   const [reqTitle, setReqTitle] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.from("palata_requests").select("title").eq("id", item.request_id).single()
-      .then(({ data }) => { if (data) setReqTitle((data as { title: string }).title); });
+    if (item.request_id) fetchRequests([item.request_id])
+      .then(rows => { if (rows[0]) setReqTitle(rows[0].title ?? null); });
   }, [item.request_id]);
 
   async function handleAck() {

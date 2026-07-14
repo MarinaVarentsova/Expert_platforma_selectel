@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchRequests } from "@/lib/requests";
 import { fetchUsers } from "@/lib/users";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -70,7 +71,7 @@ export default function AdminEvents() {
         ? fetchUsers(actorIds).then(rows => ({ data: rows, error: null }))
         : Promise.resolve({ data: [] }),
       requestIds.length
-        ? supabase.from("palata_requests").select("id, title").in("id", requestIds)
+        ? fetchRequests(requestIds).then(rows => ({ data: rows, error: null }))
         : Promise.resolve({ data: [] }),
     ]);
 

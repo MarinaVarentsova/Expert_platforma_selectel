@@ -4495,6 +4495,215 @@ app.post("/api/palata/requests", (req, res) => {
   });
 });
 
+// ── GET /api/palata/requests?ids=id1,id2,... ─────────────────────────────────
+// Returns id, title, status, customer_id, assigned_expert_id for the requested IDs.
+// Auth required. Admin → any IDs. Non-admin → only requests they own or have matches in.
+async function handleRequestsList(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[REQUESTS-LIST] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const callerId = meBody.user.id;
+  const idsRaw = typeof req.query?.ids === "string" ? req.query.ids.trim() : "";
+  const requestedIds = idsRaw ? idsRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
+  if (requestedIds.length === 0) {
+    return res.status(400).json({ success: false, error: "MISSING_IDS" });
+  }
+
+  console.log("[REQUESTS-LIST] list", { callerId, count: requestedIds.length });
+
+  try {
+    const callerRow = (await pool.query(
+      `SELECT role FROM public.palata_users WHERE id = $1 LIMIT 1`,
+      [callerId],
+    )).rows[0];
+    const isAdmin = callerRow?.role === "admin";
+
+    let allowedIds;
+    if (isAdmin) {
+      allowedIds = requestedIds;
+    } else {
+      const verifiedRows = (await pool.query(
+        `SELECT id FROM public.palata_requests
+         WHERE id = ANY($1::uuid[])
+           AND (customer_id = $2 OR assigned_expert_id = $2
+                OR id IN (
+                  SELECT request_id FROM public.palata_request_matches WHERE expert_id = $2
+                ))`,
+        [requestedIds, callerId],
+      )).rows;
+      allowedIds = verifiedRows.map(r => r.id);
+    }
+
+    if (allowedIds.length === 0) {
+      return res.json({ success: true, rows: [] });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id, title, status, customer_id, assigned_expert_id
+       FROM public.palata_requests WHERE id = ANY($1::uuid[])`,
+      [allowedIds],
+    );
+
+    console.log("[REQUESTS-LIST] success", { callerId, returned: rows.length });
+    return res.json({ success: true, rows });
+  } catch (err) {
+    console.error("[REQUESTS-LIST] error", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  }
+}
+
+app.get("/api/palata/requests", (req, res) => {
+  handleRequestsList(req, res).catch(err => {
+    console.error("[REQUESTS-LIST] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+// ── GET /api/palata/admin/requests/metrics ────────────────────────────────────
+// Admin only. Returns all requests + request_matches + completed status events.
+async function handleAdminMetrics(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[ADMIN-METRICS] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const callerId = meBody.user.id;
+  const callerRow = (await pool.query(
+    `SELECT role FROM public.palata_users WHERE id = $1 LIMIT 1`,
+    [callerId],
+  )).rows[0];
+  if (callerRow?.role !== "admin") {
+    return res.status(403).json({ success: false, error: "FORBIDDEN" });
+  }
+
+  console.log("[ADMIN-METRICS] load", { callerId });
+
+  try {
+    const [reqRows, matchRows, eventRows] = await Promise.all([
+      pool.query(
+        `SELECT id, status, expertise_type, expertise_direction_id, created_at, customer_id, region_id
+         FROM public.palata_requests`,
+      ).then(r => r.rows),
+      pool.query(
+        `SELECT request_id, expert_id, status FROM public.palata_request_matches`,
+      ).then(r => r.rows),
+      pool.query(
+        `SELECT entity_id, entity_type, new_status, created_at
+         FROM public.palata_status_events
+         WHERE entity_type = 'request' AND new_status = 'completed'`,
+      ).then(r => r.rows),
+    ]);
+
+    console.log("[ADMIN-METRICS] success", { callerId, requests: reqRows.length, matches: matchRows.length, events: eventRows.length });
+    return res.json({ success: true, requests: reqRows, matches: matchRows, events: eventRows });
+  } catch (err) {
+    console.error("[ADMIN-METRICS] error", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  }
+}
+
+app.get("/api/palata/admin/requests/metrics", (req, res) => {
+  handleAdminMetrics(req, res).catch(err => {
+    console.error("[ADMIN-METRICS] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+// ── GET /api/palata/request-contacts?request_id=<uuid> ───────────────────────
+// Auth required. expert_id is resolved from auth/me, never trusted from query params.
+async function handleRequestContacts(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[REQUEST-CONTACTS] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const expertId  = meBody.user.id; // always from auth/me
+  const requestId = typeof req.query?.request_id === "string" ? req.query.request_id.trim() : "";
+  if (!requestId) {
+    return res.status(400).json({ success: false, error: "MISSING_REQUEST_ID" });
+  }
+
+  console.log("[REQUEST-CONTACTS] load", { expertId, requestId });
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT customer_phone, customer_email
+       FROM public.palata_request_contacts
+       WHERE request_id = $1 AND expert_id = $2
+       LIMIT 1`,
+      [requestId, expertId],
+    );
+
+    return res.json({ success: true, contact: rows[0] ?? null });
+  } catch (err) {
+    console.error("[REQUEST-CONTACTS] error", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  }
+}
+
+app.get("/api/palata/request-contacts", (req, res) => {
+  handleRequestContacts(req, res).catch(err => {
+    console.error("[REQUEST-CONTACTS] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 app.use(express.static(STATIC_DIR));
 
 app.get(/(.*)/, (req, res, next) => {

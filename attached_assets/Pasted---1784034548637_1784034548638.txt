@@ -1,0 +1,184 @@
+Следующий этап: закрыть одним пакетом только безопасные остатки чтения.
+
+Критически важно:
+только переключение источника данных.
+
+Supabase SELECT
+→ backend API
+→ PostgreSQL через PALATA_DATABASE_URL.
+
+Никаких UPDATE / INSERT / DELETE.
+Никаких изменений бизнес-логики, UI, фильтров, сортировок и расчётов.
+
+==================================================
+1. palata_requests — декоративные title lookup
+==================================================
+
+Осталось 5 SELECT:
+
+- AdminActionItems.tsx
+- AdminEmailEvents.tsx
+- AdminEvents.tsx
+- CustomerDashboard.tsx
+- ExpertDashboard.tsx
+
+Создать или расширить endpoint:
+
+GET /api/palata/requests?ids=id1,id2,...
+
+SQL:
+
+SELECT
+  id,
+  title,
+  status,
+  customer_id,
+  assigned_expert_id
+FROM public.palata_requests
+WHERE id = ANY($1::uuid[]);
+
+Во frontend заменить только SELECT названий заявок.
+
+Сохранить прежний формат:
+{ data: rows, error: null }
+
+==================================================
+2. AdminMetrics — чтение заявок
+==================================================
+
+Заменить текущий SELECT palata_requests в AdminMetrics.tsx.
+
+Создать admin endpoint либо расширить существующий:
+
+GET /api/palata/admin/requests/metrics
+
+Только requireAdmin.
+
+SQL должен возвращать ровно текущие поля:
+
+id
+status
+expertise_type
+expertise_direction_id
+created_at
+customer_id
+region_id
+
+Без изменения фильтров и расчётов метрик.
+
+==================================================
+3. AdminMetrics — чтение matches
+==================================================
+
+В тот же endpoint или отдельный admin endpoint включить:
+
+SELECT
+  request_id,
+  expert_id,
+  status
+FROM public.palata_request_matches;
+
+Во frontend сохранить текущий формат результата.
+
+==================================================
+4. AdminMetrics — чтение status events
+==================================================
+
+В тот же endpoint или отдельный admin endpoint включить:
+
+SELECT
+  entity_id,
+  entity_type,
+  new_status,
+  created_at
+FROM public.palata_status_events;
+
+Не менять расчёты AdminMetrics.
+
+==================================================
+5. ExpertDashboard — чтение request contacts
+==================================================
+
+Остался один SELECT:
+
+palata_request_contacts
+WHERE request_id = ...
+  AND expert_id = ...
+
+Создать endpoint:
+
+GET /api/palata/request-contacts?request_id=<uuid>&expert_id=<uuid>
+
+Bearer token обязателен.
+
+expert_id для обычного эксперта брать из auth/me, а не доверять query-параметру.
+
+SQL:
+
+SELECT
+  customer_phone,
+  customer_email
+FROM public.palata_request_contacts
+WHERE request_id = $1
+  AND expert_id = $2
+LIMIT 1;
+
+Заменить только этот SELECT в ExpertDashboard.tsx.
+
+==================================================
+6. AdminEmailEvents — убрать Supabase Auth
+==================================================
+
+Удалить:
+
+supabase.auth.getSession()
+
+Использовать:
+
+getToken() из "@/lib/authClient"
+
+для Authorization Bearer.
+
+Другую логику AdminEmailEvents не менять.
+
+==================================================
+7. Не менять
+==================================================
+
+Не трогать:
+
+- Register.tsx;
+- palata_requests UPDATE;
+- palata_request_matches UPDATE;
+- palata_action_items;
+- palata_status_events INSERT;
+- actionItems.ts;
+- RequestDetail handlers;
+- matching;
+- Storage;
+- email-отправку;
+- UI.
+
+==================================================
+8. Проверки
+==================================================
+
+Выполнить:
+
+node --check artifacts/palata/server.js
+pnpm --filter ./artifacts/palata run typecheck
+pnpm --filter ./artifacts/palata run build
+
+==================================================
+9. Отчёт
+==================================================
+
+Показать:
+
+1. все заменённые SELECT;
+2. новые или расширенные endpoints;
+3. полный SQL;
+4. изменённые файлы;
+5. подтверждение, что никакие UPDATE / INSERT / DELETE не менялись;
+6. подтверждение удаления supabase.auth.getSession();
+7. результаты проверок.

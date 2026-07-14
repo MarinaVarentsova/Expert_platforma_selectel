@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { fetchUsers } from "@/lib/users";
+import { fetchRequests } from "@/lib/requests";
+import { getToken } from "@/lib/authClient";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RefreshCw } from "lucide-react";
@@ -48,8 +49,7 @@ export default function AdminEmailEvents() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token ?? "";
+    const token = getToken() ?? "";
 
     const params = new URLSearchParams();
     if (fTemplate)  params.set("template", fTemplate);
@@ -83,7 +83,7 @@ export default function AdminEmailEvents() {
         ? fetchUsers(recipientIds).then(rows => ({ data: rows, error: null }))
         : Promise.resolve({ data: [] }),
       requestIds.length
-        ? supabase.from("palata_requests").select("id, title").in("id", requestIds)
+        ? fetchRequests(requestIds).then(rows => ({ data: rows, error: null }))
         : Promise.resolve({ data: [] }),
     ]);
 

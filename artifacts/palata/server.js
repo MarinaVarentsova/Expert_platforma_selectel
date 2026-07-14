@@ -2871,11 +2871,11 @@ async function handleSelectExpert(req, res) {
       // Ignore insert errors — contacts are a convenience; match status is source of truth
       await client.query(
         `INSERT INTO public.palata_request_contacts
-           (request_id, expert_id, customer_id, revealed_at,
+           (request_id, expert_id, revealed_at,
             customer_email, customer_phone, expert_email, expert_phone)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,NULL)
+         VALUES ($1,$2,$3,$4,$5,$6,NULL)
          ON CONFLICT DO NOTHING`,
-        [requestId, expertId, customerId, now, custEmail, custPhone, expertEmail],
+        [requestId, expertId, now, custEmail, custPhone, expertEmail],
       );
     }
 

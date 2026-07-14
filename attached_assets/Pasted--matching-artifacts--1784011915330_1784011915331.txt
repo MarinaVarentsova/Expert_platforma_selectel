@@ -1,0 +1,162 @@
+Берём следующий бизнес-сценарий:
+«Автоматический matching — подбор экспертов».
+
+Файл:
+artifacts/palata/src/lib/matching.ts
+
+Критически важно:
+только переключение источника данных.
+Бизнес-логику matching сохранить один в один.
+
+Не менять:
+- алгоритм подбора;
+- количество экспертов;
+- приоритеты;
+- фильтры;
+- исключения;
+- matching_round;
+- статусы;
+- action item типы;
+- status events;
+- тексты;
+- порядок действий;
+- обработку ошибок;
+- UI;
+- email/notify.
+
+Сначала провести точный аудит runMatching():
+
+1. Какие данные получает функция.
+2. Какие таблицы читает.
+3. Какие фильтры и исключения применяет.
+4. Как вычисляется matching_round.
+5. Как исключаются ранее отказавшиеся эксперты.
+6. Как определяется список кандидатов.
+7. Как выбираются максимум 5 экспертов.
+8. Какие строки вставляются в palata_request_matches.
+9. Как меняется palata_requests.status.
+10. Какие status events создаются.
+11. Какие action items создаются.
+12. Какие действия выполняются при отсутствии экспертов.
+13. Какие данные нужны frontend после завершения.
+
+После аудита реализовать backend endpoint:
+
+POST /api/palata/requests/:requestId/matching/run
+
+Bearer token обязателен.
+
+Доступ:
+- admin;
+- customer-владелец заявки;
+- либо внутренний серверный вызов из уже существующего сценария отказа, если он реализован через тот же frontend token.
+
+Не принимать customer_id, expert_id или matching_round из body без проверки.
+requestId брать из URL.
+
+Внутри PostgreSQL-транзакции через PALATA_DATABASE_URL выполнить только текущую write-логику matching:
+
+BEGIN;
+
+1. Загрузить заявку:
+   - id;
+   - status;
+   - customer_id;
+   - expertise_direction_id;
+   - region_id;
+   - requires_travel;
+   - matching_round.
+
+2. Вычислить следующий matching_round точно так же, как сейчас.
+
+3. Получить ранее созданные matches и исключить экспертов по тем же правилам.
+
+4. Получить кандидатов тем же способом, что сейчас:
+   - действующий сертификат;
+   - нужное направление;
+   - accepts_requests=true;
+   - регион при requires_travel=true;
+   - остальные существующие фильтры.
+
+Важно:
+уже мигрированные GET endpoints можно использовать сервером только если это не меняет логику.
+Предпочтительно читать напрямую PostgreSQL из:
+- palata_expert_certificates;
+- palata_expert_profiles;
+- palata_expert_regions;
+- palata_users.
+
+5. Сохранить текущий порядок сортировки и выбора кандидатов.
+
+6. Если кандидаты найдены:
+   - INSERT до 5 строк в palata_request_matches
+     со статусом 'proposed'
+     и текущим matching_round;
+   - UPDATE palata_requests:
+     status='expert_selection',
+     matching_round=nextRound;
+   - INSERT тот же palata_status_events;
+   - INSERT тот же palata_action_items для customer:
+     action_type='experts_matched'.
+
+7. Если кандидаты не найдены:
+   - UPDATE palata_requests:
+     status='matching';
+   - INSERT те же status events;
+   - INSERT те же manual_matching_required action items:
+     заказчику;
+     каждому admin;
+   - сохранить текущую dedup-логику, чтобы не создавать дубли.
+
+8. COMMIT.
+
+При ошибке:
+ROLLBACK.
+
+Email/notify не переносить в транзакцию.
+После успешного ответа frontend продолжает выполнять те же email/notify действия, если они были в старой логике.
+
+Frontend:
+
+- заменить write-операции runMatching() на один fetch к новому endpoint;
+- сохранить текущую сигнатуру runMatching();
+- сохранить текущий формат результата:
+  {
+    matchedCount,
+    matchedExpertIds,
+    matchingRound,
+    ...
+  }
+  строго как сейчас;
+- не менять все call-sites runMatching().
+
+Не менять:
+- declineRequest.ts, кроме использования уже существующего runMatching();
+- NewRequest.tsx;
+- admin UI;
+- take-work;
+- complete;
+- select-expert;
+- start-date;
+- apply-market;
+- actionItems.ts глобально.
+
+В отчёте показать:
+
+1. старый алгоритм runMatching по шагам;
+2. все старые Supabase SELECT/INSERT/UPDATE;
+3. точное сопоставление Supabase-вызов → SQL;
+4. полный SQL-транзакционный сценарий;
+5. условие next matching_round;
+6. правила исключения экспертов;
+7. правила отбора кандидатов;
+8. ветку «эксперты найдены»;
+9. ветку «эксперты не найдены»;
+10. action items и status events;
+11. что email/notify остаётся после COMMIT;
+12. какие файлы изменены;
+13. подтверждение, что сигнатура runMatching и все call-sites не менялись;
+14. подтверждение, что другие бизнес-сценарии не менялись;
+15. node --check;
+16. typecheck;
+17. build.

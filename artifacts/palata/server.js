@@ -2952,6 +2952,344 @@ app.post("/api/palata/requests/:requestId/select-expert", (req, res) => {
   });
 });
 
+// ── POST /api/palata/requests/:requestId/matching/run ────────────────────────────
+async function handleRunMatching(req, res) {
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[RUN-MATCHING] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const { requestId } = req.params;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    // ── 1. Load request ───────────────────────────────────────────────────────
+    const reqRow = (await client.query(
+      `SELECT id, status, customer_id, expertise_direction_id,
+              region_id, requires_travel, matching_round
+       FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+      [requestId],
+    )).rows[0];
+
+    if (!reqRow) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+    }
+
+    const customerId         = reqRow.customer_id ?? null;
+    const expertiseDirId     = reqRow.expertise_direction_id ?? null;
+    const requiresTravel     = reqRow.requires_travel ?? false;
+    const regionIds          = reqRow.region_id ? [reqRow.region_id] : [];
+
+    // ── Inner helpers (run inside same client/transaction) ────────────────────
+
+    // Compute nextRound from existing matches for this request
+    async function getNextRound() {
+      const rows = (await client.query(
+        `SELECT matching_round FROM public.palata_request_matches WHERE request_id = $1`,
+        [requestId],
+      )).rows;
+      const rounds = rows.map(r => Number(r.matching_round));
+      return rounds.length > 0 ? Math.max(...rounds) + 1 : 1;
+    }
+
+    // Scoring — mirrors scoreExpert() in matching.ts one-to-one
+    function scoreExpert(e) {
+      const rating = e.avg_customer_rating ?? 0;
+      let score = rating * 10;
+      if (e.palata_registry_verified) score += 2;
+      if (e.centrsudexpert_verified)  score += 2;
+      score += Math.min(e.completed_orders_count, 10) * 0.1;
+      if (e.decline_rate != null) score -= e.decline_rate * 5;
+      return Math.round(score * 100) / 100;
+    }
+
+    // Insert one action item (same field set as createActionItem in actionItems.ts)
+    async function insertActionItem(ai) {
+      await client.query(
+        `INSERT INTO public.palata_action_items
+           (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+            action_type, title, description, payload, status, is_read, is_resolved)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'open',false,false)`,
+        [
+          ai.request_id, ai.expert_id ?? null, ai.customer_id ?? null,
+          ai.assigned_to_user_id, ai.assigned_role,
+          ai.action_type, ai.title, ai.description,
+          JSON.stringify(ai.payload ?? {}),
+        ],
+      );
+    }
+
+    // _handleNoExperts — mirrors the helper in matching.ts one-to-one
+    async function handleNoExperts(nextRound, reason) {
+      const noteMap = {
+        no_direction:
+          "Автоподбор: у заказа не указано направление экспертизы — подбор невозможен",
+        no_region_for_travel:
+          "Автоподбор: заказ с выездом, но регион не указан — подбор невозможен",
+        no_valid_cert_for_direction:
+          "Автоподбор: нет экспертов с действующим сертификатом по этому направлению",
+        no_candidates_after_filter:
+          "Автоподбор: подходящие эксперты не найдены после фильтрации (регион/выезд)",
+      };
+
+      await client.query(
+        `UPDATE public.palata_requests SET status = 'matching' WHERE id = $1`,
+        [requestId],
+      );
+      await client.query(
+        `INSERT INTO public.palata_status_events
+           (entity_type, entity_id, old_status, new_status, actor_id, note)
+         VALUES ('request', $1, 'new', 'matching', null, $2)`,
+        [requestId, noteMap[reason]],
+      );
+      await client.query(
+        `INSERT INTO public.palata_status_events
+           (entity_type, entity_id, old_status, new_status, actor_id, note)
+         VALUES ('request', $1, 'matching', 'matching', null, $2)`,
+        [requestId, `no_experts_found: раунд ${nextRound}, причина: ${reason}`],
+      );
+
+      // Dedup: skip action items if open manual_matching_required already exists
+      try {
+        const existing = (await client.query(
+          `SELECT id FROM public.palata_action_items
+           WHERE request_id = $1
+             AND action_type = 'manual_matching_required'
+             AND status = 'open'
+           LIMIT 1`,
+          [requestId],
+        )).rows;
+
+        if (existing.length === 0) {
+          if (customerId) {
+            await insertActionItem({
+              request_id: requestId, expert_id: null, customer_id: customerId,
+              assigned_to_user_id: customerId, assigned_role: "customer",
+              action_type: "manual_matching_required",
+              title: "Эксперты не найдены автоматически",
+              description: "По вашему заказу не удалось подобрать экспертов. Администратор займётся подбором вручную.",
+              payload: { round: nextRound, reason },
+            });
+          }
+
+          const admins = (await client.query(
+            `SELECT id FROM public.palata_users WHERE role = 'admin' AND is_active = true`,
+          )).rows;
+          for (const admin of admins) {
+            await insertActionItem({
+              request_id: requestId, expert_id: null, customer_id: customerId,
+              assigned_to_user_id: admin.id, assigned_role: "admin",
+              action_type: "manual_matching_required",
+              title: "Требуется ручной подбор эксперта",
+              description: `Автоподбор не нашёл кандидатов (раунд ${nextRound}, причина: ${reason}). Назначьте эксперта вручную.`,
+              payload: { round: nextRound, request_id: requestId, reason },
+            });
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // ── Scenario 3: no direction ──────────────────────────────────────────────
+    if (!expertiseDirId) {
+      const nextRound = await getNextRound();
+      await handleNoExperts(nextRound, "no_direction");
+      await client.query("COMMIT");
+      return res.json({ success: true, matched: 0, round: nextRound, experts: [] });
+    }
+
+    // ── Scenario 5: travel but no region ─────────────────────────────────────
+    if (requiresTravel && regionIds.length === 0) {
+      const nextRound = await getNextRound();
+      await handleNoExperts(nextRound, "no_region_for_travel");
+      await client.query("COMMIT");
+      return res.json({ success: true, matched: 0, round: nextRound, experts: [] });
+    }
+
+    // ── 2. Previous matches ───────────────────────────────────────────────────
+    const prevMatches = (await client.query(
+      `SELECT expert_id, matching_round, status
+       FROM public.palata_request_matches WHERE request_id = $1`,
+      [requestId],
+    )).rows;
+
+    const declinedIds = new Set(
+      prevMatches.filter(m => m.status === "declined" || m.status === "withdrawn")
+                 .map(m => m.expert_id),
+    );
+    const activelyProposedIds = new Set(
+      prevMatches.filter(m => !["declined","withdrawn","closed_by_other_expert"].includes(m.status))
+                 .map(m => m.expert_id),
+    );
+    const rounds = prevMatches.map(m => Number(m.matching_round));
+    const nextRound = rounds.length > 0 ? Math.max(...rounds) + 1 : 1;
+
+    // ── 3. Qualified experts by certificate ───────────────────────────────────
+    const certRows = (await client.query(
+      `SELECT ec.expert_id
+       FROM public.palata_expert_certificates ec
+       WHERE ec.status = 'verified'
+         AND ec.cert_valid_to >= $1
+         AND ec.cert_direction_ids @> ARRAY[$2::uuid]`,
+      [today, expertiseDirId],
+    )).rows;
+
+    const qualifiedExpertIds = new Set(certRows.map(r => r.expert_id));
+    const qualifiedIdList = [...qualifiedExpertIds].filter(
+      id => !declinedIds.has(id) && !activelyProposedIds.has(id),
+    );
+
+    if (qualifiedIdList.length === 0) {
+      if (activelyProposedIds.size > 0) {
+        await client.query("COMMIT");
+        return res.json({ success: true, matched: 0, round: nextRound, experts: [] });
+      }
+      await handleNoExperts(nextRound, "no_valid_cert_for_direction");
+      await client.query("COMMIT");
+      return res.json({ success: true, matched: 0, round: nextRound, experts: [] });
+    }
+
+    // ── 4. Expert profiles (accepts_requests = true) ──────────────────────────
+    const profileRows = (await client.query(
+      `SELECT user_id, business_trip_ready, avg_customer_rating, completed_orders_count,
+              decline_rate, palata_registry_verified, centrsudexpert_verified
+       FROM public.palata_expert_profiles
+       WHERE user_id = ANY($1) AND accepts_requests = true`,
+      [qualifiedIdList],
+    )).rows;
+
+    // ── 5. Regions for non-trip-ready experts (travel orders only) ────────────
+    const expertRegionMap = new Map();
+    if (requiresTravel && profileRows.length > 0) {
+      const nonTripReadyIds = profileRows.filter(e => !e.business_trip_ready).map(e => e.user_id);
+      if (nonTripReadyIds.length > 0) {
+        const regRows = (await client.query(
+          `SELECT expert_id, region_id
+           FROM public.palata_expert_regions WHERE expert_id = ANY($1)`,
+          [nonTripReadyIds],
+        )).rows;
+        for (const row of regRows) {
+          if (!expertRegionMap.has(row.expert_id)) expertRegionMap.set(row.expert_id, new Set());
+          expertRegionMap.get(row.expert_id).add(row.region_id);
+        }
+      }
+    }
+
+    // ── 6. Filter + score ─────────────────────────────────────────────────────
+    const requestRegionSet = new Set(regionIds);
+    const candidates = [];
+    for (const e of profileRows) {
+      if (requiresTravel && !e.business_trip_ready) {
+        const expertRegions = expertRegionMap.get(e.user_id) ?? new Set();
+        let regionMatch = false;
+        for (const rid of requestRegionSet) {
+          if (expertRegions.has(rid)) { regionMatch = true; break; }
+        }
+        if (!regionMatch) continue;
+      }
+      candidates.push({ expertId: e.user_id, score: scoreExpert(e) });
+    }
+
+    if (candidates.length === 0) {
+      if (activelyProposedIds.size > 0) {
+        await client.query("COMMIT");
+        return res.json({ success: true, matched: 0, round: nextRound, experts: [] });
+      }
+      await handleNoExperts(nextRound, "no_candidates_after_filter");
+      await client.query("COMMIT");
+      return res.json({ success: true, matched: 0, round: nextRound, experts: [] });
+    }
+
+    // ── 7. Sort desc by score, take top 5 ────────────────────────────────────
+    candidates.sort((a, b) => b.score - a.score);
+    const selected = candidates.slice(0, 5);
+
+    // ── 8. Insert matches (DB unique constraint prevents duplicates) ──────────
+    for (const s of selected) {
+      await client.query(
+        `INSERT INTO public.palata_request_matches
+           (request_id, expert_id, matching_round, status)
+         VALUES ($1, $2, $3, 'proposed')
+         ON CONFLICT DO NOTHING`,
+        [requestId, s.expertId, nextRound],
+      );
+    }
+
+    // ── 9. Update request ─────────────────────────────────────────────────────
+    await client.query(
+      `UPDATE public.palata_requests
+       SET status = 'expert_selection', matching_round = $1
+       WHERE id = $2`,
+      [nextRound, requestId],
+    );
+
+    // ── 10. Status event ──────────────────────────────────────────────────────
+    await client.query(
+      `INSERT INTO public.palata_status_events
+         (entity_type, entity_id, old_status, new_status, actor_id, note)
+       VALUES ('request', $1, 'new', 'expert_selection', null, $2)`,
+      [requestId, `Автоподбор раунд ${nextRound}: ${selected.length} эксперт(ов) предложено`],
+    );
+
+    // ── 11. Action item for customer (non-fatal) ──────────────────────────────
+    if (customerId) {
+      const n = selected.length;
+      const suffix = n < 5 ? "а" : "ов";
+      try {
+        await insertActionItem({
+          request_id: requestId, expert_id: null, customer_id: customerId,
+          assigned_to_user_id: customerId, assigned_role: "customer",
+          action_type: "experts_matched",
+          title: "Подобраны эксперты для вашего заказа",
+          description: `Система подобрала ${n} эксперт${suffix}. Ознакомьтесь с профилями и выберите подходящего эксперта.`,
+          payload: {
+            request_id: requestId,
+            matched_experts_count: n,
+            expert_ids: selected.map(s => s.expertId),
+            round: nextRound,
+          },
+        });
+      } catch { /* non-fatal */ }
+    }
+
+    await client.query("COMMIT");
+    return res.json({ success: true, matched: selected.length, round: nextRound, experts: selected });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    console.error("[RUN-MATCHING] tx failed", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/requests/:requestId/matching/run", (req, res) => {
+  handleRunMatching(req, res).catch(err => {
+    console.error("[RUN-MATCHING] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
 // ── POST /api/palata/requests/:requestId/decline ─────────────────────────────────
 async function handleDeclineRequest(req, res) {
   const authHeader = req.headers["authorization"] ?? "";

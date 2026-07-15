@@ -341,14 +341,14 @@ function ExpertTopNav({ userId, userName, userEmail }: {
         setRating(d?.avg_customer_rating ?? null);
       });
 
-    supabase.from("palata_action_items")
-      .select("id, action_type")
-      .eq("assigned_to_user_id", userId)
-      .eq("status", "open")
-      .eq("is_resolved", false)
-      .then(({ data }) => {
-        setActionCount((data ?? []).filter((i: { action_type: string }) => i.action_type !== "customer_selected_you").length);
-      });
+    fetch("/api/palata/action-items/counts", {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    })
+      .then(r => r.json())
+      .then((b: { success: boolean; items?: Array<{ id: string; action_type: string }> }) => {
+        setActionCount((b.items ?? []).filter(i => i.action_type !== "customer_selected_you").length);
+      })
+      .catch(() => {});
   }, [userId]);
 
   return (
@@ -433,22 +433,16 @@ function CustomerTopNav({ userId, userName, userEmail }: {
         }
       });
 
-    supabase.from("palata_action_items")
-      .select("id, action_type")
-      .eq("assigned_to_user_id", userId)
-      .eq("status", "open")
-      .eq("is_resolved", false)
-      .then(({ data }) => {
+    fetch("/api/palata/action-items/counts", {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    })
+      .then(r => r.json())
+      .then((b: { success: boolean; items?: Array<{ id: string; action_type: string }>; rating_count?: number }) => {
         const allowed = ["expert_can_start_from", "expert_declined"];
-        setActionCount((data ?? []).filter((i: { action_type: string }) => allowed.includes(i.action_type)).length);
-      });
-
-    supabase.from("palata_action_items")
-      .select("id", { count: "exact", head: true })
-      .eq("assigned_to_user_id", userId)
-      .eq("action_type", "expert_completed_order")
-      .eq("is_resolved", false)
-      .then(({ count }) => setRateCount(count ?? 0));
+        setActionCount((b.items ?? []).filter(i => allowed.includes(i.action_type)).length);
+        setRateCount(b.rating_count ?? 0);
+      })
+      .catch(() => {});
   }, [userId]);
 
   return (

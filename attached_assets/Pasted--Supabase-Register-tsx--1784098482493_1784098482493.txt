@@ -1,0 +1,107 @@
+Последний короткий этап на сегодня.
+
+Закрыть только простые остатки Supabase, кроме Register.tsx и Storage.
+
+Не менять бизнес-логику.
+
+1. palata_action_items — бейджи RequestDetail.tsx
+
+Заменить 3 SELECT:
+
+- ExpertTopNav: открытые action items текущего эксперта;
+- CustomerTopNav: открытые action items текущего заказчика;
+- CustomerTopNav: count expert_completed_order.
+
+Добавить endpoint:
+
+GET /api/palata/action-items/counts
+
+Bearer token обязателен.
+user_id брать из /api/auth/me.
+
+Вернуть:
+{
+  success: true,
+  open_count: number,
+  rating_count: number,
+  items: [{ id, action_type }]
+}
+
+SQL повторяет текущие фильтры:
+assigned_to_user_id = current user
+status = 'open'
+is_resolved = false
+
+rating_count:
+action_type = 'expert_completed_order'
+status = 'open'
+is_resolved = false
+
+Заменить только три SELECT в RequestDetail.tsx.
+
+2. ExpertDashboard.tsx — getMatchId()
+
+Убрать последний SELECT к palata_request_matches.
+
+Не менять take-work endpoint и бизнес-логику.
+
+Вариант:
+расширить существующий GET/endpoint или использовать уже возвращаемый match_id из PostgreSQL.
+
+Цель:
+в ExpertDashboard.tsx не должно остаться
+supabase.from("palata_request_matches").
+
+3. ExpertDashboard.tsx — status event после рейтинга
+
+Текущий INSERT palata_status_events после оценки заказчика перенести внутрь уже существующего POST /api/palata/customer-ratings.
+
+Вставлять то же событие, с теми же:
+- entity_type;
+- entity_id;
+- old_status;
+- new_status;
+- actor_id;
+- note.
+
+Выполнить INSERT рейтинга + INSERT status_event в одной транзакции.
+
+Frontend должен только вызвать POST рейтинга.
+
+4. Проверить мёртвый код
+
+Найти все вызовы:
+- logEvent(
+- logStatusEvent(
+- createActionItem(
+- resolveActionItem(
+- cancelRequestActionItems(
+
+Если функции больше нигде не вызываются:
+- удалить только неиспользуемые импорты и функции;
+- не менять работающие сценарии.
+
+Если вызываются:
+- показать точные файлы и не менять без отдельного решения.
+
+5. Не трогать:
+- Register.tsx;
+- supabase.storage;
+- почтовик;
+- matching;
+- другие сценарии;
+- UI.
+
+6. Проверки:
+
+node --check artifacts/palata/server.js
+pnpm --filter ./artifacts/palata run typecheck
+pnpm --filter ./artifacts/palata run build
+
+7. В отчёте показать:
+
+- какие Supabase-вызовы удалены;
+- остаток supabase.from(...) по всему проекту;
+- остаток supabase.storage;
+- остаток в Register.tsx;
+- результаты проверок.

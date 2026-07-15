@@ -20,8 +20,8 @@ import {
   Pencil, X, Upload, Phone,
 } from "lucide-react";
 import {
-  loadOpenActionItems, createActionItem, resolveActionItem, cancelRequestActionItems,
-  logStatusEvent, logEmailTestEvent, type ActionItem,
+  loadOpenActionItems, resolveActionItem,
+  logEmailTestEvent, type ActionItem,
 } from "@/lib/actionItems";
 
 // ─── Action inbox filter ──────────────────────────────────────────────────────
@@ -428,11 +428,6 @@ export default function ExpertDashboard() {
       }),
     }).then(r => r.json()).catch(() => ({ success: false }));
     if (!insRes.success) { setRatingForm(item.match_id, { kind: "idle", score: 5, comment: "" }); return; }
-    await supabase.from("palata_status_events").insert({
-      entity_type: "request", entity_id: item.request_id,
-      old_status: "completed", new_status: "completed",
-      actor_id: null, note: `Эксперт оценил заказчика: ${form.score}/5`,
-    });
     if (item.customer_email && item.customer_id) {
       await fetch("/api/palata/email-events", {
         method: "POST",
@@ -2308,13 +2303,6 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
   async function getCustomerEmail(customerId: string): Promise<string | null> {
     const rows = await fetchUsers([customerId]);
     return (rows[0] as { email: string } | undefined)?.email ?? null;
-  }
-
-  // Used by handleTakeWork only
-  async function getMatchId(): Promise<string | null> {
-    const { data } = await supabase.from("palata_request_matches")
-      .select("id").eq("request_id", item.request_id).eq("expert_id", userId).maybeSingle();
-    return (data as { id: string } | null)?.id ?? null;
   }
 
   const shortId = `#${item.request_id?.slice(0, 8).toUpperCase() ?? ""}`;

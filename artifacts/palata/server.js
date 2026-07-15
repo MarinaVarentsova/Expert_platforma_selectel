@@ -2106,6 +2106,7 @@ async function handleCustomerRatingsInsert(req, res) {
   }
   const client = await pool.connect();
   try {
+    await client.query("BEGIN");
     const { rows } = await client.query(
       `INSERT INTO public.palata_customer_ratings
          (request_id, customer_id, expert_id, score, comment)
@@ -2113,8 +2114,16 @@ async function handleCustomerRatingsInsert(req, res) {
        RETURNING id`,
       [request_id, customer_id, expert_id, score, comment ?? null],
     );
+    await client.query(
+      `INSERT INTO public.palata_status_events
+         (entity_type, entity_id, old_status, new_status, actor_id, note)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      ["request", request_id, "completed", "completed", null, `Эксперт оценил заказчика: ${score}/5`],
+    );
+    await client.query("COMMIT");
     res.json({ success: true, id: rows[0]?.id });
   } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("[CUSTOMER-RATINGS] insert failed", { stack: err.stack });
     res.status(500).json({ success: false, error: "INSERT_FAILED", message: String(err) });
   } finally {
@@ -5036,6 +5045,58 @@ async function handleAdminCloseRequest(req, res) {
 }
 app.post("/api/palata/admin/requests/:requestId/close", (req, res) => {
   handleAdminCloseRequest(req, res).catch(err => { console.error("[ADMIN-CLOSE] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
+});
+
+// ── GET /api/palata/action-items/counts — nav badge counts ──
+
+async function handleActionItemsCounts(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[ACTION-ITEMS-COUNTS] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const userId = meBody.user.id;
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT id, action_type FROM public.palata_action_items
+       WHERE assigned_to_user_id = $1 AND status = 'open' AND is_resolved = false
+       ORDER BY created_at DESC`,
+      [userId],
+    );
+    const ratingCount = rows.filter(r => r.action_type === "expert_completed_order").length;
+    res.json({ success: true, open_count: rows.length, rating_count: ratingCount, items: rows });
+  } catch (err) {
+    console.error("[ACTION-ITEMS-COUNTS] query failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/action-items/counts", (req, res) => {
+  handleActionItemsCounts(req, res).catch(err => {
+    console.error("[ACTION-ITEMS-COUNTS] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
 });
 
 app.use(express.static(STATIC_DIR));

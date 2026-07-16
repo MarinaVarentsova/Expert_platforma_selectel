@@ -1,0 +1,101 @@
+Задача: подключить UniSender для писем подтверждения регистрации и восстановления пароля.
+
+Переменные уже добавлены в Coolify:
+
+UNISENDER_API_KEY
+UNISENDER_FROM_EMAIL
+UNISENDER_FROM_NAME
+
+Сначала найти текущую email-логику:
+
+- RESEND_API_KEY
+- Resend
+- resend.emails.send
+- sendEmail
+- sendVerificationEmail
+- verification email
+- forgot-password
+- reset-password
+- confirm email
+- register
+- signup
+
+Показать текущую цепочку:
+
+1. регистрация пользователя;
+2. создание verification token;
+3. формирование ссылки подтверждения;
+4. отправка письма;
+5. подтверждение email;
+6. восстановление пароля;
+7. создание reset token;
+8. отправка письма восстановления.
+
+После аудита сразу заменить только транспорт отправки писем:
+
+Resend / старый почтовый сервис
+→ UniSender API.
+
+Использовать:
+
+process.env.UNISENDER_API_KEY
+process.env.UNISENDER_FROM_EMAIL
+process.env.UNISENDER_FROM_NAME
+
+Отправитель:
+
+Платформа судебных экспертов
+<info@platformaekspertov.ru>
+
+Критически важно не менять:
+
+- регистрацию;
+- новую PostgreSQL БД;
+- структуру пользователей;
+- verification token;
+- reset token;
+- сроки действия токенов;
+- ссылки;
+- HTML и тексты писем;
+- frontend;
+- HTTP-ответы;
+- бизнес-логику.
+
+Нужно только заменить функцию фактической отправки email.
+
+Письма:
+
+1. подтверждение регистрации;
+2. восстановление пароля.
+
+Добавить безопасные логи:
+
+[EMAIL] verification start
+[EMAIL] verification success
+[EMAIL] verification error
+
+[EMAIL] password_reset start
+[EMAIL] password_reset success
+[EMAIL] password_reset error
+
+Не логировать:
+
+- UNISENDER_API_KEY;
+- пароли;
+- verification token;
+- reset token;
+- полные ссылки с токенами.
+
+После изменений показать:
+
+1. какие файлы изменены;
+2. где была старая отправка;
+3. новый helper UniSender;
+4. какие endpoints его вызывают;
+5. какие переменные используются;
+6. подтверждение, что логика токенов и новой БД не менялась;
+7. node check;
+8. typecheck;
+9. build.
+
+Ничего больше не менять.

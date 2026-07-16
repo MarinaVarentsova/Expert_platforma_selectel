@@ -1,17 +1,48 @@
-import { Resend } from "resend";
 import { pool } from "@workspace/db";
 import { buildEmail, type NotifyPayload } from "./templates.js";
 import { logger } from "../lib/logger.js";
 
-// ── Resend client (lazy — only initialised when API key is present) ───────────
-const resendApiKey = process.env["RESEND_API_KEY"];
-const fromEmail    = process.env["RESEND_FROM_EMAIL"] ?? "notifications@palata.app";
-const testMode     = !resendApiKey;
+// ── UniSender config (lazy — only active when API key is present) ─────────────
 
-const resend = testMode ? null : new Resend(resendApiKey!);
+const uniApiKey  = process.env["UNISENDER_API_KEY"];
+const fromEmail  = process.env["UNISENDER_FROM_EMAIL"] ?? "info@platformaekspertov.ru";
+const fromName   = process.env["UNISENDER_FROM_NAME"]  ?? "Платформа судебных экспертов";
+const testMode   = !uniApiKey;
+
+const UNISENDER_SEND_URL = "https://api.unisender.com/ru/api/sendEmail";
 
 if (testMode) {
-  logger.warn("RESEND_API_KEY not set — email notifications running in TEST MODE (logged, not sent)");
+  logger.warn("UNISENDER_API_KEY not set — email notifications running in TEST MODE (logged, not sent)");
+}
+
+// ── UniSender transport ───────────────────────────────────────────────────────
+
+async function sendViaUniSender(opts: {
+  to:      string;
+  subject: string;
+  html:    string;
+}): Promise<void> {
+  const params = new URLSearchParams({
+    format:       "json",
+    api_key:      uniApiKey!,
+    email:        opts.to,
+    sender_name:  fromName,
+    sender_email: fromEmail,
+    subject:      opts.subject,
+    body:         opts.html,
+  });
+
+  const response = await fetch(`${UNISENDER_SEND_URL}?format=json`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body:    params.toString(),
+  });
+
+  const data = await response.json() as { result?: { email_id?: string }; error?: string; code?: string };
+
+  if (!response.ok || data.error) {
+    throw new Error(data.error ?? `UniSender HTTP ${response.status}`);
+  }
 }
 
 // ── Log to DB ────────────────────────────────────────────────────────────────
@@ -54,7 +85,7 @@ async function logEmailEvent(opts: {
 // ── Main send function ───────────────────────────────────────────────────────
 
 export async function sendNotification(payload: NotifyPayload): Promise<void> {
-  const { subject, html, threadId } = buildEmail(payload);
+  const { subject, html } = buildEmail(payload);
   const bodyPreview = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
 
   if (testMode) {
@@ -75,23 +106,18 @@ export async function sendNotification(payload: NotifyPayload): Promise<void> {
     return;
   }
 
-  try {
-    const headers: Record<string, string> = {
-      "In-Reply-To": threadId,
-      "References":  threadId,
-    };
+  logger.info({ type: payload.type, to: payload.recipientEmail }, `[EMAIL] ${payload.type} start`);
 
-    await resend!.emails.send({
-      from:    fromEmail,
+  try {
+    await sendViaUniSender({
       to:      payload.recipientEmail,
       subject,
       html,
-      headers,
     });
 
     logger.info(
       { type: payload.type, to: payload.recipientEmail, subject },
-      "📧 Email notification sent",
+      `[EMAIL] ${payload.type} success`,
     );
 
     await logEmailEvent({
@@ -106,7 +132,10 @@ export async function sendNotification(payload: NotifyPayload): Promise<void> {
     });
   } catch (err: unknown) {
     const errorText = err instanceof Error ? err.message : String(err);
-    logger.error({ err, type: payload.type, to: payload.recipientEmail }, "📧 Email send failed");
+    logger.error(
+      { type: payload.type, to: payload.recipientEmail, errorText },
+      `[EMAIL] ${payload.type} error`,
+    );
 
     await logEmailEvent({
       requestId:      payload.requestId,

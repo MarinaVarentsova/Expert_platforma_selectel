@@ -21,6 +21,7 @@ import NewRequest from "@/pages/NewRequest";
 import RequestDetail from "@/pages/RequestDetail";
 import AuthCallback from "@/pages/AuthCallback";
 import ResetPassword from "@/pages/ResetPassword";
+import ForgotPassword from "@/pages/ForgotPassword";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,7 @@ function Router() {
         <Route path="/admin/cert-import" component={AdminCertImport} />
         <Route path="/requests/:id" component={RequestDetail} />
         <Route path="/auth/callback" component={AuthCallback} />
+        <Route path="/forgot-password" component={ForgotPassword} />
         <Route path="/reset-password" component={ResetPassword} />
         <Route component={NotFound} />
       </Switch>

@@ -248,3 +248,57 @@ export async function verify(token: string): Promise<VerifyResult | AuthError> {
 export function logout(): void {
   clearToken();
 }
+
+// ── Password reset ────────────────────────────────────────────────────────────
+
+export type ForgotPasswordResult = {
+  success: true;
+  message: string;
+};
+
+export type ResetPasswordResult = {
+  success: true;
+  email: string;
+  message: string;
+};
+
+/**
+ * Request a password-reset link for the given email.
+ * POST /api/auth/forgot-password
+ */
+export async function forgotPassword(
+  email: string,
+): Promise<ForgotPasswordResult | AuthError> {
+  return authFetch<ForgotPasswordResult>(
+    "/api/auth/forgot-password",
+    {
+      method: "POST",
+      body: JSON.stringify({ project_code: PROJECT_CODE, email }),
+    },
+    { email, project_code: PROJECT_CODE },
+  );
+}
+
+/**
+ * Exchange a reset token for a new password.
+ * POST /api/auth/reset-password
+ */
+export async function resetPassword(
+  token: string,
+  password: string,
+  passwordConfirmation: string,
+): Promise<ResetPasswordResult | AuthError> {
+  return authFetch<ResetPasswordResult>(
+    "/api/auth/reset-password",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        project_code: PROJECT_CODE,
+        token,
+        password,
+        password_confirmation: passwordConfirmation,
+      }),
+    },
+    { project_code: PROJECT_CODE },
+  );
+}

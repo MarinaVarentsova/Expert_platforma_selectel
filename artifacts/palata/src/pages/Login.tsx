@@ -10,24 +10,42 @@ const ROLE_DESTINATIONS: Record<PalataRole, string> = {
   admin:    "/admin",
 };
 
-type VerifyBanner =
-  | { kind: "success" }
-  | { kind: "error"; message: string };
+type Banner =
+  | { kind: "success"; message: string; sub?: string }
+  | { kind: "error";   message: string };
 
-function parseBanner(): VerifyBanner | null {
+function parseBanners(): { banner: Banner | null; prefillEmail: string } {
   const params = new URLSearchParams(window.location.search);
-  const verified = params.get("emailVerified");
-  if (verified === "1") return { kind: "success" };
-  if (verified === "0") {
-    const reason = params.get("reason") ?? "";
+
+  const emailVerified = params.get("emailVerified");
+  const passwordReset = params.get("passwordReset");
+  const reason        = params.get("reason") ?? "";
+  const prefillEmail  = params.get("email") ?? "";
+
+  if (passwordReset === "1") {
+    return {
+      banner: { kind: "success", message: "Пароль успешно изменён. Войдите с новым паролем." },
+      prefillEmail,
+    };
+  }
+
+  if (emailVerified === "1") {
+    return {
+      banner: { kind: "success", message: "Email успешно подтверждён.", sub: "Теперь войдите в личный кабинет." },
+      prefillEmail,
+    };
+  }
+
+  if (emailVerified === "0") {
     const message =
       reason === "invalid_token" ? "Ссылка подтверждения недействительна." :
       reason === "expired_token" ? "Срок действия ссылки истёк." :
       reason === "used_token"    ? "Email уже подтверждён." :
                                    "Не удалось подтвердить email.";
-    return { kind: "error", message };
+    return { banner: { kind: "error", message }, prefillEmail };
   }
-  return null;
+
+  return { banner: null, prefillEmail };
 }
 
 export default function Login() {
@@ -36,22 +54,19 @@ export default function Login() {
   const [showPassword, setShowPw]   = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [banner, setBanner]         = useState<VerifyBanner | null>(null);
+  const [banner, setBanner]         = useState<Banner | null>(null);
 
   const { state, signIn } = useAuth();
   const [, navigate] = useLocation();
 
   useEffect(() => {
+    const { banner: parsed, prefillEmail } = parseBanners();
+    if (prefillEmail) setEmail(prefillEmail);
+    if (parsed)       setBanner(parsed);
+
     const params = new URLSearchParams(window.location.search);
-    const queryEmail = params.get("email");
-    const parsed = parseBanner();
-
-    if (queryEmail) setEmail(queryEmail);
-    if (parsed)     setBanner(parsed);
-
-    if (params.has("emailVerified") || params.has("email") || params.has("reason")) {
-      const cleanUrl = window.location.pathname;
-      history.replaceState(null, "", cleanUrl);
+    if (params.has("emailVerified") || params.has("email") || params.has("reason") || params.has("passwordReset")) {
+      history.replaceState(null, "", window.location.pathname);
     }
   }, []);
 
@@ -100,13 +115,15 @@ export default function Login() {
           <p className="text-sm text-[#666666] mt-1 text-center">Палата судебных экспертов</p>
         </div>
 
-        {/* Email verification banner */}
+        {/* Verification / password-reset banner */}
         {banner?.kind === "success" && (
           <div className="mb-4 flex items-start gap-3 rounded-xl bg-green-50 border border-green-200 px-4 py-3">
             <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-green-800">Email успешно подтверждён.</p>
-              <p className="text-xs text-green-700 mt-0.5">Теперь войдите в личный кабинет.</p>
+              <p className="text-sm font-semibold text-green-800">{banner.message}</p>
+              {"sub" in banner && banner.sub && (
+                <p className="text-xs text-green-700 mt-0.5">{banner.sub}</p>
+              )}
             </div>
           </div>
         )}
@@ -135,7 +152,16 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#666666] mb-1.5">Пароль</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-[#666666]">Пароль</label>
+                <a
+                  href="/forgot-password"
+                  onClick={e => { e.preventDefault(); navigate("/forgot-password"); }}
+                  className="text-[10px] text-[#0F4C9A] hover:underline"
+                >
+                  Забыли пароль?
+                </a>
+              </div>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
@@ -157,11 +183,8 @@ export default function Login() {
             </div>
 
             {error && (
-              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 space-y-1">
+              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3">
                 <p className="text-xs text-red-700 font-medium">{error}</p>
-                <p className="text-xs text-[#666666]">
-                  Восстановление пароля временно недоступно. Обратитесь к администратору.
-                </p>
               </div>
             )}
 

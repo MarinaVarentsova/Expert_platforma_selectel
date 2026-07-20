@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, CheckCircle, XCircle } from "lucide-react";
 import { useAuth } from "@/lib/useAuth";
 import type { PalataRole } from "@/lib/authContext";
 
@@ -10,15 +10,50 @@ const ROLE_DESTINATIONS: Record<PalataRole, string> = {
   admin:    "/admin",
 };
 
+type VerifyBanner =
+  | { kind: "success" }
+  | { kind: "error"; message: string };
+
+function parseBanner(): VerifyBanner | null {
+  const params = new URLSearchParams(window.location.search);
+  const verified = params.get("emailVerified");
+  if (verified === "1") return { kind: "success" };
+  if (verified === "0") {
+    const reason = params.get("reason") ?? "";
+    const message =
+      reason === "invalid_token" ? "Ссылка подтверждения недействительна." :
+      reason === "expired_token" ? "Срок действия ссылки истёк." :
+      reason === "used_token"    ? "Email уже подтверждён." :
+                                   "Не удалось подтвердить email.";
+    return { kind: "error", message };
+  }
+  return null;
+}
+
 export default function Login() {
   const [email, setEmail]           = useState("");
   const [password, setPassword]     = useState("");
   const [showPassword, setShowPw]   = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [banner, setBanner]         = useState<VerifyBanner | null>(null);
 
   const { state, signIn } = useAuth();
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const queryEmail = params.get("email");
+    const parsed = parseBanner();
+
+    if (queryEmail) setEmail(queryEmail);
+    if (parsed)     setBanner(parsed);
+
+    if (params.has("emailVerified") || params.has("email") || params.has("reason")) {
+      const cleanUrl = window.location.pathname;
+      history.replaceState(null, "", cleanUrl);
+    }
+  }, []);
 
   useEffect(() => {
     if (state.kind === "authenticated") {
@@ -64,6 +99,23 @@ export default function Login() {
           <h1 className="text-xl font-bold text-[#111111]">Вход в систему</h1>
           <p className="text-sm text-[#666666] mt-1 text-center">Палата судебных экспертов</p>
         </div>
+
+        {/* Email verification banner */}
+        {banner?.kind === "success" && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl bg-green-50 border border-green-200 px-4 py-3">
+            <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-green-800">Email успешно подтверждён.</p>
+              <p className="text-xs text-green-700 mt-0.5">Теперь войдите в личный кабинет.</p>
+            </div>
+          </div>
+        )}
+        {banner?.kind === "error" && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+            <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+            <p className="text-sm text-red-700 font-medium">{banner.message}</p>
+          </div>
+        )}
 
         {/* Login form */}
         <div className="bg-white rounded-2xl border border-[#D0D0D0] shadow-sm p-6">

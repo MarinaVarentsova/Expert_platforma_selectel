@@ -279,44 +279,49 @@ export default function Register() {
       const epBody = await epRes.json().catch(() => null);
       if (!epRes.ok || !epBody?.success) console.error("[register] palata_expert_profiles upsert:", epBody?.message ?? epRes.status);
 
-      // directions
+      // directions → PostgreSQL via no-auth registration endpoint
       const dirIds   = mergeDirectionIds(verifiedCerts);
       const dirNames = dirIds.map(id => allDirections.find(d => d.id === id)?.name ?? id);
       setRegisteredDirNames(dirNames);
       setCertWarnings(newCertWarnings);
 
-      await supabase.from("palata_expert_directions").delete().eq("expert_id", userId);
-      if (dirIds.length > 0) {
-        const { error: edErr } = await supabase.from("palata_expert_directions").insert(
-          dirIds.map(id => ({ expert_id: userId, expertise_direction_id: id }))
-        );
-        if (edErr) console.error("[register] palata_expert_directions insert:", edErr.message);
-      }
-
-      // certificates
-      if (verifiedCerts.length > 0) {
-        const { error: ecErr } = await supabase.from("palata_expert_certificates").insert(
-          verifiedCerts.map(r => ({
-            expert_id:          userId,
-            certificate_number: r.number,
-            status:             "verified" as const,
-            cert_valid_to:      r.validTo ?? null,
-            cert_expert_name:   r.expertName ?? null,
-            cert_direction_ids: r.directionIds,
-          }))
-        );
-        if (ecErr) console.error("[register] palata_expert_certificates insert:", ecErr.message);
-      }
-
-      // regions
       {
-        const regRes = await fetch("/api/palata/expert-regions", {
+        const dirRes = await fetch("/api/palata/expert-register/save-directions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ expert_id: userId, region_ids: regionIds }),
+          body: JSON.stringify({ user_id: userId, direction_ids: dirIds }),
+        });
+        const dirBody = await dirRes.json().catch(() => null);
+        if (!dirRes.ok || !dirBody?.success) console.error("[register] expert-register/save-directions:", dirBody?.error ?? dirRes.status);
+      }
+
+      // certificates → PostgreSQL via no-auth registration endpoint
+      {
+        const certsPayload = verifiedCerts.map(r => ({
+          certificate_number: r.number,
+          status:             "verified",
+          cert_valid_to:      r.validTo ?? null,
+          cert_expert_name:   r.expertName ?? null,
+          cert_direction_ids: r.directionIds,
+        }));
+        const certRes = await fetch("/api/palata/expert-register/save-certificates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, certs: certsPayload }),
+        });
+        const certBody = await certRes.json().catch(() => null);
+        if (!certRes.ok || !certBody?.success) console.error("[register] expert-register/save-certificates:", certBody?.error ?? certRes.status);
+      }
+
+      // regions → PostgreSQL via no-auth registration endpoint
+      {
+        const regRes = await fetch("/api/palata/expert-register/save-regions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, region_ids: regionIds }),
         });
         const regBody = await regRes.json().catch(() => null);
-        if (!regRes.ok || !regBody?.success) console.error("[register] palata_expert_regions replace:", regBody?.message ?? regRes.status);
+        if (!regRes.ok || !regBody?.success) console.error("[register] expert-register/save-regions:", regBody?.error ?? regRes.status);
       }
 
       runAllPendingMatching().catch(() => {});

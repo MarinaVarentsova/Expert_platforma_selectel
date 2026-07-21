@@ -1292,6 +1292,144 @@ app.get("/api/palata/customer-register/role/:id", (req, res) => {
   });
 });
 
+// ─── Expert Registration (no-auth write endpoints) ────────────────────────────
+// Called during registration flow before the user has a session token.
+// Validates user_id exists in palata_users before writing.
+
+async function expertRegisterValidateUser(userId, pool) {
+  const check = await pool.query(
+    `SELECT id FROM public.palata_users WHERE id = $1 LIMIT 1`, [userId]
+  );
+  return check.rows.length > 0;
+}
+
+app.post("/api/palata/expert-register/save-regions", (req, res) => {
+  (async () => {
+    const body = req.body ?? {};
+    const userId = typeof body.user_id === "string" ? body.user_id.trim() : "";
+    if (!userId) { res.status(400).json({ success: false, error: "MISSING_USER_ID" }); return; }
+    if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+    if (!await expertRegisterValidateUser(userId, pool)) {
+      res.status(400).json({ success: false, error: "USER_NOT_FOUND" }); return;
+    }
+    const rawIds = Array.isArray(body.region_ids) ? body.region_ids.filter(id => typeof id === "string") : [];
+    const regionIds = [...new Set(rawIds)];
+    console.log("[EXPERT-REGISTER] save-regions", { userId, count: regionIds.length });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM public.palata_expert_regions WHERE expert_id = $1`, [userId]);
+      if (regionIds.length > 0) {
+        const placeholders = regionIds.map((_, i) => `($1, $${i + 2})`).join(", ");
+        await client.query(
+          `INSERT INTO public.palata_expert_regions (expert_id, region_id) VALUES ${placeholders}`,
+          [userId, ...regionIds],
+        );
+      }
+      await client.query("COMMIT");
+      console.log("[EXPERT-REGISTER] save-regions success", { userId, count: regionIds.length });
+      res.status(200).json({ success: true });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("[EXPERT-REGISTER] save-regions error", { userId, message: err.message });
+      res.status(500).json({ success: false, error: "SAVE_REGIONS_FAILED", message: err.message });
+    } finally {
+      client.release();
+    }
+  })().catch(err => {
+    console.error("[EXPERT-REGISTER] save-regions unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "UNHANDLED", message: String(err) });
+  });
+});
+
+app.post("/api/palata/expert-register/save-directions", (req, res) => {
+  (async () => {
+    const body = req.body ?? {};
+    const userId = typeof body.user_id === "string" ? body.user_id.trim() : "";
+    if (!userId) { res.status(400).json({ success: false, error: "MISSING_USER_ID" }); return; }
+    if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+    if (!await expertRegisterValidateUser(userId, pool)) {
+      res.status(400).json({ success: false, error: "USER_NOT_FOUND" }); return;
+    }
+    const rawIds = Array.isArray(body.direction_ids) ? body.direction_ids.filter(id => typeof id === "string") : [];
+    const directionIds = [...new Set(rawIds)];
+    console.log("[EXPERT-REGISTER] save-directions", { userId, count: directionIds.length });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM public.palata_expert_directions WHERE expert_id = $1`, [userId]);
+      if (directionIds.length > 0) {
+        const placeholders = directionIds.map((_, i) => `($1, $${i + 2})`).join(", ");
+        await client.query(
+          `INSERT INTO public.palata_expert_directions (expert_id, expertise_direction_id) VALUES ${placeholders}`,
+          [userId, ...directionIds],
+        );
+      }
+      await client.query("COMMIT");
+      console.log("[EXPERT-REGISTER] save-directions success", { userId, count: directionIds.length });
+      res.status(200).json({ success: true });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("[EXPERT-REGISTER] save-directions error", { userId, message: err.message });
+      res.status(500).json({ success: false, error: "SAVE_DIRECTIONS_FAILED", message: err.message });
+    } finally {
+      client.release();
+    }
+  })().catch(err => {
+    console.error("[EXPERT-REGISTER] save-directions unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "UNHANDLED", message: String(err) });
+  });
+});
+
+app.post("/api/palata/expert-register/save-certificates", (req, res) => {
+  (async () => {
+    const body = req.body ?? {};
+    const userId = typeof body.user_id === "string" ? body.user_id.trim() : "";
+    if (!userId) { res.status(400).json({ success: false, error: "MISSING_USER_ID" }); return; }
+    if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+    if (!await expertRegisterValidateUser(userId, pool)) {
+      res.status(400).json({ success: false, error: "USER_NOT_FOUND" }); return;
+    }
+    const rawCerts = Array.isArray(body.certs) ? body.certs.filter(c => c && typeof c === "object") : [];
+    console.log("[EXPERT-REGISTER] save-certificates", { userId, count: rawCerts.length });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM public.palata_expert_certificates WHERE expert_id = $1`, [userId]);
+      for (const cert of rawCerts) {
+        const dirIds = Array.isArray(cert.cert_direction_ids)
+          ? cert.cert_direction_ids.filter(id => typeof id === "string")
+          : [];
+        await client.query(
+          `INSERT INTO public.palata_expert_certificates
+             (expert_id, certificate_number, status, cert_valid_to, cert_expert_name, cert_direction_ids)
+           VALUES ($1, $2, $3, $4, $5, $6::uuid[])`,
+          [
+            userId,
+            typeof cert.certificate_number === "string" ? cert.certificate_number : null,
+            typeof cert.status === "string" ? cert.status : "verified",
+            cert.cert_valid_to ?? null,
+            typeof cert.cert_expert_name === "string" ? cert.cert_expert_name : null,
+            dirIds,
+          ],
+        );
+      }
+      await client.query("COMMIT");
+      console.log("[EXPERT-REGISTER] save-certificates success", { userId, count: rawCerts.length });
+      res.status(200).json({ success: true });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("[EXPERT-REGISTER] save-certificates error", { userId, message: err.message });
+      res.status(500).json({ success: false, error: "SAVE_CERTS_FAILED", message: err.message });
+    } finally {
+      client.release();
+    }
+  })().catch(err => {
+    console.error("[EXPERT-REGISTER] save-certificates unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "UNHANDLED", message: String(err) });
+  });
+});
+
 app.get("/api/palata/customer-profile", (req, res) => {
   handleCustomerProfileList(req, res).catch((err) => {
     console.error("[CUSTOMER-PROFILE] error", { stage: "unhandled_list", stack: err.stack });

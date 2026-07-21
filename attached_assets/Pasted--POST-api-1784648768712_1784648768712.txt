@@ -1,0 +1,118 @@
+СРОЧНО. После последних изменений сломался самый первый шаг регистрации.
+
+В браузере:
+
+POST /api/auth/register
+HTTP 500
+{"success":false,"error":"Ошибка регистрации"}
+
+ВАЖНО:
+
+- не менять восстановление пароля;
+- не менять страницу ResetPassword;
+- не переписывать auth-service;
+- не менять новые endpoint'ы регионов, сертификатов и направлений;
+- не делать новых архитектурных изменений;
+- сначала найти точную причину 500.
+
+Нужно проверить только цепочку:
+
+Register.tsx
+→ authRegister()
+→ POST /api/auth/register
+→ proxy основного приложения
+→ AUTH_SERVICE_URL/api/auth/register.
+
+1. Сравнить текущий payload authRegister() с версией до последних изменений.
+
+Показать, что реально отправляется:
+
+- project_code;
+- email;
+- password;
+- full_name;
+- phone.
+
+Проверить, не отправляется ли undefined, неправильное имя поля или весь объект формы вместо ожидаемого payload.
+
+2. Проверить логи основного приложения для запроса POST /api/auth/register.
+
+Показать:
+
+- URL, куда проксируется запрос;
+- HTTP-статус auth-service;
+- JSON ответа auth-service;
+- исключение, которое превращается в общий HTTP 500.
+
+Не логировать пароль.
+
+3. Проверить логи auth-service в момент регистрации и найти реальную ошибку, скрытую за текстом «Ошибка регистрации».
+
+4. Проверить, существует ли тестовый email уже в auth_users.
+
+Email из теста:
+
+podshivalovaann@gmail.com
+
+Выполнить в auth DB запрос с реальным названием таблицы:
+
+SELECT id, email, email_verified, created_at
+FROM auth_users
+WHERE lower(email) = lower('podshivalovaann@gmail.com');
+
+Также проверить основной PostgreSQL:
+
+SELECT id, email, created_at
+FROM palata_users
+WHERE lower(email) = lower('podshivalovaann@gmail.com');
+
+SELECT user_id, created_at
+FROM palata_expert_profiles
+WHERE user_id IN (
+  SELECT id
+  FROM palata_users
+  WHERE lower(email) = lower('podshivalovaann@gmail.com')
+);
+
+5. Возможный сценарий:
+
+- auth user уже создан;
+- palata_users или palata_expert_profiles не созданы;
+- повторная регистрация падает из-за существующего email.
+
+Если это подтвердится:
+
+Для тестового пользователя удалить только незавершённые тестовые записи либо использовать новый уникальный email для проверки.
+
+Но дополнительно исправить обработку ошибки:
+
+- существующий email не должен возвращать общий HTTP 500;
+- frontend должен показать «Пользователь с таким email уже зарегистрирован»;
+- не трогать успешный сценарий регистрации.
+
+6. Проверить, что последняя правка:
+
+expert_profile save → abort + setError + return
+
+не была случайно перенесена внутрь обработки authRegister() и не превращает ошибки следующих шагов в ошибку самого /api/auth/register.
+
+7. Ничего не коммитить, пока не покажешь:
+
+- точную ошибку из auth-service logs;
+- существует ли email в auth_users;
+- текущий payload authRegister();
+- diff Register.tsx вокруг вызова authRegister();
+- минимальное исправление.
+
+После этого внести только минимальную правку.
+
+Цель:
+
+POST /api/auth/register снова возвращает success для нового email.
+
+После этого уже отдельно проверяются:
+
+- profile;
+- regions;
+- directions;
+- certificates.

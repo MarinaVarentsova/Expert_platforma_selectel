@@ -201,8 +201,11 @@ export default function Register() {
 
     if (!registerResult.success) {
       const msg = registerResult.message.toLowerCase();
-      if (msg.includes("already") || msg.includes("exists") || msg.includes("registered")) {
-        setError("Пользователь с данной почтой уже зарегистрирован. Войдите в систему.");
+      if (
+        msg.includes("already") || msg.includes("exists") || msg.includes("registered") ||
+        msg === "ошибка регистрации"
+      ) {
+        setError("Пользователь с данной почтой уже зарегистрирован. Войдите в систему или используйте другой email.");
       } else if (msg.includes("rate limit") || msg.includes("too many")) {
         setError("Слишком много попыток. Подождите немного и попробуйте снова.");
       } else if (msg.includes("invalid email") || msg.includes("email")) {

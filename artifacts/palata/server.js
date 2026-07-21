@@ -1473,6 +1473,7 @@ async function handleExpertProfileGet(req, res) {
     );
     const profile = result.rows[0] ?? null;
     console.log("[EXPERT-PROFILE] success", { stage: "get", userId, found: Boolean(profile) });
+    console.log("[EXPERT-PROFILE-LOAD] profile found", { userId, found: Boolean(profile) });
     res.status(200).json({ success: true, profile });
   } catch (err) {
     console.error("[EXPERT-PROFILE] error", { stage: "get", message: err.message });
@@ -1621,6 +1622,7 @@ async function handleExpertRegionsGet(req, res) {
       [expertId],
     );
     console.log("[EXPERT-REGIONS] success", { stage: "get", expertId, count: result.rows.length });
+    console.log("[EXPERT-PROFILE-LOAD] regions count", { expertId, count: result.rows.length });
     res.status(200).json({ success: true, rows: result.rows });
   } catch (err) {
     console.error("[EXPERT-REGIONS] error", { stage: "get", message: err.message });
@@ -1756,6 +1758,7 @@ async function handleExpertDirectionsGet(req, res) {
       [expertId],
     );
     console.log("[EXPERT-DIRECTIONS] success", { stage: "get", expertId, count: result.rows.length });
+    console.log("[EXPERT-PROFILE-LOAD] directions count", { expertId, count: result.rows.length });
     res.status(200).json({ success: true, rows: result.rows });
   } catch (err) {
     console.error("[EXPERT-DIRECTIONS] error", { stage: "get", message: err.message });
@@ -1921,6 +1924,7 @@ async function handleExpertCertificateGet(req, res) {
       [expertId],
     );
     console.log("[EXPERT-CERT] success", { stage: "get", expertId, count: result.rows.length });
+    console.log("[EXPERT-PROFILE-LOAD] certificates count", { expertId, count: result.rows.length });
     res.status(200).json({ success: true, rows: result.rows });
   } catch (err) {
     console.error("[EXPERT-CERT] error", { stage: "get", message: err.message });

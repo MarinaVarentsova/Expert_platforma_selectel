@@ -277,7 +277,13 @@ export default function Register() {
         }),
       });
       const epBody = await epRes.json().catch(() => null);
-      if (!epRes.ok || !epBody?.success) console.error("[register] palata_expert_profiles upsert:", epBody?.message ?? epRes.status);
+      if (!epRes.ok || !epBody?.success) {
+        console.error("[EXPERT-REGISTER] profile save failed", { step: "expert_profiles", error: epBody?.error ?? epBody?.message ?? epRes.status });
+        setError("Не удалось сохранить профиль эксперта. Аккаунт создан — попробуйте войти и заполнить профиль через личный кабинет.");
+        setLoading(false);
+        return;
+      }
+      console.log("[EXPERT-REGISTER] profile saved", { userId });
 
       // directions → PostgreSQL via no-auth registration endpoint
       const dirIds   = mergeDirectionIds(verifiedCerts);
@@ -292,7 +298,8 @@ export default function Register() {
           body: JSON.stringify({ user_id: userId, direction_ids: dirIds }),
         });
         const dirBody = await dirRes.json().catch(() => null);
-        if (!dirRes.ok || !dirBody?.success) console.error("[register] expert-register/save-directions:", dirBody?.error ?? dirRes.status);
+        if (!dirRes.ok || !dirBody?.success) console.error("[EXPERT-REGISTER] directions save failed", { step: "save-directions", count: dirIds.length, error: dirBody?.error ?? dirRes.status });
+        else console.log("[EXPERT-REGISTER] directions saved", { userId, count: dirIds.length });
       }
 
       // certificates → PostgreSQL via no-auth registration endpoint
@@ -310,7 +317,8 @@ export default function Register() {
           body: JSON.stringify({ user_id: userId, certs: certsPayload }),
         });
         const certBody = await certRes.json().catch(() => null);
-        if (!certRes.ok || !certBody?.success) console.error("[register] expert-register/save-certificates:", certBody?.error ?? certRes.status);
+        if (!certRes.ok || !certBody?.success) console.error("[EXPERT-REGISTER] certificates save failed", { step: "save-certificates", count: certsPayload.length, error: certBody?.error ?? certRes.status });
+        else console.log("[EXPERT-REGISTER] certificates saved", { userId, count: certsPayload.length });
       }
 
       // regions → PostgreSQL via no-auth registration endpoint
@@ -321,7 +329,8 @@ export default function Register() {
           body: JSON.stringify({ user_id: userId, region_ids: regionIds }),
         });
         const regBody = await regRes.json().catch(() => null);
-        if (!regRes.ok || !regBody?.success) console.error("[register] expert-register/save-regions:", regBody?.error ?? regRes.status);
+        if (!regRes.ok || !regBody?.success) console.error("[EXPERT-REGISTER] regions save failed", { step: "save-regions", count: regionIds.length, error: regBody?.error ?? regRes.status });
+        else console.log("[EXPERT-REGISTER] regions saved", { userId, count: regionIds.length });
       }
 
       runAllPendingMatching().catch(() => {});

@@ -758,6 +758,14 @@ export default function NewRequest() {
           </FormCard>
 
           {/* ── Submit ──────────────────────────────────────────────── */}
+          {(errors.region_id || errors.description || errors.customer_name || errors.customer_email) && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 space-y-1">
+              {errors.region_id      && <p>• {errors.region_id}</p>}
+              {errors.description    && <p>• {errors.description}</p>}
+              {errors.customer_name  && <p>• {errors.customer_name}</p>}
+              {errors.customer_email && <p>• {errors.customer_email}</p>}
+            </div>
+          )}
           <div className="flex items-center gap-4 pt-1 pb-8">
             <button
               type="submit"

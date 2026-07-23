@@ -164,7 +164,7 @@ export default function NewRequest() {
     if (!form.region_id)
       e.region_id = "Выберите регион";
     if (!form.description.trim())
-      e.description = "Опишите суть дела";
+      e.description = "Добавьте описание";
     if (!form.customer_name.trim())
       e.customer_name = "Введите ваше имя";
     if (!form.customer_email.trim() && !form.customer_phone.trim())

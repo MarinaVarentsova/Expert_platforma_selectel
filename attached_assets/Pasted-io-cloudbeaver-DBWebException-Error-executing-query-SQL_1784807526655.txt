@@ -1,0 +1,29 @@
+io.cloudbeaver.DBWebException: Error executing query:
+SQL Error [42703]: ERROR: column "user_id" does not exist
+  Position: 45
+	at io.cloudbeaver.service.sql.WebSQLProcessor.processQuery(WebSQLProcessor.java:319)
+	at io.cloudbeaver.service.sql.WebSQLUtils$1.run(WebSQLUtils.java:295)
+	at io.cloudbeaver.model.session.WebSession$1.run(WebSession.java:645)
+	at org.jkiss.dbeaver.model.runtime.AbstractJob.run(AbstractJob.java:110)
+	at org.eclipse.core.internal.jobs.Worker.run(Worker.java:63)
+Caused by: org.jkiss.dbeaver.model.sql.DBSQLException: SQL Error [42703]: ERROR: column "user_id" does not exist
+  Position: 45
+	at org.jkiss.dbeaver.model.impl.jdbc.exec.JDBCStatementImpl.executeStatement(JDBCStatementImpl.java:136)
+	at io.cloudbeaver.service.sql.WebSQLProcessor.lambda$processQuery$2(WebSQLProcessor.java:294)
+	at org.jkiss.dbeaver.model.exec.DBExecUtils.tryExecuteRecover(DBExecUtils.java:210)
+	at io.cloudbeaver.service.sql.WebSQLProcessor.processQuery(WebSQLProcessor.java:244)
+	... 4 more
+Caused by: org.postgresql.util.PSQLException: ERROR: column "user_id" does not exist
+  Position: 45
+	at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2904)
+	at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2589)
+	at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:431)
+	at org.postgresql.jdbc.PgStatement.executeInternal(PgStatement.java:534)
+	at org.postgresql.jdbc.PgStatement.execute(PgStatement.java:437)
+	at org.postgresql.jdbc.PgStatement.executeWithFlags(PgStatement.java:359)
+	at org.postgresql.jdbc.PgStatement.executeCachedSql(PgStatement.java:344)
+	at org.postgresql.jdbc.PgStatement.executeWithFlags(PgStatement.java:320)
+	at org.postgresql.jdbc.PgStatement.execute(PgStatement.java:315)
+	at org.jkiss.dbeaver.model.impl.jdbc.exec.JDBCStatementImpl.execute(JDBCStatementImpl.java:333)
+	at org.jkiss.dbeaver.model.impl.jdbc.exec.JDBCStatementImpl.executeStatement(JDBCStatementImpl.java:134)
+	... 7 more

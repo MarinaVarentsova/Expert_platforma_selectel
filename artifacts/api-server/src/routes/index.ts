@@ -5,6 +5,7 @@ import matchRouter from "./match";
 import settingsRouter from "./settings";
 import aiDetectDirectionRouter from "./ai-detect-direction";
 import authProxyRouter from "./auth-proxy";
+
 const router: IRouter = Router();
 
 router.use(authProxyRouter);

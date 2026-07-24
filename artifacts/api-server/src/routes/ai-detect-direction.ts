@@ -30,13 +30,31 @@ const KNOWLEDGE_BASE = `
 Стоп-факторы (НЕ строительная экспертиза): оценка мебели/техники/товаров (товароведческая); причина пожара/очаг возгорания (пожарно-техническая); юридический спор без технических вопросов; медицинские повреждения.
 `;
 
+const KNOWLEDGE_BASE_ENTRIES = (KNOWLEDGE_BASE.match(/^\d+\./gm) ?? []).length;
+
 router.post("/ai-detect-direction", async (req, res) => {
+  // 1. Получен запрос
+  req.log.info("[AI] request received");
+
+  // 2. URL запроса
+  req.log.info(`[AI] url=${req.originalUrl}`);
+
   const apiKey = process.env["OPENAI_API_KEY"];
+
+  // 7. Есть ли OPENAI_API_KEY (никогда не печатать сам ключ)
+  req.log.info(`[AI] OPENAI_API_KEY present=${apiKey ? "true" : "false"}`);
+
   if (!apiKey) {
-    req.log.error("OPENAI_API_KEY not configured");
+    req.log.error("[AI] returning error — OPENAI_API_KEY not configured");
     res.status(503).json({ error: "AI service not configured" });
     return;
   }
+
+  // 8. Загружена ли база знаний
+  req.log.info(`[AI] knowledge base loaded=true`);
+
+  // 9. Количество сценариев в базе знаний
+  req.log.info(`[AI] knowledge base entries=${KNOWLEDGE_BASE_ENTRIES}`);
 
   const body = req.body as {
     description?: string;
@@ -46,12 +64,29 @@ router.post("/ai-detect-direction", async (req, res) => {
   const description = (body.description ?? "").trim();
   const availableDirections = body.availableDirections;
 
+  // 3. Размер описания
+  req.log.info(`[AI] description length=${description.length}`);
+
+  // 4. Первые 150 символов описания
+  req.log.info(`[AI] description preview=${description.slice(0, 150)}`);
+
+  // 5. Сколько направлений пришло
+  req.log.info(`[AI] available directions count=${Array.isArray(availableDirections) ? availableDirections.length : 0}`);
+
+  // 6. Названия всех направлений
+  req.log.info(
+    `[AI] available directions=[\n${
+      Array.isArray(availableDirections)
+        ? availableDirections.map(d => `  "${d.name}"`).join(",\n")
+        : ""
+    }\n]`
+  );
+
   if (!description || !Array.isArray(availableDirections) || availableDirections.length === 0) {
+    req.log.warn("[AI] returning error — invalid input: description or availableDirections missing/empty");
     res.status(400).json({ error: "Invalid input: description and availableDirections required" });
     return;
   }
-
-  req.log.info({ descriptionLength: description.length }, "AI direction detection started");
 
   const directionList = availableDirections.map(d => `- ${d.name}`).join("\n");
 
@@ -75,6 +110,9 @@ ${directionList}
 {"detected": false, "direction_name": null, "confidence": 0, "reason": "причина", "matched_markers": []}`;
 
   try {
+    // 10. Перед обращением к OpenAI
+    req.log.info("[AI] sending request to OpenAI");
+
     const openAiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -92,9 +130,13 @@ ${directionList}
       }),
     });
 
+    // 11. После получения ответа — HTTP статус
+    req.log.info(`[AI] OpenAI HTTP status=${openAiResponse.status}`);
+
     if (!openAiResponse.ok) {
       const errText = await openAiResponse.text().catch(() => "");
-      req.log.error({ status: openAiResponse.status, errText: errText.slice(0, 200) }, "OpenAI API error");
+      req.log.error(`[AI] OpenAI error body=${errText.slice(0, 200)}`);
+      req.log.error("[AI] returning error — OpenAI returned non-2xx status");
       res.status(502).json({ error: "AI service error" });
       return;
     }
@@ -104,7 +146,9 @@ ${directionList}
     };
 
     const rawContent = openAiData.choices?.[0]?.message?.content ?? "{}";
-    req.log.info({ rawContent: rawContent.slice(0, 500) }, "AI raw result");
+
+    // 12. Первые 1000 символов ответа OpenAI
+    req.log.info(`[AI] OpenAI raw response=${rawContent.slice(0, 1000)}`);
 
     let parsed: {
       detected: boolean;
@@ -116,21 +160,20 @@ ${directionList}
 
     try {
       parsed = JSON.parse(rawContent) as typeof parsed;
-    } catch {
-      req.log.error({ rawContent }, "Failed to parse AI JSON response");
+    } catch (parseErr: unknown) {
+      req.log.error(`[AI] failed to parse OpenAI JSON response: rawContent=${rawContent}`);
+      console.error(parseErr);
+      console.error((parseErr as Error).stack);
       res.json({ detected: false, direction_id: null, direction_name: null, confidence: 0, reason: "Parse error", matched_markers: [] });
       return;
     }
 
-    req.log.info({
-      detected: parsed.detected,
-      direction_name: parsed.direction_name,
-      confidence: parsed.confidence,
-      matched_markers: parsed.matched_markers,
-    }, "AI parsed result");
+    // 13. Что выбрал AI
+    req.log.info(`[AI] AI selected direction="${parsed.direction_name ?? "null"}" confidence=${parsed.confidence} detected=${parsed.detected}`);
 
     if (!parsed.detected || (parsed.confidence ?? 0) < CONFIDENCE_THRESHOLD || !parsed.direction_name) {
-      req.log.info({ confidence: parsed.confidence, reason: parsed.reason }, "AI: below threshold or not detected — fallback to manual");
+      req.log.info(`[AI] below threshold or not detected — confidence=${parsed.confidence} reason="${parsed.reason}"`);
+      req.log.info("[AI] returning success (detected=false, fallback to manual)");
       res.json({
         detected: false,
         direction_id: null,
@@ -146,8 +189,17 @@ ${directionList}
       d => d.name.trim().toLowerCase() === (parsed.direction_name ?? "").trim().toLowerCase()
     );
 
+    // 14. Нашлось ли совпадение среди availableDirections
+    req.log.info(`[AI] matched direction=${matched ? "true" : "false"}`);
+
     if (!matched) {
-      req.log.warn({ direction_name: parsed.direction_name }, "AI returned direction not in approved list — fallback to manual");
+      // 15. Если совпадение не найдено — печатаем что ответил AI и что было доступно
+      req.log.warn(
+        `[AI] no match found\nAI ответил:\n  "${parsed.direction_name}"\nДоступные направления:\n${
+          availableDirections.map(d => `  "${d.name}"`).join("\n")
+        }`
+      );
+      req.log.info("[AI] returning success (detected=false, direction not in approved list)");
       res.json({
         detected: false,
         direction_id: null,
@@ -159,7 +211,10 @@ ${directionList}
       return;
     }
 
-    req.log.info({ direction_id: matched.id, direction_name: matched.name, confidence: parsed.confidence }, "AI: direction matched");
+    req.log.info(`[AI] direction matched — id=${matched.id} name="${matched.name}" confidence=${parsed.confidence}`);
+
+    // 16. Финальный ответ — успех
+    req.log.info("[AI] returning success (detected=true)");
 
     res.json({
       detected: true,
@@ -170,7 +225,10 @@ ${directionList}
       matched_markers: parsed.matched_markers ?? [],
     });
   } catch (err: unknown) {
-    logger.error({ err: (err as Error).message }, "AI detect direction unexpected error");
+    // 17. Полный stack в catch
+    console.error(err);
+    console.error((err as Error).stack);
+    logger.error({ err: (err as Error).message }, "[AI] returning error — unexpected exception");
     res.status(500).json({ error: "Internal error" });
   }
 });

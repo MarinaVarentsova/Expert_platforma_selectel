@@ -26,6 +26,11 @@ if (!PALATA_DATABASE_URL) {
   );
 }
 
+console.log(
+  "[AI-PROD] OPENAI_API_KEY at startup:",
+  process.env.OPENAI_API_KEY ? "present" : "missing",
+);
+
 let dbConfig = null;
 if (PALATA_DATABASE_URL) {
   try {

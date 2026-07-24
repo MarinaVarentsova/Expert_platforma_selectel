@@ -90,8 +90,4 @@ router.post("/ai-detect-direction", async (req, res) => {
   }
 });
 
-// suppress unused-import warning — CONFIDENCE_THRESHOLD is re-exported from the shared module
-// and may be used by other consumers; imported here to keep the reference visible.
-void CONFIDENCE_THRESHOLD;
-
 export default router;

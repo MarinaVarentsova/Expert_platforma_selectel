@@ -1,0 +1,109 @@
+Ничего в проекте не переписывай и не рефактори.
+
+Нужно внести только минимальное диагностическое изменение для выяснения причины HTTP 403 от OpenAI.
+
+Работать только с production-кодом Палаты:
+
+`artifacts/palata/server.js`
+
+и, только если сам HTTP-вызов находится там:
+
+`lib/ai-detect`
+
+Не изменять:
+
+* auth-service;
+* frontend;
+* регистрацию;
+* reset-password;
+* БД;
+* SQL;
+* структуру таблиц;
+* API endpoints;
+* JSON-ответы frontend;
+* архитектуру проекта;
+* используемую модель;
+* URL запроса;
+* headers;
+* бизнес-логику;
+* обработку успешного ответа;
+* текущий код ошибки 502.
+
+Сначала ничего не меняй и покажи мне:
+
+1. Точный файл и строки, где выполняется запрос в OpenAI.
+2. Как выполняется запрос: `fetch`, Axios или SDK.
+3. Какой URL вызывается.
+4. Какая модель отправляется.
+5. Какие headers формируются.
+6. Откуда читается `OPENAI_API_KEY`.
+
+После этого добавь только диагностические логи ответа OpenAI.
+
+Нужно вывести:
+
+```js
+console.log("[AI-PROD] OpenAI response.status =", response.status);
+console.log("[AI-PROD] OpenAI response.statusText =", response.statusText);
+console.log(
+  "[AI-PROD] OpenAI response.headers =",
+  Object.fromEntries(response.headers.entries())
+);
+console.log("[AI-PROD] OpenAI response.body =", responseBody);
+```
+
+Также безопасно вывести:
+
+```js
+console.log("[AI-PROD] OpenAI URL =", openAiUrl);
+console.log("[AI-PROD] OpenAI model =", model);
+console.log("[AI-PROD] Authorization Bearer =", apiKey ? "present" : "missing");
+console.log("[AI-PROD] API key length =", apiKey?.length ?? 0);
+console.log("[AI-PROD] API key trimmed length =", apiKey?.trim().length ?? 0);
+console.log(
+  "[AI-PROD] API key has surrounding whitespace =",
+  apiKey !== apiKey?.trim()
+);
+```
+
+API-ключ или его части не печатать.
+
+Важно: тело ответа OpenAI можно прочитать только один раз.
+
+Если сейчас используется:
+
+```js
+await response.json()
+```
+
+не добавляй перед ним второй вызов чтения body.
+
+Сделай минимальную замену:
+
+```js
+const responseBody = await response.text();
+```
+
+Далее:
+
+* при `!response.ok` вывести `responseBody` в лог;
+* вернуть существующий ответ 502 без изменений;
+* при успешном ответе выполнить:
+
+```js
+const data = JSON.parse(responseBody);
+```
+
+Не менять существующий JSON ответа клиенту.
+
+После изменений:
+
+1. Проверь синтаксис `server.js`.
+2. Запусти production-команду Палаты.
+3. Убедись, что сервер не падает.
+4. Покажи точный diff.
+5. Перечисли изменённые файлы.
+6. Создай отдельный commit.
+7. Верни commit hash.
+
+Никаких других изменений в проект не вносить.

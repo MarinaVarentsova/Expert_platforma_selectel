@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { randomUUID } from "crypto";
 import pg from "pg";
+import { detectDirection, KNOWLEDGE_BASE_ENTRIES } from "@workspace/ai-detect";
 const { Pool } = pg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -5238,6 +5239,100 @@ app.get("/api/palata/action-items/counts", (req, res) => {
   handleActionItemsCounts(req, res).catch(err => {
     console.error("[ACTION-ITEMS-COUNTS] unhandled", { stack: err.stack });
     res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+async function handleAiDetectDirection(req, res) {
+  console.log("[AI-PROD] request received");
+
+  const apiKey = process.env["OPENAI_API_KEY"];
+  console.log("[AI-PROD] OPENAI_API_KEY present=" + (apiKey ? "true" : "false"));
+
+  if (!apiKey) {
+    console.log("[AI-PROD] returning error code=503");
+    res.status(503).json({ error: "AI service not configured" });
+    return;
+  }
+
+  const body = req.body ?? {};
+  const description = (body.description ?? "").trim();
+  const availableDirections = body.availableDirections;
+
+  console.log("[AI-PROD] description length=" + description.length);
+  console.log("[AI-PROD] available directions count=" + (Array.isArray(availableDirections) ? availableDirections.length : 0));
+  console.log("[AI-PROD] knowledge base entries=" + KNOWLEDGE_BASE_ENTRIES);
+
+  if (!description || !Array.isArray(availableDirections) || availableDirections.length === 0) {
+    console.log("[AI-PROD] returning error code=400");
+    res.status(400).json({ error: "Invalid input: description and availableDirections required" });
+    return;
+  }
+
+  console.log("[AI-PROD] sending request to OpenAI");
+  const result = await detectDirection(description, availableDirections, apiKey);
+  console.log("[AI-PROD] OpenAI HTTP status=" + result.httpStatus);
+
+  if (result.status === "openai_error") {
+    console.log("[AI-PROD] returning error code=502");
+    res.status(502).json({ error: "AI service error" });
+    return;
+  }
+
+  if (result.status === "parse_error") {
+    console.log("[AI-PROD] selected direction=null (parse error)");
+    console.log("[AI-PROD] matched direction=false");
+    console.log("[AI-PROD] returning success");
+    res.json({ detected: false, direction_id: null, direction_name: null, confidence: 0, reason: "Parse error", matched_markers: [] });
+    return;
+  }
+
+  console.log("[AI-PROD] selected direction=\"" + (result.aiSelectedName ?? "null") + "\"");
+
+  if (result.status === "not_detected") {
+    console.log("[AI-PROD] matched direction=false");
+    console.log("[AI-PROD] returning success");
+    res.json({
+      detected: false,
+      direction_id: null,
+      direction_name: null,
+      confidence: result.confidence,
+      reason: result.reason,
+      matched_markers: result.matched_markers,
+    });
+    return;
+  }
+
+  if (result.status === "no_match") {
+    console.log("[AI-PROD] matched direction=false");
+    console.log("[AI-PROD] returning success");
+    res.json({
+      detected: false,
+      direction_id: null,
+      direction_name: null,
+      confidence: 0,
+      reason: "Direction not in approved list",
+      matched_markers: result.matched_markers,
+    });
+    return;
+  }
+
+  console.log("[AI-PROD] matched direction=true");
+  console.log("[AI-PROD] returning success");
+  res.json({
+    detected: true,
+    direction_id: result.direction_id,
+    direction_name: result.direction_name,
+    confidence: result.confidence,
+    reason: result.reason,
+    matched_markers: result.matched_markers,
+  });
+}
+
+app.post("/api/ai-detect-direction", (req, res) => {
+  handleAiDetectDirection(req, res).catch(err => {
+    console.log("[AI-PROD] exception message=" + err.message);
+    console.log("[AI-PROD] exception stack=" + err.stack);
+    res.status(500).json({ error: "Internal error" });
   });
 });
 

@@ -172,6 +172,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.106.1
         version: 2.106.1
+      '@workspace/ai-detect':
+        specifier: workspace:*
+        version: link:../../lib/ai-detect
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -413,6 +416,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.106.1
         version: 2.106.1
+      '@workspace/ai-detect':
+        specifier: workspace:*
+        version: link:../../lib/ai-detect
       express:
         specifier: ^5.2.1
         version: 5.2.1
@@ -681,6 +687,8 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 7.3.3(@types/node@25.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.4)
+
+  lib/ai-detect: {}
 
   lib/api-client-react:
     dependencies:

@@ -1,0 +1,169 @@
+Работаем только в проекте Палаты.
+
+Нужно аккуратно исправить предыдущую ошибочную правку и затем добавить AI-маршрут в реальный production-server.
+
+ВАЖНО:
+- auth-service не менять;
+- регистрацию не менять;
+- восстановление пароля не менять;
+- БД и SQL не менять;
+- ENV не менять;
+- frontend не менять;
+- существующие /api/palata/* endpoints не менять;
+- не запускать второй production-сервис;
+- не делать общий рефакторинг.
+
+ТЕКУЩАЯ СИТУАЦИЯ
+
+Предыдущая правка добавила 17 логов в:
+
+artifacts/api-server/src/routes/ai-detect-direction.ts
+
+Но production в Coolify запускает:
+
+artifacts/palata/server.js
+
+Поэтому этот dev-маршрут в production не используется, а POST /api/ai-detect-direction возвращает 404.
+
+ЗАДАЧА 1 — убрать лишнюю предыдущую правку
+
+1. Найти последний commit, в котором были добавлены только диагностические логи в:
+   artifacts/api-server/src/routes/ai-detect-direction.ts
+
+2. Удалить только эти добавленные логи и вернуть файл к состоянию до этого commit.
+
+3. Не удалять:
+   - сам маршрут;
+   - KNOWLEDGE_BASE;
+   - бизнес-логику AI;
+   - типы;
+   - обработку ошибок.
+
+4. Показать diff отката этого файла.
+
+ЗАДАЧА 2 — добавить production-маршрут правильно
+
+1. Найти в artifacts/palata/server.js место, где разбираются входящие API-маршруты.
+
+2. Добавить обработку:
+
+POST /api/ai-detect-direction
+
+именно в production-server artifacts/palata/server.js.
+
+3. Не копировать KNOWLEDGE_BASE вручную в server.js.
+
+4. Вынести общую AI-логику и KNOWLEDGE_BASE в один общий модуль, который смогут использовать:
+   - artifacts/api-server/src/routes/ai-detect-direction.ts
+   - artifacts/palata/server.js
+
+Либо использовать уже существующий общий модуль, если он есть.
+
+5. Сохранить текущий JSON-контракт frontend:
+   - те же входные поля;
+   - те же коды ответа;
+   - тот же формат success/error;
+   - те же поля detected, direction_name, confidence, reason и matched direction.
+
+6. Production endpoint должен:
+   - принимать description;
+   - принимать availableDirections;
+   - проверять OPENAI_API_KEY;
+   - использовать существующую KNOWLEDGE_BASE;
+   - обращаться к OpenAI;
+   - сопоставлять ответ только с approved availableDirections;
+   - не создавать заказ и не менять БД.
+
+ЗАДАЧА 3 — production-логи
+
+Добавить логи только в реально исполняемый production-путь:
+
+[AI-PROD] request received
+[AI-PROD] description length=<число>
+[AI-PROD] available directions count=<число>
+[AI-PROD] OPENAI_API_KEY present=true/false
+[AI-PROD] knowledge base entries=<число>
+[AI-PROD] sending request to OpenAI
+[AI-PROD] OpenAI HTTP status=<число>
+[AI-PROD] selected direction="<название>"
+[AI-PROD] matched direction=true/false
+[AI-PROD] returning success
+[AI-PROD] returning error code=<код>
+
+В catch:
+[AI-PROD] exception message=<message>
+[AI-PROD] exception stack=<stack>
+
+Не логировать:
+- OPENAI_API_KEY;
+- полный текст заказа;
+- полный ответ с персональными данными;
+- токены;
+- пароли.
+
+Для description логировать только длину, без preview.
+
+ЗАДАЧА 4 — защита от поломок
+
+Перед изменениями зафиксировать:
+
+git status
+git diff
+git log -5 --oneline
+
+После изменений проверить, что diff касается только:
+- отката лишних логов в ai-detect-direction.ts;
+- общего AI-модуля;
+- production route в artifacts/palata/server.js;
+- минимального импорта общего модуля.
+
+Не менять никакие другие файлы.
+
+ПРОВЕРКИ
+
+1. node --check artifacts/palata/server.js
+2. pnpm --filter @workspace/api-server run build
+3. pnpm --filter ./artifacts/palata run typecheck
+4. pnpm --filter ./artifacts/palata run build
+
+5. Выполнить локальный тест production-server:
+
+POST /api/ai-detect-direction
+
+payload:
+{
+  "description": "Требуется строительно-техническая экспертиза по заливу квартиры и трещинам на стенах",
+  "availableDirections": [
+    {
+      "id": "test-build",
+      "name": "Строительно-техническая экспертиза"
+    }
+  ]
+}
+
+Ожидается:
+- HTTP не 404;
+- detected=true;
+- direction_name="Строительно-техническая экспертиза";
+- matched direction=true.
+
+КОММИТ
+
+Сделать один новый commit, не переписывать историю и не force-push.
+
+В финале вернуть только:
+
+1. Hash предыдущего commit с лишними логами.
+2. Подтверждение, что лишние логи из dev-файла удалены.
+3. Точное место регистрации production route.
+4. Список изменённых файлов.
+5. Краткий diff по каждому файлу.
+6. Результаты четырёх проверок.
+7. Ответ тестового POST.
+8. Новый commit hash.
+9. Подтверждение:
+   - auth-service не изменён;
+   - регистрация не изменена;
+   - reset-password не изменён;
+   - БД не изменена;
+   - frontend не изменён.

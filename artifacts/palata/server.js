@@ -2742,9 +2742,7 @@ async function handleRequestDetail(req, res) {
         [requestId],
       ),
       client.query(
-        `SELECT id, request_id, expert_id, revealed_at, customer_phone, customer_email,
-                expert_phone, expert_email, contact_opened_at, expert_status,
-                expert_status_updated_at, failure_reason, expert_comment
+        `SELECT *
          FROM public.palata_request_contacts
          WHERE request_id = $1
          ORDER BY revealed_at ASC`,
@@ -2767,7 +2765,14 @@ async function handleRequestDetail(req, res) {
       events:   eventsQ.rows,
     });
   } catch (err) {
-    console.error("[REQUEST-DETAIL] query failed", { stack: err.stack });
+    console.error("[REQUEST-DETAIL] query failed", {
+      requestId,
+      userId: authUserId ?? null,
+      code: err.code,
+      message: err.message,
+      detail: err.detail,
+      hint: err.hint,
+    });
     res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
   } finally {
     client.release();

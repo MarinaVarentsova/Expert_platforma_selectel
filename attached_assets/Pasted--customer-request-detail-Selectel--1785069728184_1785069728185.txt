@@ -1,0 +1,143 @@
+Нужно завершить исправление customer request detail после синхронизации схемы Selectel.
+
+Фактическое состояние базы Selectel:
+
+В таблицу public.palata_request_contacts уже добавлены все 5 недостающих колонок:
+
+- contact_opened_at TIMESTAMPTZ
+- expert_status TEXT
+- expert_status_updated_at TIMESTAMPTZ
+- failure_reason TEXT
+- expert_comment TEXT
+
+Всего в таблице теперь 13 колонок.
+
+Миграция уже выполнена вручную в DBeaver. Повторно миграции не создавать и БД из Replit не менять.
+
+Ранее была сделана временная правка:
+
+SELECT *
+FROM public.palata_request_contacts
+
+Её нужно отменить и сделать целевое исправление под актуальную схему.
+
+Сделай строго следующее.
+
+1. Открой фактический production handler:
+
+GET /api/palata/requests/:id/detail
+
+в файле:
+
+artifacts/palata/server.js
+
+2. Найди запрос к:
+
+public.palata_request_contacts
+
+3. Замени временный SELECT * на явный список всех колонок:
+
+SELECT
+    id,
+    request_id,
+    expert_id,
+    revealed_at,
+    customer_phone,
+    customer_email,
+    expert_phone,
+    expert_email,
+    contact_opened_at,
+    expert_status,
+    expert_status_updated_at,
+    failure_reason,
+    expert_comment
+FROM public.palata_request_contacts
+WHERE request_id = $1
+ORDER BY revealed_at ASC
+
+4. Сохрани добавленное безопасное логирование PostgreSQL-ошибки:
+
+[REQUEST-DETAIL] query failed
+
+с полями:
+
+requestId
+userId
+code
+message
+detail
+hint
+
+Не логировать токены, Authorization, пароли и секреты.
+
+5. Проверь, что маршруты:
+
+POST /api/palata/requests/:requestId/take-work
+
+и:
+
+POST /api/palata/requests/:requestId/complete
+
+по-прежнему записывают:
+
+expert_status
+expert_status_updated_at
+
+Ничего в этих маршрутах не менять, если запросы уже правильные.
+
+6. Проверь, что customer detail endpoint возвращает contacts с полями:
+
+contact_opened_at
+expert_status
+expert_status_updated_at
+failure_reason
+expert_comment
+
+7. Не менять:
+
+- AI Gateway;
+- создание заказа;
+- экспертный рынок;
+- авторизацию;
+- frontend;
+- статусы заказов;
+- другие SQL-запросы;
+- структуру БД;
+- миграции;
+- /api/notify.
+
+8. Выполни проверки:
+
+node --check artifacts/palata/server.js
+
+pnpm --filter @workspace/palata run build
+
+9. Выполни поиск по artifacts/palata/server.js и подтверди:
+
+- в запросе palata_request_contacts больше нет SELECT *;
+- все 13 колонок перечислены явно;
+- expert_status и expert_status_updated_at используются в take-work и complete.
+
+10. Предыдущий локальный commit 51cf293 не использовать как финальный в текущем виде.
+
+Создай новый финальный commit поверх текущего состояния:
+
+fix: align request detail with Selectel schema
+
+11. Сделай push в main репозитория, который разворачивает Coolify.
+
+Если push снова отклонён из-за GitHub-аутентификации:
+- не утверждай, что push выполнен;
+- покажи точную команду git push;
+- покажи commit hash;
+- сообщи точную ошибку.
+
+12. В конце покажи только:
+
+- изменённый файл;
+- финальный SQL contacts-запроса;
+- результат node --check;
+- результат build;
+- подтверждение использования expert_status в take-work и complete;
+- commit hash;
+- статус push.

@@ -3187,12 +3187,14 @@ async function handleSelectExpert(req, res) {
   }
 
   const client = await pool.connect();
+  let currentStep = "start";
   try {
     await client.query("BEGIN");
 
     const now = new Date().toISOString();
 
     // ── 1. Load request ───────────────────────────────────────────────────
+    currentStep = "load request";
     const requestRow = (await client.query(
       `SELECT id, status, customer_id, title
        FROM public.palata_requests WHERE id = $1 LIMIT 1`,
@@ -3219,6 +3221,7 @@ async function handleSelectExpert(req, res) {
 
     // ── Guard: detail — no expert has accepted_work yet ───────────────────
     if (source === "detail") {
+      currentStep = "guard check accepted_work";
       const inWorkRow = (await client.query(
         `SELECT id FROM public.palata_request_matches
          WHERE request_id = $1 AND status = 'accepted_work' LIMIT 1`,
@@ -3236,6 +3239,7 @@ async function handleSelectExpert(req, res) {
     const noteName   = expertName ?? expertId.slice(0, 8);
 
     // ── 2. Load customer contact info ─────────────────────────────────────
+    currentStep = "load customer";
     const custRow = (await client.query(
       `SELECT email, phone FROM public.palata_users WHERE id = $1 LIMIT 1`,
       [customerId],
@@ -3244,6 +3248,7 @@ async function handleSelectExpert(req, res) {
     const custPhone = custRow?.phone ?? null;
 
     // ── 3. Load expert email ──────────────────────────────────────────────
+    currentStep = "load expert";
     const expertRow = (await client.query(
       `SELECT email FROM public.palata_users WHERE id = $1 LIMIT 1`,
       [expertId],
@@ -3252,6 +3257,7 @@ async function handleSelectExpert(req, res) {
 
     // ── 4. Update match status ────────────────────────────────────────────
     //   dashboard → contacts_opened  |  detail → proposed
+    currentStep = "update match status";
     const matchStatus = source === "dashboard" ? "contacts_opened" : "proposed";
     await client.query(
       `UPDATE public.palata_request_matches
@@ -3262,6 +3268,7 @@ async function handleSelectExpert(req, res) {
 
     // ── 5. Update request (dashboard only) ───────────────────────────────
     if (source === "dashboard") {
+      currentStep = "update request status";
       await client.query(
         `UPDATE public.palata_requests
          SET assigned_expert_id = $1, status = 'expert_selection', updated_at = $2
@@ -3271,6 +3278,7 @@ async function handleSelectExpert(req, res) {
     }
 
     // ── 6. Upsert palata_request_contacts ─────────────────────────────────
+    currentStep = "check existing contact";
     const existingContactRow = (await client.query(
       `SELECT id FROM public.palata_request_contacts
        WHERE request_id = $1 AND expert_id = $2 LIMIT 1`,
@@ -3278,6 +3286,7 @@ async function handleSelectExpert(req, res) {
     )).rows[0];
 
     if (existingContactRow) {
+      currentStep = "update contact";
       await client.query(
         `UPDATE public.palata_request_contacts
          SET revealed_at = $1, customer_email = $2, customer_phone = $3,
@@ -3287,6 +3296,7 @@ async function handleSelectExpert(req, res) {
       );
     } else {
       // Ignore insert errors — contacts are a convenience; match status is source of truth
+      currentStep = "insert contact";
       await client.query(
         `INSERT INTO public.palata_request_contacts
            (request_id, expert_id, revealed_at,
@@ -3299,6 +3309,7 @@ async function handleSelectExpert(req, res) {
 
     // ── 7. Resolve action item (if provided) ──────────────────────────────
     if (actionItemId) {
+      currentStep = "resolve action item";
       await client.query(
         `UPDATE public.palata_action_items
          SET is_resolved = true, status = 'resolved', resolved_at = $1
@@ -3308,6 +3319,7 @@ async function handleSelectExpert(req, res) {
     }
 
     // ── 8. Insert action item for expert: customer_selected_you ──────────
+    currentStep = "insert action item for expert";
     if (source === "dashboard") {
       await client.query(
         `INSERT INTO public.palata_action_items
@@ -3336,6 +3348,7 @@ async function handleSelectExpert(req, res) {
     }
 
     // ── 9. Insert status event ────────────────────────────────────────────
+    currentStep = "insert status event";
     if (source === "dashboard") {
       await client.query(
         `INSERT INTO public.palata_status_events
@@ -3356,7 +3369,20 @@ async function handleSelectExpert(req, res) {
     return res.json({ success: true });
   } catch (err) {
     try { await client.query("ROLLBACK"); } catch {}
-    console.error("[SELECT-EXPERT] tx failed", { stack: err.stack });
+    console.error("[SELECT-EXPERT] transaction failed", {
+      requestId,
+      matchId,
+      userId: customerId,
+      source,
+      step: currentStep,
+      code: err.code,
+      message: err.message,
+      detail: err.detail,
+      hint: err.hint,
+      table: err.table,
+      column: err.column,
+      constraint: err.constraint,
+    });
     return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) });
   } finally {
     client.release();

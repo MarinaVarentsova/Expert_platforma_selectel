@@ -1,0 +1,149 @@
+Исправь подтверждённую ошибку статусов в production handler:
+
+POST /api/palata/requests/:requestId/select-expert
+
+Не менять схему базы данных.
+Не добавлять значения в enum.
+Не менять архитектуру и бизнес-процесс.
+
+Фактический enum public.palata_match_status содержит только:
+
+proposed
+selected_by_customer
+accepted
+declined
+expired
+cancelled
+
+Подтверждённая production-ошибка:
+
+step: guard check accepted_work
+code: 22P02
+message: invalid input value for enum palata_match_status: "accepted_work"
+
+Причина:
+
+accepted_work относится не к palata_request_matches.status, а к:
+
+public.palata_request_contacts.expert_status
+
+Также проверь ранее найденное использование значения contacts_opened:
+его тоже нет в enum palata_match_status.
+
+Сделай строго следующее.
+
+1. В artifacts/palata/server.js найди production handler:
+
+POST /api/palata/requests/:requestId/select-expert
+
+и оба варианта source:
+- dashboard
+- detail
+
+2. Исправь guard check accepted_work.
+
+Неверная проверка через:
+
+public.palata_request_matches.status = 'accepted_work'
+
+должна быть полностью удалена.
+
+Правильная проверка:
+
+SELECT 1
+FROM public.palata_request_contacts
+WHERE request_id = $1
+  AND expert_id = $2
+  AND expert_status = 'accepted_work'
+LIMIT 1
+
+Используй фактические параметры requestId и expertId текущего handler.
+
+Смысл guard сохранить:
+если выбранный эксперт уже принял заказ в работу, повторный выбор или замена эксперта запрещены.
+
+3. Проверь UPDATE выбранного match.
+
+При выборе эксперта заказчиком статус выбранного match должен быть:
+
+selected_by_customer
+
+Не использовать для palata_request_matches.status:
+
+accepted_work
+contacts_opened
+completed
+
+4. Статусы других предложенных экспертов менять только согласно существующей рабочей логике и только на допустимые значения enum, например declined или cancelled, если именно это предусмотрено исходным кодом.
+
+Не придумывать новый переход.
+
+5. Проверить разделение статусов:
+
+palata_request_matches.status:
+- proposed
+- selected_by_customer
+- accepted
+- declined
+- expired
+- cancelled
+
+palata_request_contacts.expert_status:
+- accepted_work
+- completed
+- другие предусмотренные текстовые рабочие статусы
+
+6. При успешном select-expert транзакция должна полностью сохранить прежнюю логику:
+
+- проверить владельца заказа;
+- проверить match;
+- проверить accepted_work через palata_request_contacts;
+- установить выбранному match status = selected_by_customer;
+- обработать остальные matches по существующей логике;
+- записать assigned_expert_id в palata_requests;
+- изменить статус заказа по существующей логике;
+- создать или обновить palata_request_contacts;
+- обработать action items;
+- создать status event;
+- COMMIT.
+
+7. Не убирать транзакцию и rollback.
+Не возвращать фиктивный success.
+Не пропускать контакты, события и action items.
+Не менять frontend.
+Не менять другие маршруты.
+
+8. Сохрани currentStep и подробный catch-лог.
+
+9. Сделай поиск по artifacts/palata/server.js и подтверди:
+
+- accepted_work нигде не сравнивается с palata_request_matches.status;
+- contacts_opened нигде не записывается в palata_request_matches.status;
+- completed нигде не записывается в palata_request_matches.status;
+- selected_by_customer используется при выборе эксперта заказчиком;
+- accepted_work проверяется через palata_request_contacts.expert_status.
+
+10. Выполни:
+
+node --check artifacts/palata/server.js
+
+pnpm --filter @workspace/palata run build
+
+11. Сделай commit:
+
+fix: align expert selection status domains
+
+12. Сделай push в main.
+
+В конце покажи только:
+
+- старый guard SQL;
+- новый guard SQL;
+- старый UPDATE match;
+- новый UPDATE match;
+- подтверждение отсутствия недопустимых match-статусов;
+- изменённые файлы;
+- node --check;
+- build;
+- commit hash;
+- статус push.

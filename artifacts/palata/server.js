@@ -3219,13 +3219,17 @@ async function handleSelectExpert(req, res) {
       }
     }
 
-    // ── Guard: detail — no expert has accepted_work yet ───────────────────
+    // ── Guard: detail — selected expert has not yet accepted_work ─────────
     if (source === "detail") {
       currentStep = "guard check accepted_work";
       const inWorkRow = (await client.query(
-        `SELECT id FROM public.palata_request_matches
-         WHERE request_id = $1 AND status = 'accepted_work' LIMIT 1`,
-        [requestId],
+        `SELECT 1
+         FROM public.palata_request_contacts
+         WHERE request_id = $1
+           AND expert_id = $2
+           AND expert_status = 'accepted_work'
+         LIMIT 1`,
+        [requestId, expertId],
       )).rows[0];
       if (inWorkRow) {
         await client.query("ROLLBACK");
@@ -3256,14 +3260,12 @@ async function handleSelectExpert(req, res) {
     const expertEmail = expertRow?.email ?? null;
 
     // ── 4. Update match status ────────────────────────────────────────────
-    //   dashboard → contacts_opened  |  detail → proposed
     currentStep = "update match status";
-    const matchStatus = source === "dashboard" ? "contacts_opened" : "proposed";
     await client.query(
       `UPDATE public.palata_request_matches
-       SET status = $1, responded_at = $2
-       WHERE id = $3`,
-      [matchStatus, now, matchId],
+       SET status = 'selected_by_customer', responded_at = $1
+       WHERE id = $2`,
+      [now, matchId],
     );
 
     // ── 5. Update request (dashboard only) ───────────────────────────────

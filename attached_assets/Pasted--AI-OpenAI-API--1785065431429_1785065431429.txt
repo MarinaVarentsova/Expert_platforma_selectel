@@ -1,0 +1,173 @@
+Нужно безопасно переключить серверный AI-запрос проекта Палаты с прямого OpenAI API на уже работающий AI Gateway.
+
+Рабочий Gateway:
+
+https://ai-gateway-core.vercel.app/api/chat
+
+Gateway уже проверен и успешно возвращает chat.completion от OpenAI.
+
+Новые переменные окружения будут добавлены в Coolify:
+
+AI_GATEWAY_URL=https://ai-gateway-core.vercel.app/api/chat
+AI_GATEWAY_TOKEN=<секретный токен>
+
+Важно: сначала изучи фактический текущий код и измени только серверный вызов OpenAI. Не делай рефакторинг проекта.
+
+Этап 1. Аудит до изменений
+
+1. Найди все места, где используются:
+
+- https://api.openai.com
+- /v1/chat/completions
+- OPENAI_API_KEY
+- Authorization: Bearer
+- fetch к OpenAI
+- OpenAI SDK
+
+2. Определи, какой именно файл обслуживает production-запрос AI.
+
+Ориентир из production-логов:
+
+[AI-PROD] Запрос получен
+[AI-PROD] OPENAI_API_KEY присутствует
+[AI-PROD] отправляет запрос в OpenAI
+[AI-PROD] Статус OpenAI HTTP
+
+3. Перед изменениями покажи кратко:
+
+- файл фактического production-вызова;
+- текущий URL;
+- текущие заголовки;
+- текущую проверку переменных окружения.
+
+После аудита продолжай изменения автоматически, не останавливайся для подтверждения.
+
+Этап 2. Точечное изменение
+
+В фактическом production-вызове замени только транспорт до OpenAI.
+
+Было примерно:
+
+const response = await fetch(
+  "https://api.openai.com/v1/chat/completions",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+    },
+    body: JSON.stringify(payload)
+  }
+);
+
+Должно стать:
+
+const gatewayUrl =
+  process.env.AI_GATEWAY_URL ||
+  "https://ai-gateway-core.vercel.app/api/chat";
+
+if (!process.env.AI_GATEWAY_TOKEN) {
+  console.error("[AI-PROD] AI_GATEWAY_TOKEN отсутствует");
+  return res.status(500).json({
+    error: "AI gateway is not configured"
+  });
+}
+
+const response = await fetch(gatewayUrl, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-api-key": process.env.AI_GATEWAY_TOKEN
+  },
+  body: JSON.stringify(payload)
+});
+
+Требования:
+
+1. Удали из этого запроса заголовок:
+
+Authorization: Bearer ${process.env.OPENAI_API_KEY}
+
+2. Добавь:
+
+"x-api-key": process.env.AI_GATEWAY_TOKEN
+
+3. Не меняй payload.
+
+Сохрани без изменений:
+
+- model;
+- messages;
+- temperature;
+- response_format;
+- системный промпт;
+- базу знаний;
+- доступные маршруты;
+- формат ответа клиенту;
+- обработку результата;
+- бизнес-логику.
+
+4. Замени проверку перед AI-запросом:
+
+OPENAI_API_KEY
+
+на:
+
+AI_GATEWAY_TOKEN
+
+5. Логи вида:
+
+OPENAI_API_KEY присутствует
+
+замени на:
+
+AI_GATEWAY_TOKEN присутствует
+
+Не выводи значение токена.
+
+6. Не используй переменные с префиксом VITE_ для Gateway.
+
+7. Не переноси AI-вызов во frontend.
+
+8. Не удаляй пока поддержку других переменных проекта.
+
+9. Не удаляй OPENAI_API_KEY из Coolify и не меняй настройки Coolify — это будет сделано вручную после тестирования.
+
+10. Добавь в .env.example, если файл существует:
+
+AI_GATEWAY_URL=https://ai-gateway-core.vercel.app/api/chat
+AI_GATEWAY_TOKEN=
+
+Не записывай реальный токен в GitHub или в файлы проекта.
+
+Этап 3. Проверка
+
+1. Выполни доступную проверку:
+
+- node --check изменённого серверного файла;
+- npm run build или pnpm run build, если команда уже существует в проекте.
+
+2. Убедись, что production-код больше не вызывает:
+
+https://api.openai.com/v1/chat/completions
+
+3. Убедись, что AI_GATEWAY_TOKEN используется только в серверном коде.
+
+4. Покажи:
+
+- изменённые файлы;
+- старый и новый фрагмент AI-вызова;
+- результаты проверок;
+- наличие или отсутствие других прямых вызовов OpenAI.
+
+5. Не меняй ничего, кроме необходимого переключения AI-запроса.
+
+6. Не создавай новый проект, новый сервер, новый endpoint или новый Gateway.
+
+7. Не делай commit и push до завершения всех проверок.
+
+После успешной проверки сделай один commit:
+
+fix: route production AI through gateway
+
+И push в текущую ветку проекта Палаты.

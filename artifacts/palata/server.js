@@ -2742,7 +2742,20 @@ async function handleRequestDetail(req, res) {
         [requestId],
       ),
       client.query(
-        `SELECT *
+        `SELECT
+             id,
+             request_id,
+             expert_id,
+             revealed_at,
+             customer_phone,
+             customer_email,
+             expert_phone,
+             expert_email,
+             contact_opened_at,
+             expert_status,
+             expert_status_updated_at,
+             failure_reason,
+             expert_comment
          FROM public.palata_request_contacts
          WHERE request_id = $1
          ORDER BY revealed_at ASC`,

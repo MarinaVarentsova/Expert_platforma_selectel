@@ -27,8 +27,8 @@ if (!PALATA_DATABASE_URL) {
 }
 
 console.log(
-  "[AI-PROD] OPENAI_API_KEY at startup:",
-  process.env.OPENAI_API_KEY ? "present" : "missing",
+  "[AI-PROD] AI_GATEWAY_TOKEN at startup:",
+  process.env.AI_GATEWAY_TOKEN ? "present" : "missing",
 );
 
 let dbConfig = null;
@@ -5250,10 +5250,10 @@ app.get("/api/palata/action-items/counts", (req, res) => {
 async function handleAiDetectDirection(req, res) {
   console.log("[AI-PROD] request received");
 
-  const apiKey = process.env["OPENAI_API_KEY"];
-  console.log("[AI-PROD] OPENAI_API_KEY present=" + (apiKey ? "true" : "false"));
+  const gatewayToken = process.env["AI_GATEWAY_TOKEN"];
+  console.log("[AI-PROD] AI_GATEWAY_TOKEN присутствует=" + (gatewayToken ? "true" : "false"));
 
-  if (!apiKey) {
+  if (!gatewayToken) {
     console.log("[AI-PROD] returning error code=503");
     res.status(503).json({ error: "AI service not configured" });
     return;
@@ -5273,8 +5273,8 @@ async function handleAiDetectDirection(req, res) {
     return;
   }
 
-  console.log("[AI-PROD] sending request to OpenAI");
-  const result = await detectDirection(description, availableDirections, apiKey);
+  console.log("[AI-PROD] sending request to AI Gateway");
+  const result = await detectDirection(description, availableDirections, gatewayToken);
   console.log("[AI-PROD] OpenAI HTTP status=" + result.httpStatus);
 
   if (result.status === "openai_error") {

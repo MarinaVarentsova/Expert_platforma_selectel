@@ -32,8 +32,8 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  const apiKey = process.env["OPENAI_API_KEY"];
-  if (!apiKey) {
+  const gatewayToken = process.env["AI_GATEWAY_TOKEN"];
+  if (!gatewayToken) {
     return new Response(JSON.stringify({ error: "AI service not configured" }), {
       status: 503,
       headers: { "Content-Type": "application/json" },
@@ -81,11 +81,13 @@ ${directionList}
 или если не определено:
 {"detected": false, "direction_name": null, "confidence": 0, "reason": "причина", "matched_markers": []}`;
 
-  const openAiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+  const gatewayUrl = process.env.AI_GATEWAY_URL || "https://ai-gateway-core.vercel.app/api/chat";
+
+  const openAiResponse = await fetch(gatewayUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
+      "x-api-key": gatewayToken,
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",

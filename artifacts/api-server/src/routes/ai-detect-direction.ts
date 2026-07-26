@@ -5,9 +5,9 @@ import { detectDirection } from "@workspace/ai-detect";
 const router: IRouter = Router();
 
 router.post("/ai-detect-direction", async (req, res) => {
-  const apiKey = process.env["OPENAI_API_KEY"];
-  if (!apiKey) {
-    req.log.error("OPENAI_API_KEY not configured");
+  const gatewayToken = process.env["AI_GATEWAY_TOKEN"];
+  if (!gatewayToken) {
+    req.log.error("AI_GATEWAY_TOKEN not configured");
     res.status(503).json({ error: "AI service not configured" });
     return;
   }
@@ -28,7 +28,7 @@ router.post("/ai-detect-direction", async (req, res) => {
   req.log.info({ descriptionLength: description.length }, "AI direction detection started");
 
   try {
-    const result = await detectDirection(description, availableDirections, apiKey);
+    const result = await detectDirection(description, availableDirections, gatewayToken);
 
     if (result.status === "openai_error") {
       req.log.error({ status: result.httpStatus, errText: result.errText }, "OpenAI API error");

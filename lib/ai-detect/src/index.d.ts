@@ -55,5 +55,5 @@ export type DetectResult =
 export declare function detectDirection(
   description: string,
   availableDirections: Direction[],
-  apiKey: string,
+  gatewayToken: string,
 ): Promise<DetectResult>;

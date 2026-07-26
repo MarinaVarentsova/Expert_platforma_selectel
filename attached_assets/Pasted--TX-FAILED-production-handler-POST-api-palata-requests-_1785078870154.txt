@@ -1,0 +1,128 @@
+Исправь только ошибку TX_FAILED в production handler:
+
+POST /api/palata/requests/:requestId/select-expert
+
+Важный подтверждённый факт:
+
+public.palata_status_events корректна.
+Во всех схемах и во всём коде используются:
+entity_type + entity_id.
+
+Колонки request_id там никогда не было.
+Не добавлять request_id.
+Не менять SQL palata_status_events.
+
+Текущее состояние заказа после неудачного выбора:
+
+palata_requests:
+- status = expert_selection
+- assigned_expert_id = NULL
+
+palata_request_matches:
+- status = proposed
+- responded_at = NULL
+
+palata_request_contacts:
+- записей нет
+
+Значит транзакция полностью откатывается.
+
+Сделай строго следующее.
+
+1. Найди оба варианта handler select-expert:
+- source = dashboard
+- source = detail
+
+2. Для каждого варианта выпиши всю последовательность SQL внутри BEGIN...COMMIT по шагам.
+
+3. Добавь переменную:
+
+let currentStep = "start";
+
+Перед каждым SQL присваивай ей понятное значение, например:
+
+currentStep = "load request";
+currentStep = "load match";
+currentStep = "update selected match";
+currentStep = "reject other matches";
+currentStep = "update request";
+currentStep = "insert contacts";
+currentStep = "insert status event";
+currentStep = "create action item";
+
+4. В catch после ROLLBACK вывести:
+
+console.error("[SELECT-EXPERT] transaction failed", {
+  requestId,
+  matchId,
+  userId,
+  source,
+  step: currentStep,
+  code: error.code,
+  message: error.message,
+  detail: error.detail,
+  hint: error.hint,
+  table: error.table,
+  column: error.column,
+  constraint: error.constraint
+});
+
+Не логировать JWT, Authorization, пароли, секреты и строки подключения.
+
+5. Затем статически сравни каждый SQL этой транзакции с фактической Selectel-схемой таблиц:
+
+- palata_requests
+- palata_request_matches
+- palata_request_contacts
+- palata_status_events
+- palata_action_items
+
+Особенно проверить:
+- реальные enum-значения status;
+- NOT NULL колонки;
+- UNIQUE constraints;
+- foreign keys;
+- типы UUID;
+- INSERT в palata_request_contacts;
+- INSERT/UPDATE в palata_action_items.
+
+6. Найди конкретную причину падения и исправь только её.
+
+Запрещено:
+- убирать транзакцию;
+- отключать rollback;
+- пропускать запись контактов;
+- пропускать событие;
+- возвращать фиктивный success;
+- менять бизнес-статусы без доказательства;
+- добавлять новые колонки без доказательства.
+
+7. После исправления транзакция должна атомарно:
+- пометить выбранный match;
+- отклонить остальные matches, если это предусмотрено;
+- записать assigned_expert_id в palata_requests;
+- изменить статус заказа;
+- создать palata_request_contacts;
+- создать palata_status_events;
+- создать/обновить action item;
+- COMMIT.
+
+8. Выполни:
+node --check artifacts/palata/server.js
+pnpm --filter @workspace/palata run build
+
+9. Создай commit:
+fix: complete select expert transaction on Selectel
+
+10. Сделай push в main.
+
+В конце покажи:
+- точный падавший шаг;
+- код и текст ошибки PostgreSQL;
+- старый SQL;
+- исправленный SQL;
+- изменённые файлы;
+- node --check;
+- build;
+- commit hash;
+- статус push.

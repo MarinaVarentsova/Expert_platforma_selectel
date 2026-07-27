@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { randomUUID } from "crypto";
 import pg from "pg";
-import { detectDirection, KNOWLEDGE_BASE_ENTRIES } from "@workspace/ai-detect";
+import { detectDirection, KNOWLEDGE_BASE_ENTRIES, checkLocalMarkers, CONSTRUCTION_DIRECTION_NAME } from "@workspace/ai-detect";
 const { Pool } = pg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -54,6 +54,31 @@ const palataPool = PALATA_DATABASE_URL
     })
   : null;
 const pool = palataPool;
+
+// ── Construction direction cache ──────────────────────────────────────────────
+// Resolved once from DB; never changes at runtime.
+let _constructionDirCache = null;
+
+async function getConstructionDirection(poolInstance) {
+  if (_constructionDirCache) return _constructionDirCache;
+  if (!poolInstance) return null;
+  const client = await poolInstance.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT id, name, is_active
+         FROM public.palata_expertise_directions
+        WHERE name = $1
+        LIMIT 1`,
+      [CONSTRUCTION_DIRECTION_NAME],
+    );
+    if (rows.length > 0 && rows[0].is_active) {
+      _constructionDirCache = rows[0];
+    }
+    return _constructionDirCache ?? null;
+  } finally {
+    client.release();
+  }
+}
 
 const app = express();
 
@@ -4654,6 +4679,66 @@ async function handleCreateRequest(req, res) {
     return res.status(503).json({ success: false, error: "DB_UNAVAILABLE", message: "База данных недоступна" });
   }
 
+  // 2.5. Server-side expertise direction guard ─────────────────────────────
+  // Verify the direction UUID refers to the one allowed direction ("Строительно-техническая экспертиза")
+  // and that the description passes the local knowledge-base check.
+  // This blocks any direct API bypass regardless of what the frontend sent.
+  {
+    const constructionDir = await getConstructionDirection(pool);
+    const descTrimmed = String(description).trim();
+
+    if (!constructionDir) {
+      console.warn("[AI-DIRECTION-GUARD]", {
+        descriptionLength: descTrimmed.length,
+        detected: false, directionName: null, directionId: String(expertise_direction_id),
+        confidence: 0, matchedMarkers: [], matchedKnowledgeScenario: null,
+        stopFactor: null, allowed: false, rejectionCode: "DIRECTION_LOOKUP_FAILED",
+      });
+      return res.status(503).json({ success: false, error: "DB_UNAVAILABLE", message: "Конфигурация направлений недоступна" });
+    }
+
+    if (String(expertise_direction_id) !== constructionDir.id) {
+      console.log("[AI-DIRECTION-GUARD]", {
+        descriptionLength: descTrimmed.length,
+        detected: false, directionName: null, directionId: String(expertise_direction_id),
+        confidence: 0, matchedMarkers: [], matchedKnowledgeScenario: null,
+        stopFactor: null, allowed: false, rejectionCode: "UNSUPPORTED_EXPERTISE",
+      });
+      return res.status(422).json({
+        success: false,
+        code: "UNSUPPORTED_EXPERTISE",
+        error: "На платформе пока нет экспертов по указанному направлению",
+      });
+    }
+
+    // Local marker check — stop-factors are hard-blocked; ambiguous cases pass through
+    // (AI gate was already applied in /api/ai-detect-direction before order creation)
+    const localCheck = checkLocalMarkers(descTrimmed);
+    const guardAllowed = !localCheck.isStopFactor; // stop-factor = hard reject; everything else passes
+    const rejectionCode = guardAllowed ? null : "STOP_FACTOR";
+
+    console.log("[AI-DIRECTION-GUARD]", {
+      descriptionLength: descTrimmed.length,
+      detected: localCheck.matched,
+      directionName: guardAllowed ? CONSTRUCTION_DIRECTION_NAME : null,
+      directionId: guardAllowed ? constructionDir.id : null,
+      confidence: null,
+      matchedMarkers: localCheck.markers,
+      matchedKnowledgeScenario: localCheck.scenario,
+      stopFactor: localCheck.stopFactorReason,
+      allowed: guardAllowed,
+      rejectionCode,
+    });
+
+    if (!guardAllowed) {
+      return res.status(422).json({
+        success: false,
+        code: "UNSUPPORTED_EXPERTISE",
+        error: "На платформе пока нет экспертов по указанному направлению",
+      });
+    }
+  }
+
   // 3. Transaction: INSERT palata_requests + INSERT palata_status_events
   const client = await pool.connect();
   try {
@@ -5480,81 +5565,143 @@ app.get("/api/palata/action-items/counts", (req, res) => {
 
 async function handleAiDetectDirection(req, res) {
   console.log("[AI-PROD] request received");
+  console.log("[AI-PROD] knowledge base entries=" + KNOWLEDGE_BASE_ENTRIES);
+
+  const body = req.body ?? {};
+  const description = (body.description ?? "").trim();
+
+  console.log("[AI-PROD] description length=" + description.length);
+
+  if (!description) {
+    console.log("[AI-PROD] returning error code=400");
+    res.status(400).json({ error: "Invalid input: description required" });
+    return;
+  }
+
+  // Resolve the single allowed direction from DB — server controls the list, not the client
+  const constructionDir = await getConstructionDirection(pool);
+  if (!constructionDir) {
+    console.warn("[AI-PROD] construction direction not found in DB");
+    res.status(503).json({ error: "Direction configuration unavailable" });
+    return;
+  }
+  const allowedDirections = [{ id: constructionDir.id, name: constructionDir.name }];
 
   const gatewayToken = process.env["AI_GATEWAY_TOKEN"];
   console.log("[AI-PROD] AI_GATEWAY_TOKEN присутствует=" + (gatewayToken ? "true" : "false"));
 
+  // ── Fallback: AI unavailable → use local markers ──────────────────────────
   if (!gatewayToken) {
-    console.log("[AI-PROD] returning error code=503");
-    res.status(503).json({ error: "AI service not configured" });
-    return;
-  }
-
-  const body = req.body ?? {};
-  const description = (body.description ?? "").trim();
-  const availableDirections = body.availableDirections;
-
-  console.log("[AI-PROD] description length=" + description.length);
-  console.log("[AI-PROD] available directions count=" + (Array.isArray(availableDirections) ? availableDirections.length : 0));
-  console.log("[AI-PROD] knowledge base entries=" + KNOWLEDGE_BASE_ENTRIES);
-
-  if (!description || !Array.isArray(availableDirections) || availableDirections.length === 0) {
-    console.log("[AI-PROD] returning error code=400");
-    res.status(400).json({ error: "Invalid input: description and availableDirections required" });
-    return;
-  }
-
-  console.log("[AI-PROD] sending request to AI Gateway");
-  const result = await detectDirection(description, availableDirections, gatewayToken);
-  console.log("[AI-PROD] OpenAI HTTP status=" + result.httpStatus);
-
-  if (result.status === "openai_error") {
-    console.log("[AI-PROD] returning error code=502");
-    res.status(502).json({ error: "AI service error" });
-    return;
-  }
-
-  if (result.status === "parse_error") {
-    console.log("[AI-PROD] selected direction=null (parse error)");
-    console.log("[AI-PROD] matched direction=false");
-    console.log("[AI-PROD] returning success");
-    res.json({ detected: false, direction_id: null, direction_name: null, confidence: 0, reason: "Parse error", matched_markers: [] });
-    return;
-  }
-
-  console.log("[AI-PROD] selected direction=\"" + (result.aiSelectedName ?? "null") + "\"");
-
-  if (result.status === "not_detected") {
-    console.log("[AI-PROD] matched direction=false");
-    console.log("[AI-PROD] returning success");
-    res.json({
-      detected: false,
-      direction_id: null,
-      direction_name: null,
-      confidence: result.confidence,
-      reason: result.reason,
-      matched_markers: result.matched_markers,
+    console.log("[AI-PROD] AI Gateway not configured — using local marker fallback");
+    const local = checkLocalMarkers(description);
+    console.log("[AI-DIRECTION-GUARD]", {
+      descriptionLength: description.length,
+      detected: local.matched,
+      directionName: local.matched ? CONSTRUCTION_DIRECTION_NAME : null,
+      directionId: local.matched ? constructionDir.id : null,
+      confidence: null,
+      matchedMarkers: local.markers,
+      matchedKnowledgeScenario: local.scenario,
+      stopFactor: local.stopFactorReason,
+      allowed: local.matched,
+      rejectionCode: local.matched ? null : (local.isStopFactor ? "STOP_FACTOR" : "NO_CONSTRUCTION_MARKERS"),
     });
-    return;
-  }
-
-  if (result.status === "no_match") {
-    console.log("[AI-PROD] matched direction=false");
-    console.log("[AI-PROD] returning success");
-    res.json({
+    if (local.matched) {
+      return res.json({
+        detected: true,
+        direction_id: constructionDir.id,
+        direction_name: constructionDir.name,
+        confidence: 0.75,
+        reason: "Локальный маркер: " + local.scenario,
+        matched_markers: local.markers,
+      });
+    }
+    return res.json({
       detected: false,
       direction_id: null,
       direction_name: null,
       confidence: 0,
-      reason: "Direction not in approved list",
-      matched_markers: result.matched_markers,
+      reason: local.isStopFactor ? ("Стоп-фактор: " + local.stopFactorReason) : "Нет признаков строительной экспертизы",
+      matched_markers: local.markers,
     });
-    return;
   }
 
-  console.log("[AI-PROD] matched direction=true");
-  console.log("[AI-PROD] returning success");
-  res.json({
+  // ── Primary: AI Gateway ───────────────────────────────────────────────────
+  console.log("[AI-PROD] sending request to AI Gateway");
+  const result = await detectDirection(description, allowedDirections, gatewayToken);
+  console.log("[AI-PROD] OpenAI HTTP status=" + result.httpStatus);
+
+  // AI error → try local fallback
+  if (result.status === "openai_error" || result.status === "parse_error") {
+    console.log("[AI-PROD] AI error/parse error — falling back to local markers");
+    const local = checkLocalMarkers(description);
+    console.log("[AI-DIRECTION-GUARD]", {
+      descriptionLength: description.length,
+      detected: local.matched,
+      directionName: local.matched ? CONSTRUCTION_DIRECTION_NAME : null,
+      directionId: local.matched ? constructionDir.id : null,
+      confidence: null,
+      matchedMarkers: local.markers,
+      matchedKnowledgeScenario: local.scenario,
+      stopFactor: local.stopFactorReason,
+      allowed: local.matched,
+      rejectionCode: local.matched ? null : (local.isStopFactor ? "STOP_FACTOR" : "NO_CONSTRUCTION_MARKERS"),
+    });
+    if (local.matched) {
+      return res.json({
+        detected: true,
+        direction_id: constructionDir.id,
+        direction_name: constructionDir.name,
+        confidence: 0.75,
+        reason: "Локальный маркер (AI недоступен): " + local.scenario,
+        matched_markers: local.markers,
+      });
+    }
+    return res.json({
+      detected: false,
+      direction_id: null,
+      direction_name: null,
+      confidence: 0,
+      reason: local.isStopFactor ? ("Стоп-фактор: " + local.stopFactorReason) : "Нет признаков строительной экспертизы (AI недоступен)",
+      matched_markers: local.markers,
+    });
+  }
+
+  console.log("[AI-PROD] selected direction=\"" + (result.aiSelectedName ?? "null") + "\"");
+
+  // ── Deterministic post-validation ─────────────────────────────────────────
+  // result.status is "detected" | "not_detected" | "no_match"
+  const aiAllowed =
+    result.status === "detected" &&
+    result.direction_name?.trim().toLowerCase() === CONSTRUCTION_DIRECTION_NAME.trim().toLowerCase() &&
+    result.confidence >= CONFIDENCE_THRESHOLD &&
+    (result.matched_markers ?? []).length > 0;
+
+  console.log("[AI-DIRECTION-GUARD]", {
+    descriptionLength: description.length,
+    detected: aiAllowed,
+    directionName: aiAllowed ? result.direction_name : null,
+    directionId: aiAllowed ? result.direction_id : null,
+    confidence: result.confidence ?? 0,
+    matchedMarkers: result.matched_markers ?? [],
+    matchedKnowledgeScenario: null,
+    stopFactor: null,
+    allowed: aiAllowed,
+    rejectionCode: aiAllowed ? null : "AI_NOT_DETECTED",
+  });
+
+  if (!aiAllowed) {
+    return res.json({
+      detected: false,
+      direction_id: null,
+      direction_name: null,
+      confidence: result.confidence ?? 0,
+      reason: result.reason ?? "Не определено",
+      matched_markers: result.matched_markers ?? [],
+    });
+  }
+
+  return res.json({
     detected: true,
     direction_id: result.direction_id,
     direction_name: result.direction_name,

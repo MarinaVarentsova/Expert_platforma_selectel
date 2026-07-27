@@ -127,22 +127,8 @@ export default function NewRequest() {
   const [aiDetectedName, setAiDetectedName] = useState<string>("");
   const [aiFailMessage, setAiFailMessage]   = useState<string>("");
 
-  const [dirDropOpen, setDirDropOpen] = useState(false);
-  const [dirSearch, setDirSearch]     = useState("");
-  const dirDropRef                    = useRef<HTMLDivElement>(null);
-  const aiWarnRef                     = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!dirDropOpen) return;
-    function handler(e: MouseEvent) {
-      if (dirDropRef.current && !dirDropRef.current.contains(e.target as Node)) {
-        setDirDropOpen(false);
-        setDirSearch("");
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [dirDropOpen]);
+  // Direction dropdown removed — direction is always resolved server-side via AI
+  const aiWarnRef = useRef<HTMLDivElement>(null);
 
   // Прокрутить к предупреждению, когда ИИ не смог определить направление
   useEffect(() => {
@@ -205,7 +191,6 @@ export default function NewRequest() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             description: form.description.trim(),
-            availableDirections: directions,
           }),
         });
 
@@ -277,6 +262,12 @@ export default function NewRequest() {
       });
       const reqBody = await reqRes.json().catch(() => null);
       console.log("[new-request] created request:", reqBody);
+      if (reqRes.status === 422 && reqBody?.code === "UNSUPPORTED_EXPERTISE") {
+        setAiStatus("manual");
+        setAiFailMessage("По этому вопросу мы пока не подбираем экспертов.\nНа платформе сейчас представлены специалисты по строительным дефектам, ремонту, заливам, пожарам, трещинам и другим повреждениям недвижимости.\nВы можете описать такую ситуацию или изменить текущий запрос.");
+        setState({ kind: "idle" });
+        return;
+      }
       if (!reqRes.ok || !reqBody?.success) {
         throw new Error(reqBody?.message ?? "Ошибка создания заявки");
       }

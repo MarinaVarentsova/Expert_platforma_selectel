@@ -1,3 +1,4 @@
+export declare const CONSTRUCTION_DIRECTION_NAME: string;
 export declare const KNOWLEDGE_BASE: string;
 export declare const CONFIDENCE_THRESHOLD: number;
 export declare const KNOWLEDGE_BASE_ENTRIES: number;
@@ -6,6 +7,16 @@ export interface Direction {
   id: string;
   name: string;
 }
+
+export interface LocalMarkerResult {
+  matched: boolean;
+  scenario: string | null;
+  isStopFactor: boolean;
+  stopFactorReason: string | null;
+  markers: string[];
+}
+
+export declare function checkLocalMarkers(description: string): LocalMarkerResult;
 
 export type DetectResult =
   | {

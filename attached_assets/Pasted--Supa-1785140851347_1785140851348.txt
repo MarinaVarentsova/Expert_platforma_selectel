@@ -1,0 +1,172 @@
+Нужно восстановить блок действий эксперта в карточке нового предложения после переноса чтения с Supabase на Selectel.
+
+Текущее состояние:
+
+1. Заказчик успешно выбирает эксперта.
+2. В Selectel:
+
+palata_request_matches.status = 'selected_by_customer'
+
+3. Для эксперта создаётся action item:
+
+action_type = 'customer_selected_you'
+assigned_role = 'expert'
+is_resolved = false
+
+4. Заказ появляется у эксперта в разделе «Требуют действия».
+5. Карточка заказа открывается.
+6. В карточке отображается заголовок «ДЕЙСТВИЯ», но кнопок нет.
+
+До последнего изменения в этой карточке работал блок действий:
+
+- «Взять в работу»;
+- «Могу начать с даты»;
+- «Отказаться».
+
+Нельзя возвращать прямые запросы к Supabase.
+
+Сделай строго следующее.
+
+1. Через git diff сравни текущую версию с родительским коммитом до:
+
+a8ac57f — fix: load expert offers and actions from Selectel
+
+Особенно сравни:
+
+artifacts/palata/src/pages/ExpertDashboard.tsx
+
+и компонент:
+
+YouAreApprovedCard
+
+2. Найди прежний JSX-блок кнопок и прежние обработчики:
+
+- принять в работу;
+- предложить дату начала;
+- отказаться.
+
+3. Определи, почему кнопки сейчас не рендерятся.
+
+Особенно проверь условия по:
+
+match.status
+actionItem.action_type
+actionItem.is_resolved
+request.status
+expert_status
+
+4. Корректное условие показа блока действий:
+
+текущий пользователь является экспертом этого match;
+
+и:
+
+match.status === 'selected_by_customer'
+
+и эксперт ещё не принял работу и не отказался.
+
+Не использовать в условии match.status:
+
+contacts_opened
+accepted_work
+completed
+
+Потому что:
+
+selected_by_customer — статус palata_request_matches;
+
+accepted_work и completed — значения
+palata_request_contacts.expert_status.
+
+5. Восстанови в карточке три действия:
+
+А. «Взять в работу»
+
+Использовать существующий backend endpoint:
+
+POST /api/palata/requests/:requestId/take-work
+
+Б. «Могу начать с даты»
+
+Найди существовавший до коммита a8ac57f обработчик, модальное окно и backend endpoint.
+
+Восстанови прежнюю рабочую логику без изменения бизнес-процесса.
+
+Не придумывай новый endpoint, пока не проверишь существующий код и git history.
+
+В. «Отказаться»
+
+Использовать существующий backend endpoint:
+
+POST /api/palata/requests/:requestId/decline
+
+Сохранить прежний выбор причины и комментарий, если они были в интерфейсе до переноса.
+
+6. Не возвращай:
+
+supabase.from(...)
+supabase.co/rest/v1
+прямое чтение palata_requests
+прямое чтение palata_request_matches
+прямое чтение palata_action_items
+
+Все данные должны продолжать поступать через backend Selectel:
+
+GET /api/palata/action-items/me
+GET /api/palata/requests/expert/matches
+
+7. Проверь, что в данные YouAreApprovedCard передаются:
+
+requestId
+matchId
+match.status
+actionItem.id
+actionItem.action_type
+необходимые данные заказа
+
+Если после переноса часть этих props потеряна — восстанови их из ответов backend, а не из Supabase.
+
+8. После успешного действия:
+
+- обновить список предложений;
+- обновить список action items;
+- обновить счётчик «Требуют действия»;
+- не оставлять старую карточку на экране.
+
+9. Не менять:
+
+- select-expert;
+- схему БД;
+- enum;
+- customer frontend;
+- AI;
+- создание заказа;
+- маршруты авторизации.
+
+10. Выполни:
+
+pnpm --filter @workspace/palata run build
+
+11. Покажи:
+
+- точную причину отсутствия кнопок;
+- старое условие рендера;
+- новое условие рендера;
+- восстановленные три обработчика;
+- фактический endpoint для «Могу начать с даты»;
+- подтверждение отсутствия Supabase в этом сценарии.
+
+12. Сделай commit:
+
+fix: restore expert offer actions
+
+13. Сделай push в main.
+
+В конце покажи только:
+
+- причину;
+- изменённые файлы;
+- три восстановленные кнопки и endpoints;
+- результат build;
+- commit hash;
+- статус push.

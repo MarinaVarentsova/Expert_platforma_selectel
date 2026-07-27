@@ -1,0 +1,182 @@
+Нужно завершить перенос кабинета эксперта с Supabase на Selectel, не меняя бизнес-логику и схему БД.
+
+Факты, подтверждённые запросами к Selectel:
+
+Для заказа:
+d4172d25-6458-4ca3-93ea-6b672c564447
+
+1. В public.palata_request_matches уже есть:
+
+status = 'selected_by_customer'
+expert_id = '9fb75762-b2a0-41bb-9044-bd02b5986f25'
+responded_at заполнен
+
+2. В public.palata_action_items уже создано действие для эксперта:
+
+assigned_to_user_id = '9fb75762-b2a0-41bb-9044-bd02b5986f25'
+assigned_role = 'expert'
+action_type = 'customer_selected_you'
+title = 'Вас выбрали по заказу ...'
+is_resolved = false
+
+3. Значит транзакция select-expert работает и данные записаны в Selectel.
+
+4. Но в кабинете эксперта:
+- заказ не появляется в «Требуют действия»;
+- нет блока «Новое предложение»;
+- браузер продолжает выполнять прямые запросы к Supabase REST, включая palata_action_items.
+
+Цель:
+кабинет эксперта должен читать новые предложения и действия только через backend Палаты, подключённый к Selectel.
+
+Сделай строго следующее.
+
+1. Найди frontend-код кабинета эксперта и страницы «Требуют действия».
+
+Найди все прямые обращения к Supabase по:
+
+- palata_action_items
+- palata_request_matches
+- palata_requests
+- palata_users
+- customer_ratings
+- supabase.from(...)
+- supabase.co/rest/v1
+
+Особое внимание:
+
+artifacts/palata/src/lib/actionItems.ts
+и страницам кабинета эксперта.
+
+2. Определи, какие данные формируют:
+
+- счётчик «Требуют действия»;
+- список в разделе «Требуют действия»;
+- статус «Новые предложения»;
+- кнопки:
+  - принять заказ;
+  - взять с определённой даты;
+  - отказаться.
+
+3. Не читать эти данные напрямую из Supabase.
+
+Использовать серверные API проекта Палаты, которые подключены к Selectel.
+
+4. Сначала найди существующие backend endpoints для:
+
+- action items текущего пользователя;
+- предложений текущего эксперта;
+- деталей заказа;
+- принять в работу;
+- указать дату начала;
+- отказаться.
+
+Если нужные endpoints уже существуют — использовать их, не создавать дубликаты.
+
+Если endpoint для action items отсутствует, создать минимальный серверный endpoint:
+
+GET /api/palata/action-items/me
+
+Он должен:
+
+- проверить авторизацию;
+- получить userId текущего пользователя;
+- читать public.palata_action_items из Selectel;
+- фильтровать:
+
+assigned_to_user_id = currentUserId
+assigned_role = 'expert'
+is_resolved = false
+
+- возвращать активные действия по created_at DESC.
+
+5. Для раздела «Новые предложения» использовать Selectel:
+
+public.palata_request_matches
+
+Фильтрация для текущего эксперта:
+
+expert_id = currentUserId
+status = 'selected_by_customer'
+
+Не делать JOIN через palata_expert_profiles.id.
+
+Подтверждённо в palata_request_matches.expert_id хранится userId эксперта.
+
+6. Для каждой записи подтянуть данные заказа из:
+
+public.palata_requests
+
+и показать её эксперту как новое предложение.
+
+7. Эксперт должен видеть предусмотренные текущей логикой действия:
+
+- «Принять в работу»;
+- «Могу начать с даты»;
+- «Отказаться».
+
+Использовать уже существующие backend-маршруты:
+
+- take-work;
+- set-can-start-from или фактический существующий аналог;
+- decline.
+
+Не переписывать их бизнес-логику.
+
+8. После успешного действия обновлять список и счётчик без прямого запроса в Supabase.
+
+9. Не менять:
+
+- select-expert;
+- схему PostgreSQL;
+- enum;
+- таблицы;
+- AI Gateway;
+- создание заказа;
+- назначение assigned_expert_id;
+- customer frontend;
+- auth service.
+
+10. Удалить или перестать использовать прямое frontend-чтение Supabase для этого сценария.
+
+Не удалять Supabase-код в других разделах без проверки.
+
+11. Проверить, что конкретная существующая запись:
+
+assigned_to_user_id = 9fb75762-b2a0-41bb-9044-bd02b5986f25
+action_type = customer_selected_you
+is_resolved = false
+
+попадает:
+
+- в счётчик «Требуют действия»;
+- в список «Требуют действия»;
+- в блок «Новые предложения».
+
+12. Выполнить:
+
+node --check artifacts/palata/server.js
+pnpm --filter @workspace/palata run build
+
+13. Провести поиск после изменений и подтвердить:
+
+- экран «Требуют действия» больше не читает palata_action_items из Supabase;
+- новые предложения читаются из Selectel через backend;
+- expert_id сравнивается с current userId;
+- существующие маршруты принятия, даты и отказа сохранены.
+
+14. Сделать commit:
+
+fix: load expert offers and actions from Selectel
+
+15. Сделать push в main.
+
+В конце показать только:
+
+- точную старую цепочку чтения из Supabase;
+- новую цепочку через backend Selectel;
+- использованные или созданные endpoints;
+- изменённые файлы;
+- результат build;
+- commit hash;
+- статус push.

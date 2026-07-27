@@ -1,0 +1,105 @@
+Исправь только frontend вкладки заказчика «Оценить эксперта».
+
+Ничего не менять в backend.
+Ничего не менять в server.js.
+Ничего не менять в БД, enum и миграциях.
+Не создавать новые endpoints.
+
+Подтверждено в Selectel для завершённого заказа:
+
+public.palata_action_items:
+- action_type = 'expert_completed_order'
+- assigned_role = 'customer'
+- status = 'open'
+- is_resolved = false
+
+public.palata_expert_ratings:
+- оценка эксперта сохраняется
+
+public.palata_status_events:
+- событие оценки сохраняется
+
+Значит backend работает. Проблема только во frontend.
+
+Сделай строго следующее.
+
+1. Найди в CustomerDashboard.tsx вкладку:
+
+«Оценить эксперта»
+
+2. Найди, откуда она загружает список ожидающих оценок.
+
+3. Удали прямое чтение Supabase для этого сценария:
+
+supabase.from("palata_action_items")
+supabase.co/rest/v1/palata_action_items
+
+4. Используй уже существующий endpoint:
+
+GET /api/palata/action-items/me
+
+5. Во вкладке показывать только записи:
+
+assigned_role = 'customer'
+action_type = 'expert_completed_order'
+status = 'open'
+is_resolved = false
+
+6. Проверь, что frontend не ожидает другой action_type, например:
+rate_expert
+expert_rating
+customer_rate_expert
+
+Эталонное значение:
+
+expert_completed_order
+
+7. При открытии карточки использовать данные action item:
+
+request_id
+assigned_to_user_id
+action_type
+payload
+id как actionItemId
+
+8. Отправку оценки оставить через уже существующий backend endpoint оценки.
+
+9. Удалить прямую запись frontend в:
+
+supabase.from("palata_status_events")
+
+Backend уже записывает событие сам. Frontend не должен дублировать эту запись.
+
+10. После успешной оценки:
+
+- закрыть action item через существующий endpoint resolve;
+- обновить список через GET /api/palata/action-items/me;
+- убрать карточку из вкладки;
+- уменьшить счётчик «Оценить эксперта».
+
+11. Проверить, что после изменений в этом сценарии нет запросов:
+
+supabase.co/rest/v1/palata_action_items
+supabase.co/rest/v1/palata_status_events
+
+12. Выполнить:
+
+pnpm --filter @workspace/palata run build
+
+13. Сделать commit:
+
+fix: load expert rating tasks from Selectel
+
+14. Push в main.
+
+В конце показать только:
+
+- старый источник данных вкладки;
+- новый источник;
+- старый фильтр action_type;
+- новый фильтр;
+- удалённую прямую запись status_events;
+- изменённый файл;
+- build;
+- commit hash;
+- статус push.

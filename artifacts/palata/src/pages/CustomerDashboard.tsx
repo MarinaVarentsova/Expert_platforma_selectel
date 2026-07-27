@@ -146,25 +146,22 @@ export default function CustomerDashboard() {
   const [myRating, setMyRating] = useState<number | null>(null);
 
   const loadPendingRatings = async (userId: string) => {
-    // Load open expert_completed_order action items assigned to this customer
-    const { data: aiData, error: aiErr } = await supabase
-      .from("palata_action_items")
-      .select("id, request_id, expert_id, payload, created_at")
-      .eq("assigned_to_user_id", userId)
-      .eq("action_type", "expert_completed_order")
-      .eq("is_resolved", false)
-      .order("created_at", { ascending: false });
+    // Load via GET /api/palata/action-items/me (no direct Supabase)
+    const allItems = await loadOpenActionItems(userId);
+    const aiData = allItems.filter(
+      i =>
+        i.action_type === "expert_completed_order" &&
+        i.assigned_role === "customer" &&
+        !i.is_resolved,
+    );
 
-    if (aiErr) { setPendingRatingsState({ kind: "error", message: aiErr.message }); return; }
-    if (!aiData || aiData.length === 0) {
+    if (aiData.length === 0) {
       setPendingRatingsState({ kind: "ok", items: [] });
       setRatedRequestIds(new Set());
       return;
     }
 
-    type AiRow = { id: string; request_id: string; expert_id: string | null; payload: Record<string, unknown>; created_at: string };
-    const rows = aiData as AiRow[];
-    const reqIds = [...new Set(rows.map(a => a.request_id))];
+    const reqIds = [...new Set(aiData.map(a => a.request_id).filter(Boolean))] as string[];
 
     // Filter out already rated
     const ratingsRes = await fetch(
@@ -175,7 +172,7 @@ export default function CustomerDashboard() {
     const ratedIds = new Set((ratings ?? []).map((r: { request_id: string }) => r.request_id));
     setRatedRequestIds(ratedIds);
 
-    const unrated = rows.filter(a => !ratedIds.has(a.request_id));
+    const unrated = aiData.filter(a => !ratedIds.has(a.request_id ?? ""));
     if (unrated.length === 0) {
       setPendingRatingsState({ kind: "ok", items: [] });
       return;
@@ -183,7 +180,7 @@ export default function CustomerDashboard() {
 
     // Fetch expert info and request titles in parallel
     const expertIds = [...new Set(unrated.map(a => a.expert_id).filter(Boolean))] as string[];
-    const unratedReqIds = [...new Set(unrated.map(a => a.request_id))];
+    const unratedReqIds = [...new Set(unrated.map(a => a.request_id).filter(Boolean))] as string[];
 
     const [{ data: experts }, { data: reqs }] = await Promise.all([
       fetchUsers(expertIds).then(rows => ({ data: rows, error: null })),
@@ -198,13 +195,14 @@ export default function CustomerDashboard() {
     );
 
     const items: PendingExpertRating[] = unrated.map(a => {
-      const eid = a.expert_id ?? (a.payload.expert_id as string | null) ?? "";
+      const eid = a.expert_id ?? (a.payload?.expert_id as string | null) ?? "";
       const expert = expertMap[eid];
-      const req = reqMap[a.request_id];
+      const rid = a.request_id ?? "";
+      const req = reqMap[rid];
       return {
         action_item_id:    a.id,
-        request_id:        a.request_id,
-        title:             req?.title ?? a.request_id,
+        request_id:        rid,
+        title:             req?.title ?? rid,
         assigned_expert_id: eid,
         expert_name:       expert?.full_name ?? null,
         expert_email:      expert?.email ?? null,
@@ -282,6 +280,7 @@ export default function CustomerDashboard() {
   function reloadActionItems() {
     if (guard.status !== "ok") return;
     loadOpenActionItems(guard.user.id).then(items => setActionItems(filterCustomerActionItems(items)));
+    loadPendingRatings(guard.user.id);
     reloadRequests();
   }
 
@@ -358,11 +357,8 @@ export default function CustomerDashboard() {
     // 2. Resolve the expert_completed_order action item
     await resolveActionItem(item.action_item_id);
 
-    // 3. Status event
-    await logStatusEvent(item.request_id!, "completed", "completed",
-      `Заказчик оценил эксперта: ${form.score}/5`);
-
-    // 4. Email test event to expert
+    // 3. Email test event to expert
+    // (status_event is written by the backend — no direct supabase write here)
     if (item.expert_email) {
       await logEmailTestEvent(item.assigned_expert_id, item.expert_email,
         "customer_rated_expert",

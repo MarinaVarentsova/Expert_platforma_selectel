@@ -115,14 +115,13 @@ type DocsState =
 // ─── Lookup tables ────────────────────────────────────────────────────────────
 
 
-// Валидные значения enum palata_decline_reason в Selectel PostgreSQL.
-// not_competent отсутствует в Selectel: «Вне компетенции» отображается как other.
+// Фактические значения enum public.palata_decline_reason в Selectel PostgreSQL.
 const DECLINE_REASONS: { value: string; label: string }[] = [
-  { value: "busy",       label: "Занят" },
-  { value: "other",      label: "Вне компетенции / другое" },
-  { value: "location",   label: "Регион не подходит" },
-  { value: "conflict",   label: "Конфликт интересов" },
-  { value: "conditions", label: "Условия не подходят" },
+  { value: "busy",                 label: "Занят" },
+  { value: "not_my_specialization", label: "Вне компетенции" },
+  { value: "wrong_region",         label: "Регион не подходит" },
+  { value: "price",                label: "Цена / условия" },
+  { value: "other",                label: "Другое" },
 ];
 
 // Используется только для отображения сохранённого decline_reason в карточках канбана

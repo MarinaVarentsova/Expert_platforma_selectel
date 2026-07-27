@@ -3792,15 +3792,19 @@ async function handleDeclineRequest(req, res) {
     return res.status(400).json({ success: false, error: "MISSING_REASON" });
   }
 
-  // not_competent сохранён для обратной совместимости со старыми записями Supabase.
-  // Новые отказы используют 'other' (frontend больше не отправляет not_competent).
+  // Фактические значения enum public.palata_decline_reason в Selectel.
+  // Устаревшие ключи сохранены для обратной совместимости со старыми записями Supabase.
   const DECLINE_LABEL_RU = {
-    busy:          "Занят",
-    not_competent: "Вне компетенции",   // backward compat
-    location:      "Регион не подходит",
-    conflict:      "Конфликт интересов",
-    conditions:    "Условия не подходят",
-    other:         "Вне компетенции / другое",
+    busy:                  "Занят",
+    not_my_specialization: "Вне компетенции",
+    wrong_region:          "Регион не подходит",
+    price:                 "Цена / условия",
+    other:                 "Другое",
+    // backward compat — старые записи из Supabase
+    not_competent:         "Вне компетенции",
+    location:              "Регион не подходит",
+    conflict:              "Конфликт интересов",
+    conditions:            "Условия не подходят",
   };
 
   const client = await pool.connect();

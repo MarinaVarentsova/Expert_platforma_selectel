@@ -5041,9 +5041,10 @@ async function handleCustomerCancel(req, res) {
     const requestTitle = reqRow.title ?? "";
     const shortReqId = `#${requestId.slice(0, 8).toUpperCase()}`;
     await client.query("UPDATE public.palata_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1", [requestId]);
+    // Cast to enum array — prevents "operator does not exist: palata_match_status <> text"
     const terminalStatuses = ["declined", "completed", "withdrawn", "closed_by_other_expert", "customer_declined_start_date"];
     const activeMatchRows = (await client.query(
-      "SELECT id, expert_id FROM public.palata_request_matches WHERE request_id = $1 AND status != ALL($2::text[])",
+      "SELECT id, expert_id FROM public.palata_request_matches WHERE request_id = $1 AND status != ALL($2::public.palata_match_status[])",
       [requestId, terminalStatuses],
     )).rows;
     if (activeMatchRows.length > 0) {
@@ -5065,8 +5066,21 @@ async function handleCustomerCancel(req, res) {
     await client.query("COMMIT");
     console.log("[CUSTOMER-CANCEL] success", { callerId, requestId, oldStatus, affectedExperts: uniqueExpertIds.length });
     return res.json({ success: true });
-  } catch (err) { try { await client.query("ROLLBACK"); } catch {} console.error("[CUSTOMER-CANCEL] tx failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) }); }
-  finally { client.release(); }
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    console.error("[CUSTOMER-CANCEL] tx failed", {
+      step: err._step ?? "unknown",
+      code: err.code,
+      message: err.message,
+      detail: err.detail,
+      hint: err.hint,
+      table: err.table,
+      column: err.column,
+      constraint: err.constraint,
+      stack: err.stack,
+    });
+    return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) });
+  } finally { client.release(); }
 }
 app.post("/api/palata/requests/:requestId/cancel", (req, res) => {
   handleCustomerCancel(req, res).catch(err => { console.error("[CUSTOMER-CANCEL] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });

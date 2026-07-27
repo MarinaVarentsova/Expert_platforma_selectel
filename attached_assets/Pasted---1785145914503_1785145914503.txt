@@ -1,0 +1,262 @@
+Нужно целевым образом исправить первый этап дорожки эксперта после выбора его заказчиком.
+
+Не делать общий рефакторинг.
+Не менять схему БД наугад.
+Не добавлять новые статусы без проверки миграций и enum.
+Не менять дорожку заказчика, AI, matching и select-expert.
+
+Текущее подтверждённое состояние:
+
+1. После выбора заказчиком:
+
+palata_request_matches.status = 'selected_by_customer'
+
+Создаётся action item:
+
+action_type = 'customer_selected_you'
+assigned_role = 'expert'
+status = 'open'
+is_resolved = false
+
+2. Заказ появляется в разделе «Требуют действия».
+
+3. Но в «Мои заказы» колонка «Новые предложения» остаётся пустой.
+
+По бизнес-логике выбранный заказ должен одновременно:
+
+- отображаться в «Требуют действия» как действие, требующее ответа;
+- отображаться в «Мои заказы» → «Новые предложения».
+
+4. В карточке есть три кнопки, но сейчас:
+
+- «ОК, беру в работу» → POST /take-work → HTTP 500;
+- «Могу начать с даты» → POST /can-start → HTTP 500;
+- «Отказаться» → POST /decline → HTTP 500 с ошибкой:
+
+invalid input value for enum palata_decline_reason: "not_competent"
+
+Цель:
+
+полностью восстановить этап:
+
+Выбран заказчиком
+→ Новые предложения + Требуют действия
+→ Эксперт принимает / предлагает дату / отказывается
+
+Сделай строго следующее.
+
+ЭТАП 1. Колонка «Новые предложения»
+
+1. Найди фильтрацию канбана эксперта в:
+
+artifacts/palata/src/pages/ExpertDashboard.tsx
+
+2. Сейчас колонка «Новые предложения» должна включать матчи:
+
+- proposed;
+- selected_by_customer.
+
+При этом:
+
+- proposed — эксперт предложен системой;
+- selected_by_customer — заказчик выбрал эксперта, требуется ответ.
+
+3. selected_by_customer не должен исчезать из «Требуют действия».
+
+Один заказ может одновременно:
+
+- находиться в статусной колонке «Новые предложения»;
+- иметь активный action item в «Требуют действия».
+
+4. Не добавлять сюда:
+
+accepted_work
+completed
+closed_by_other_expert
+declined
+can_start_from
+
+ЭТАП 2. «ОК, беру в работу»
+
+1. Найди production endpoint:
+
+POST /api/palata/requests/:requestId/take-work
+
+2. Сравни все записываемые значения с фактическими enum из миграций и схемы.
+
+3. При успешном выполнении должны атомарно изменяться:
+
+palata_requests.status:
+expert_selection → in_work
+
+выбранный palata_request_matches.status:
+selected_by_customer или can_start_from → accepted_work
+
+palata_request_contacts.expert_status:
+→ accepted_work
+
+остальные активные matches:
+→ closed_by_other_expert
+
+4. Закрыть активный action item:
+
+customer_selected_you
+или
+you_are_approved_for_work
+
+5. Создать предусмотренные уведомления:
+
+expert_started_work → customer
+other_expert_took_order → другим экспертам
+
+6. Добавить/сохранить currentStep и подробный PostgreSQL catch.
+
+Исправить точную причину HTTP 500, не пропуская ни один шаг транзакции.
+
+ЭТАП 3. «Могу начать с даты»
+
+1. Найди endpoint:
+
+POST /api/palata/requests/:requestId/can-start
+
+2. После успешного вызова:
+
+palata_request_matches.status:
+selected_by_customer → can_start_from
+
+can_start_from_date:
+→ выбранная дата
+
+создать action item заказчику:
+
+action_type = expert_can_start_from
+status = open
+is_resolved = false
+
+3. Текущий action item эксперта customer_selected_you должен быть закрыт только после успешного COMMIT.
+
+4. Заказ после этого должен перейти в колонку эксперта:
+
+«Могу взять»
+
+5. Найти и исправить точную причину текущего HTTP 500.
+
+Не менять palata_requests.status: заказ остаётся в expert_selection до принятия работы.
+
+ЭТАП 4. «Отказаться»
+
+1. Найди фактический enum:
+
+public.palata_decline_reason
+
+Покажи все допустимые значения из миграций или схемы PostgreSQL.
+
+2. Найди frontend-список причин отказа.
+
+Сейчас frontend отправляет:
+
+not_competent
+
+но PostgreSQL его не принимает.
+
+3. Не добавляй not_competent в enum без необходимости.
+
+Сопоставь пользовательскую подпись:
+
+«Вне компетенции»
+
+с уже существующим корректным enum-значением.
+
+4. Проверь все причины отказа в frontend и убедись, что каждое отправляемое значение существует в palata_decline_reason.
+
+5. При успешном отказе:
+
+palata_request_matches.status → declined
+decline_reason → допустимое enum-значение
+decline_note → комментарий
+responded_at → текущее время
+
+создать action item заказчику:
+
+expert_declined
+
+закрыть action item эксперта:
+
+customer_selected_you / you_are_approved_for_work
+
+6. Не писать фиктивный status event matching, если palata_requests.status фактически не изменён.
+
+Если текущая бизнес-логика должна вернуть заказ на подбор — тогда синхронно обновить:
+
+palata_requests.status → matching
+
+и только после этого писать event:
+
+expert_selection → matching
+
+Если должны остаться другие предложенные эксперты и заказчик может выбрать их — не переводить заказ в matching наугад. Сохрани фактическую исходную бизнес-логику и поясни её.
+
+ЭТАП 5. Проверки
+
+Проверь сценарий для match.status = selected_by_customer:
+
+А. До действия:
+
+- виден в «Новые предложения»;
+- виден в «Требуют действия»;
+- доступны 3 кнопки.
+
+Б. «ОК, беру в работу»:
+
+- HTTP 200;
+- заказ у эксперта переходит в «В работе»;
+- заказ у заказчика переходит в «В работе»;
+- action item исчезает.
+
+В. «Могу начать с даты»:
+
+- HTTP 200;
+- матч получает can_start_from;
+- заказ у эксперта переходит в «Могу взять»;
+- заказчик получает действие с предложенной датой.
+
+Г. «Отказаться»:
+
+- HTTP 200;
+- match.status = declined;
+- заказ появляется у эксперта в «Отказ»;
+- заказчик получает уведомление.
+
+6. Выполни:
+
+node --check artifacts/palata/server.js
+
+pnpm --filter @workspace/palata run build
+
+7. Сделай поиск и подтверди:
+
+- selected_by_customer входит в колонку «Новые предложения»;
+- frontend не отправляет несуществующие decline reason;
+- take-work не использует статусы из неправильного домена;
+- can-start записывает существующий enum;
+- все действия работают через backend Selectel, без Supabase.
+
+8. Сделай один commit:
+
+fix: restore expert offer decision flow
+
+9. Сделай push в main.
+
+В конце покажи:
+
+- причину 500 в take-work;
+- причину 500 в can-start;
+- список enum palata_decline_reason;
+- старое и новое значение для «Вне компетенции»;
+- старый и новый фильтр «Новые предложения»;
+- изменения таблиц для каждой из трёх кнопок;
+- изменённые файлы;
+- node --check;
+- build;
+- commit hash;
+- статус push.

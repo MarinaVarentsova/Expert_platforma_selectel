@@ -115,14 +115,14 @@ type DocsState =
 // ─── Lookup tables ────────────────────────────────────────────────────────────
 
 
-// Валидные значения enum palata_decline_reason — те же что в RequestDetail
+// Валидные значения enum palata_decline_reason в Selectel PostgreSQL.
+// not_competent отсутствует в Selectel: «Вне компетенции» отображается как other.
 const DECLINE_REASONS: { value: string; label: string }[] = [
-  { value: "busy",          label: "Занят" },
-  { value: "not_competent", label: "Вне компетенции" },
-  { value: "location",      label: "Регион не подходит" },
-  { value: "conflict",      label: "Конфликт интересов" },
-  { value: "conditions",    label: "Условия не подходят" },
-  { value: "other",         label: "Другое" },
+  { value: "busy",       label: "Занят" },
+  { value: "other",      label: "Вне компетенции / другое" },
+  { value: "location",   label: "Регион не подходит" },
+  { value: "conflict",   label: "Конфликт интересов" },
+  { value: "conditions", label: "Условия не подходят" },
 ];
 
 // Используется только для отображения сохранённого decline_reason в карточках канбана
@@ -133,7 +133,7 @@ const DECLINE_LABEL: Record<string, string> = Object.fromEntries(
 // ─── Kanban config ─────────────────────────────────────────────────────────────
 
 const COLUMNS = [
-  { id: "proposed",  label: "Новые предложения", hint: "Примите решение по этим заказам",      accent: "", dotColor: "bg-amber-400",    bgColor: "bg-amber-50/60 border-amber-200",    statuses: ["proposed", "contacts_opened"] },
+  { id: "proposed",  label: "Новые предложения", hint: "Примите решение по этим заказам",      accent: "", dotColor: "bg-amber-400",    bgColor: "bg-amber-50/60 border-amber-200",    statuses: ["proposed", "contacts_opened", "selected_by_customer"] },
   { id: "cantake",   label: "Могу взять",        hint: "Вы откликнулись, ждёте заказчика",    accent: "", dotColor: "bg-[#0F4C9A]",   bgColor: "bg-[#F4F4F4] border-[#D0D0D0]",     statuses: ["can_start_from"] },
   { id: "accepted",  label: "В работе",          hint: "Заказчик выбрал вас, ведите работу",  accent: "", dotColor: "bg-[#002B5C]",   bgColor: "bg-[#E9E9E9]/60 border-[#D0D0D0]",  statuses: ["accepted", "accepted_work"] },
   { id: "completed", label: "Завершено",         hint: "Работа сдана, ожидайте оценки",       accent: "", dotColor: "bg-emerald-400", bgColor: "bg-emerald-50/60 border-emerald-200", statuses: ["completed"] },

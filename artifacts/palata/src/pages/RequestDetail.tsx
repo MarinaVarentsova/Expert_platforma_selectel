@@ -209,13 +209,14 @@ const URGENCY_LABEL: Record<string, string> = {
   normal: "Стандартная", urgent: "Срочная", very_urgent: "Очень срочная",
 };
 
+// Валидные значения enum palata_decline_reason в Selectel PostgreSQL.
+// not_competent отсутствует в Selectel: «Вне компетенции» отображается как other.
 const DECLINE_REASONS: { value: string; label: string }[] = [
-  { value: "busy",          label: "Занят" },
-  { value: "not_competent", label: "Вне компетенции" },
-  { value: "location",      label: "Регион не подходит" },
-  { value: "conflict",      label: "Конфликт интересов" },
-  { value: "conditions",    label: "Условия не подходят" },
-  { value: "other",         label: "Другое" },
+  { value: "busy",       label: "Занят" },
+  { value: "other",      label: "Вне компетенции / другое" },
+  { value: "location",   label: "Регион не подходит" },
+  { value: "conflict",   label: "Конфликт интересов" },
+  { value: "conditions", label: "Условия не подходят" },
 ];
 
 const ALL_ORDER_STATUSES = [

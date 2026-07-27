@@ -2828,13 +2828,17 @@ async function handleTakeWork(req, res) {
   const { requestId } = req.params;
   const { actionItemId = null, canStartFrom = null } = req.body ?? {};
 
+  if (!pool) return res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+  let currentStep = "connect";
   const client = await pool.connect();
   try {
+    currentStep = "begin";
     await client.query("BEGIN");
 
     const now = new Date().toISOString();
 
     // ── 1. Load request (authoritative source) ────────────────────────────
+    currentStep = "load_request";
     const requestRow = (await client.query(
       `SELECT id, status, customer_id, title
        FROM public.palata_requests
@@ -2853,6 +2857,7 @@ async function handleTakeWork(req, res) {
     const orderLabel = requestTitle ? `«${requestTitle}»` : shortId;
 
     // ── 2. Find this expert's active match ────────────────────────────────
+    currentStep = "find_match";
     const matchRow = (await client.query(
       `SELECT id FROM public.palata_request_matches
        WHERE request_id = $1 AND expert_id = $2
@@ -2864,6 +2869,7 @@ async function handleTakeWork(req, res) {
     const matchId = matchRow?.id ?? null;
 
     // ── 3. Update expert's match → accepted_work ──────────────────────────
+    currentStep = "update_match_accepted_work";
     if (matchId) {
       await client.query(
         `UPDATE public.palata_request_matches
@@ -2874,6 +2880,7 @@ async function handleTakeWork(req, res) {
     }
 
     // ── 4. Find other active matches for this request ─────────────────────
+    currentStep = "find_other_matches";
     // (mirrors: .neq("expert_id", userId).not("status","in","(declined,closed_by_other_expert,withdrawn,completed)"))
     const otherMatchRows = (await client.query(
       `SELECT id, expert_id, responded_at, status
@@ -2889,6 +2896,7 @@ async function handleTakeWork(req, res) {
     const involvedMatches = otherMatchRows.filter(m => m.responded_at !== null);
 
     // ── 5. Close involved matches ─────────────────────────────────────────
+    currentStep = "close_other_matches";
     if (involvedMatches.length > 0) {
       const involvedIds = involvedMatches.map(m => m.id);
       await client.query(
@@ -2900,6 +2908,7 @@ async function handleTakeWork(req, res) {
     }
 
     // ── 6. Request → in_work, set assigned_expert_id ────────────────────
+    currentStep = "update_request_in_work";
     await client.query(
       `UPDATE public.palata_requests
        SET status = 'in_work', assigned_expert_id = $3, updated_at = $1
@@ -2908,6 +2917,7 @@ async function handleTakeWork(req, res) {
     );
 
     // ── 7. Contact record → accepted_work ─────────────────────────────────
+    currentStep = "update_contact";
     await client.query(
       `UPDATE public.palata_request_contacts
        SET expert_status = 'accepted_work', expert_status_updated_at = $1
@@ -3005,8 +3015,15 @@ async function handleTakeWork(req, res) {
     return res.json({ success: true, custId, custEmail });
   } catch (err) {
     try { await client.query("ROLLBACK"); } catch {}
-    console.error("[TAKE-WORK] tx failed", { stack: err.stack });
-    return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) });
+    console.error("[TAKE-WORK] tx failed", {
+      step: currentStep,
+      errCode: err.code,
+      errDetail: err.detail,
+      errConstraint: err.constraint,
+      message: err.message,
+      stack: err.stack,
+    });
+    return res.status(500).json({ success: false, error: "TX_FAILED", step: currentStep, message: String(err) });
   } finally {
     client.release();
   }
@@ -3775,13 +3792,15 @@ async function handleDeclineRequest(req, res) {
     return res.status(400).json({ success: false, error: "MISSING_REASON" });
   }
 
+  // not_competent сохранён для обратной совместимости со старыми записями Supabase.
+  // Новые отказы используют 'other' (frontend больше не отправляет not_competent).
   const DECLINE_LABEL_RU = {
     busy:          "Занят",
-    not_competent: "Вне компетенции",
+    not_competent: "Вне компетенции",   // backward compat
     location:      "Регион не подходит",
     conflict:      "Конфликт интересов",
     conditions:    "Условия не подходят",
-    other:         "Другое",
+    other:         "Вне компетенции / другое",
   };
 
   const client = await pool.connect();
@@ -3867,16 +3886,8 @@ async function handleDeclineRequest(req, res) {
       );
     }
 
-    // 6. Status event: request expert_selection → matching, note='expert_declined'
-    await client.query(
-      `INSERT INTO public.palata_status_events
-         (entity_type, entity_id, old_status, new_status, actor_id, note)
-       VALUES ('request', $1, 'expert_selection', 'matching', null, 'expert_declined')`,
-      [requestId],
-    );
-
-    // 7. Check allDeclined:
-    //    all non-(closed_by_other_expert|withdrawn) matches are 'declined' or 'withdrawn'
+    // 6. Check allDeclined — status event only fires on real transition to matching.
+    //    If other experts remain active, request stays in expert_selection (no event).
     const matchesRows = (await client.query(
       `SELECT id, status FROM public.palata_request_matches
        WHERE request_id = $1
@@ -3890,6 +3901,13 @@ async function handleDeclineRequest(req, res) {
 
     let requestData = null;
     if (allDeclined) {
+      // All experts declined — write status event for real transition to matching
+      await client.query(
+        `INSERT INTO public.palata_status_events
+           (entity_type, entity_id, old_status, new_status, actor_id, note)
+         VALUES ('request', $1, 'expert_selection', 'matching', null, 'expert_declined')`,
+        [requestId],
+      );
       const rdRow = (await client.query(
         `SELECT expertise_direction_id, region_id, requires_travel, customer_id
          FROM public.palata_requests WHERE id = $1 LIMIT 1`,
@@ -5068,30 +5086,67 @@ async function handleExpertCanStart(req, res) {
   const { matchId, date, canStartFromFormatted } = req.body ?? {};
   if (!matchId || !date) return res.status(400).json({ success: false, error: "VALIDATION_FAILED", message: "matchId и date обязательны" });
   console.log("[CAN-START] expert proposes date", { expertId, requestId, matchId, date });
+  let currentStep = "connect";
   const client = await pool.connect();
   try {
+    currentStep = "begin";
     await client.query("BEGIN");
+
+    currentStep = "load_request";
     const reqRow = (await client.query("SELECT id, customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
     if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
+
+    currentStep = "find_match";
     const matchRow = (await client.query("SELECT id, status FROM public.palata_request_matches WHERE id = $1 AND expert_id = $2 AND request_id = $3 LIMIT 1", [matchId, expertId, requestId])).rows[0];
     if (!matchRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "MATCH_NOT_FOUND" }); }
+
     const oldMatchStatus = matchRow.status;
-    await client.query("UPDATE public.palata_request_matches SET status = 'can_start_from', can_start_from_date = $2, responded_at = NOW() WHERE id = $1", [matchId, date]);
     const formattedDate = canStartFromFormatted ?? date;
+
+    currentStep = "update_match_can_start_from";
+    await client.query("UPDATE public.palata_request_matches SET status = 'can_start_from', can_start_from_date = $2, responded_at = NOW() WHERE id = $1", [matchId, date]);
+
+    currentStep = "insert_status_event";
     await client.query("INSERT INTO public.palata_status_events (entity_type, entity_id, old_status, new_status, actor_id, note) VALUES ('match', $1, $2, 'can_start_from', null, $3)", [matchId, oldMatchStatus, `Может взять с ${formattedDate}`]);
+
+    // Close expert's customer_selected_you action item (before COMMIT)
+    currentStep = "close_expert_action_item";
+    await client.query(
+      `UPDATE public.palata_action_items
+         SET is_resolved = true, status = 'resolved', resolved_at = NOW()
+       WHERE request_id = $1
+         AND expert_id = $2
+         AND action_type IN ('customer_selected_you', 'you_are_approved_for_work')
+         AND is_resolved = false`,
+      [requestId, expertId],
+    );
+
     const custId = reqRow.customer_id;
     if (custId) {
+      currentStep = "notify_customer";
       await client.query(
         `INSERT INTO public.palata_action_items (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role, action_type, title, description, payload, status, is_read, is_resolved)
          VALUES ($1,$2,$3,$3,'customer','expert_can_start_from','Эксперт предложил дату начала',$4,$5,'open',false,false)`,
         [requestId, expertId, custId, `Эксперт может начать работу с ${formattedDate}`, JSON.stringify({ request_id: requestId, expert_id: expertId, can_start_from: date })],
       );
     }
+
+    currentStep = "commit";
     await client.query("COMMIT");
     console.log("[CAN-START] success", { expertId, requestId, matchId });
     return res.json({ success: true });
-  } catch (err) { try { await client.query("ROLLBACK"); } catch {} console.error("[CAN-START] tx failed", { stack: err.stack }); return res.status(500).json({ success: false, error: "TX_FAILED", message: String(err) }); }
-  finally { client.release(); }
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    console.error("[CAN-START] tx failed", {
+      step: currentStep,
+      errCode: err.code,
+      errDetail: err.detail,
+      errConstraint: err.constraint,
+      message: err.message,
+      stack: err.stack,
+    });
+    return res.status(500).json({ success: false, error: "TX_FAILED", step: currentStep, message: String(err) });
+  } finally { client.release(); }
 }
 app.post("/api/palata/requests/:requestId/can-start", (req, res) => {
   handleExpertCanStart(req, res).catch(err => { console.error("[CAN-START] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });

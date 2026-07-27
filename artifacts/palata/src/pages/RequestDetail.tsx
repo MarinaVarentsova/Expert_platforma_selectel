@@ -834,6 +834,10 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   }, [userId, r.id]);
 
   const expertsMatchedItem = openRequestItems.find(i => i.action_type === "experts_matched");
+  // Action item for expert approval flow (customer_selected_you / you_are_approved_for_work)
+  const expertApprovedItem = openRequestItems.find(
+    i => i.action_type === "customer_selected_you" || i.action_type === "you_are_approved_for_work",
+  );
 
   // ── Customer action state ──────────────────────────────────────────────────
   const [custUI, setCustUI] = useState<CustUIState>({ kind: "idle" });
@@ -964,7 +968,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       const res = await fetch(`/api/palata/requests/${r.id}/can-start`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
-        body: JSON.stringify({ matchId: match.id, date, canStartFromFormatted: fmtDate(date) }),
+        body: JSON.stringify({ matchId: match.id, date, canStartFromFormatted: fmtDate(date), actionItemId: expertApprovedItem?.id ?? null }),
       }).then(resp => resp.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
       if (!res.success) throw new Error(res.error ?? "TX_FAILED");
 
@@ -995,6 +999,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       expertName,
       requestTitle: r.title ?? null,
       runRematch: true,
+      actionItemId: expertApprovedItem?.id ?? null,
     });
     if (error) {
       setMS(match.id, { kind: "error", message: error });
@@ -1011,7 +1016,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       const res = await fetch(`/api/palata/requests/${r.id}/take-work`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
-        body: JSON.stringify({ actionItemId: null }),
+        body: JSON.stringify({ actionItemId: expertApprovedItem?.id ?? null }),
       }).then(resp => resp.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
       if (!res.success && res.error === "EXPERT_ALREADY_TOOK_WORK") {
         setShowAlreadyInWorkModal(true);
@@ -1688,25 +1693,25 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
                         {(ui.kind === "idle" || ui.kind === "error") && (
                           <div className="flex flex-wrap gap-2">
-                            {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                            {["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted"].includes(m.status) && (
                               <button
                                 className="btn-success-sm"
                                 onClick={() => setMS(m.id, { kind: "date_picker", date: "" })}
                               >
-                                Могу взять с даты
+                                Могу начать с даты
                               </button>
                             )}
-                            {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                            {["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted"].includes(m.status) && (
                               <button
                                 className="btn-ghost-sm border-red-200 text-red-600 hover:bg-red-50"
                                 onClick={() => setMS(m.id, { kind: "decline_form", reason: "", note: "" })}
                               >
-                                Не могу взять
+                                Отказаться
                               </button>
                             )}
-                            {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && r.status !== "in_work" && (
+                            {["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted"].includes(m.status) && r.status !== "in_work" && (
                               <button className="btn-primary-sm" onClick={() => handleTakeWork(m)}>
-                                Взять в работу
+                                ОК, беру в работу
                               </button>
                             )}
                             {role === "expert" && m.status === "accepted_work" && r.status === "in_work" && (
@@ -2186,19 +2191,19 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                         )}
                         {(ui.kind === "idle" || ui.kind === "error") && (
                           <div className="flex flex-wrap gap-2">
-                            {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                            {["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted"].includes(m.status) && (
                               <button className="btn-success-sm" onClick={() => setMS(m.id, { kind: "date_picker", date: "" })}>
-                                Может взять с даты
+                                Могу начать с даты
                               </button>
                             )}
-                            {["proposed", "can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                            {["proposed", "can_start_from", "selected_by_customer", "contacts_opened", "accepted"].includes(m.status) && (
                               <button className="btn-ghost-sm border-red-200 text-red-600 hover:bg-red-50" onClick={() => setMS(m.id, { kind: "decline_form", reason: "", note: "" })}>
-                                Отказ
+                                Отказаться
                               </button>
                             )}
-                            {["can_start_from", "contacts_opened", "accepted"].includes(m.status) && (
+                            {["can_start_from", "selected_by_customer", "contacts_opened", "accepted"].includes(m.status) && (
                               <button className="btn-primary-sm" onClick={() => handleTakeWork(m)}>
-                                Взял в работу
+                                ОК, беру в работу
                               </button>
                             )}
                             {role === "admin" && ["accepted_work", "accepted"].includes(m.status) && (

@@ -2123,7 +2123,8 @@ function ExpertActionCard({ item, userId, userEmail, onDone, onMatchDeclined }: 
   onMatchDeclined: (requestId: string) => void;
 }) {
   if (item.action_type === "customer_selected_you") {
-    return <CustomerSelectedCard item={item} onDone={onDone} />;
+    // Routes to YouAreApprovedCard: shows "Взять в работу", "Могу начать с даты", "Отказаться"
+    return <YouAreApprovedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} onMatchDeclined={onMatchDeclined} />;
   }
   if (item.action_type === "you_are_approved_for_work") {
     return <YouAreApprovedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} onMatchDeclined={onMatchDeclined} />;
@@ -2226,6 +2227,10 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
   const [loadedMatchId, setLoadedMatchId]   = useState<string | null>(null);
   const [loadedMatchStatus, setLoadedMatchStatus] = useState<string | null>(null);
   const [declineError, setDeclineError]     = useState<string | null>(null);
+  const [dateModal, setDateModal]           = useState(false);
+  const [proposeDate, setProposeDate]       = useState("");
+  const [proposeBusy, setProposeBusy]       = useState(false);
+  const [proposeError, setProposeError]     = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/palata/expertise-directions")
@@ -2351,6 +2356,34 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     onDone();
   }
 
+  // ── «Могу начать с даты» ─────────────────────────────────────────────────────
+
+  async function handleProposeDate() {
+    if (!proposeDate || !loadedMatchId) return;
+    setProposeBusy(true);
+    setProposeError(null);
+    const formatted = new Date(proposeDate).toLocaleDateString("ru-RU", {
+      day: "2-digit", month: "long", year: "numeric",
+    });
+    const res = await fetch(`/api/palata/requests/${item.request_id}/can-start`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken() ?? ""}`,
+      },
+      body: JSON.stringify({ matchId: loadedMatchId, date: proposeDate, canStartFromFormatted: formatted }),
+    }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
+    if (res.success) {
+      await resolveActionItem(item.id);
+      setDateModal(false);
+      setProposeBusy(false);
+      onDone();
+    } else {
+      setProposeError((res.error as string | undefined) ?? "Ошибка");
+      setProposeBusy(false);
+    }
+  }
+
   // ── «Отказаться» — вызывает ту же функцию declineRequest, что и «Не могу взять»
 
   async function handleDecline() {
@@ -2422,7 +2455,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
         )}
 
         {/* Action buttons */}
-        {action === "idle" && (
+        {action === "idle" && !dateModal && (
           <div className="flex flex-wrap gap-2 mt-4">
             <button
               disabled={busy}
@@ -2432,12 +2465,51 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
               {busy ? "Сохранение…" : "ОК, беру в работу"}
             </button>
             <button
+              disabled={busy || !loadedMatchId}
+              onClick={() => setDateModal(true)}
+              className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-[#0F4C9A] text-[#0F4C9A] hover:bg-[#0F4C9A]/5 transition-colors disabled:opacity-40"
+            >
+              Могу начать с даты
+            </button>
+            <button
               disabled={busy}
               onClick={() => setAction("decline")}
               className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-600 hover:border-red-300 hover:text-red-600 transition-colors"
             >
               Отказаться
             </button>
+          </div>
+        )}
+
+        {/* Propose start date */}
+        {dateModal && action === "idle" && (
+          <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
+            <p className="text-xs font-semibold text-[#002B5C]">Укажите дату начала работ:</p>
+            <input
+              type="date"
+              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/40"
+              value={proposeDate}
+              min={new Date().toISOString().slice(0, 10)}
+              onChange={e => setProposeDate(e.target.value)}
+            />
+            {proposeError && (
+              <p className="text-xs text-red-600">{proposeError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                disabled={proposeBusy || !proposeDate || !loadedMatchId}
+                onClick={handleProposeDate}
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-[#0F4C9A] text-white hover:bg-[#0F4C9A]/90 transition-colors disabled:opacity-50"
+              >
+                {proposeBusy ? "…" : "Предложить дату"}
+              </button>
+              <button
+                onClick={() => { setDateModal(false); setProposeError(null); setProposeDate(""); }}
+                className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+              >
+                Отмена
+              </button>
+            </div>
           </div>
         )}
 

@@ -4449,10 +4449,14 @@ async function handleExpertMatches(req, res) {
          m.id, m.request_id, m.status, m.matching_round, m.decline_reason, m.responded_at,
          JSON_BUILD_OBJECT(
            'title',                  r.title,
+           'expertise_type',         r.expertise_type,
            'expertise_direction_id', r.expertise_direction_id,
+           'description',            r.description,
            'urgency',                r.urgency,
            'customer_id',            r.customer_id,
-           'status',                 r.status
+           'requires_travel',        r.requires_travel,
+           'status',                 r.status,
+           'region_id',              r.region_id
          ) AS palata_requests
        FROM public.palata_request_matches m
        JOIN public.palata_requests r ON r.id = m.request_id
@@ -5239,6 +5243,114 @@ async function handleAdminCloseRequest(req, res) {
 }
 app.post("/api/palata/admin/requests/:requestId/close", (req, res) => {
   handleAdminCloseRequest(req, res).catch(err => { console.error("[ADMIN-CLOSE] unhandled", { stack: err.stack }); res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }); });
+});
+
+// ── GET /api/palata/action-items/me — active action items for current user ──
+
+async function handleActionItemsMe(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[ACTION-ITEMS-ME] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const userId = meBody.user.id;
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT id, request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+              action_type, title, description, status, is_read, is_resolved,
+              created_at, read_at, resolved_at, payload
+       FROM public.palata_action_items
+       WHERE assigned_to_user_id = $1
+         AND status = 'open'
+         AND is_resolved = false
+       ORDER BY created_at DESC`,
+      [userId],
+    );
+    return res.json({ success: true, items: rows });
+  } catch (err) {
+    console.error("[ACTION-ITEMS-ME] query failed", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.get("/api/palata/action-items/me", (req, res) => {
+  handleActionItemsMe(req, res).catch(err => {
+    console.error("[ACTION-ITEMS-ME] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+// ── POST /api/palata/action-items/:id/resolve ────────────────────────────────
+
+async function handleActionItemResolve(req, res) {
+  if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
+
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return res.status(401).json({ success: false, error: "MISSING_TOKEN" });
+  const token = authHeader.slice(7);
+
+  let meBody;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const meText = await meRes.text();
+    try { meBody = JSON.parse(meText); } catch { meBody = null; }
+    if (meRes.status !== 200 || !meBody?.success || !meBody.user?.id) {
+      return res.status(401).json({ success: false, error: "INVALID_TOKEN" });
+    }
+  } catch (err) {
+    console.error("[ACTION-ITEMS-RESOLVE] auth/me unreachable", { stack: err.stack });
+    return res.status(502).json({ success: false, error: "AUTH_SERVICE_UNREACHABLE" });
+  }
+
+  const userId = meBody.user.id;
+  const { id } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `UPDATE public.palata_action_items
+       SET is_resolved = true, status = 'resolved', resolved_at = NOW()
+       WHERE id = $1 AND assigned_to_user_id = $2`,
+      [id, userId],
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("[ACTION-ITEMS-RESOLVE] query failed", { stack: err.stack });
+    return res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+  } finally {
+    client.release();
+  }
+}
+
+app.post("/api/palata/action-items/:id/resolve", (req, res) => {
+  handleActionItemResolve(req, res).catch(err => {
+    console.error("[ACTION-ITEMS-RESOLVE] unhandled", { stack: err.stack });
+    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
 });
 
 // ── GET /api/palata/action-items/counts — nav badge counts ──

@@ -2240,26 +2240,21 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
 
   useEffect(() => {
     async function load() {
-      const [{ data: reqData }, { data: matchData }] = await Promise.all([
-        supabase
-          .from("palata_requests")
-          .select("title, expertise_type, expertise_direction_id, description, customer_id, requires_travel, status, region_id")
-          .eq("id", item.request_id)
-          .maybeSingle(),
-        // Load match exactly like RequestDetail does: only filter by request_id,
-        // no expert_id filter — same query pattern that makes "Не могу взять" work.
-        supabase
-          .from("palata_request_matches")
-          .select("id, status")
-          .eq("request_id", item.request_id)
-          .eq("expert_id", userId)
-          .order("matching_round", { ascending: false })
-          .order("proposed_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ]);
-      const r = reqData as RequestDetails | null;
-      const m = matchData as { id: string; status: string } | null;
+      // Load match + embedded request from Selectel via backend
+      const matchesBody = await fetch("/api/palata/requests/expert/matches", {
+        headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+      }).then(res => res.json()).catch(() => ({ success: false, rows: [] })) as {
+        success: boolean;
+        rows?: Array<{
+          id: string;
+          status: string;
+          request_id: string;
+          palata_requests: RequestDetails;
+        }>;
+      };
+      const matchEntry = (matchesBody.rows ?? []).find(row => row.request_id === item.request_id) ?? null;
+      const r = matchEntry ? matchEntry.palata_requests : null;
+      const m = matchEntry ? { id: matchEntry.id, status: matchEntry.status } : null;
       setReq(r);
       if (m) {
         setLoadedMatchId(m.id);

@@ -1,3 +1,4 @@
+import { getToken } from "@/lib/authClient";
 import { supabase } from "./supabaseClient";
 
 // ─── Action types ─────────────────────────────────────────────────────────────
@@ -55,12 +56,18 @@ export async function createActionItem(input: CreateInput) {
   });
 }
 
-export async function resolveActionItem(id: string) {
-  return supabase.from("palata_action_items").update({
-    is_resolved: true,
-    status: "resolved",
-    resolved_at: new Date().toISOString(),
-  }).eq("id", id);
+// resolveActionItem — writes to Selectel via backend
+export async function resolveActionItem(id: string): Promise<void> {
+  try {
+    const token = getToken();
+    if (!token) return;
+    await fetch(`/api/palata/action-items/${encodeURIComponent(id)}/resolve`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 export async function cancelRequestActionItems(requestId: string, exceptId?: string) {
@@ -73,23 +80,23 @@ export async function cancelRequestActionItems(requestId: string, exceptId?: str
   return q;
 }
 
-export async function loadOpenActionItems(userId: string): Promise<ActionItem[]> {
+// loadOpenActionItems — reads from Selectel via backend
+export async function loadOpenActionItems(_userId?: string): Promise<ActionItem[]> {
   try {
-    const { data, error } = await supabase
-      .from("palata_action_items")
-      .select("*")
-      .eq("assigned_to_user_id", userId)
-      .eq("status", "open")
-      .eq("is_resolved", false)
-      .order("created_at", { ascending: false });
-    if (error) return [];
-    return (data ?? []) as ActionItem[];
+    const token = getToken();
+    if (!token) return [];
+    const res = await fetch("/api/palata/action-items/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const body = await res.json() as { success: boolean; items?: ActionItem[] };
+    return body.items ?? [];
   } catch {
     return [];
   }
 }
 
-// ─── Logging helpers (same TEST_MODE pattern used across the app) ─────────────
+// ─── Logging helpers ──────────────────────────────────────────────────────────
 
 export async function logStatusEvent(
   requestId: string,

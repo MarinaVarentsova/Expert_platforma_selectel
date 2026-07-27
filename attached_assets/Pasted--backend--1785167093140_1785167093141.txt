@@ -1,0 +1,145 @@
+Нужно вернуть блок действий эксперта в подробную страницу заказа, не меняя backend и статусную модель.
+
+Текущее состояние:
+
+1. В разделе «Требуют действия» уже правильно работают три кнопки:
+
+- «ОК, беру в работу»
+- «Могу начать с даты»
+- «Отказаться»
+
+Они используют существующие endpoints:
+
+POST /api/palata/requests/:requestId/take-work
+POST /api/palata/requests/:requestId/can-start
+POST /api/palata/requests/:requestId/decline
+
+2. В подробной странице заказа:
+
+artifacts/palata/src/pages/RequestDetail.tsx
+
+у эксперта отображается заголовок «ДЕЙСТВИЯ», но для match.status = selected_by_customer сами кнопки не показываются.
+
+3. Для match.status = can_start_from кнопки уже показываются.
+
+4. Backend и enum уже исправлены. Их не менять.
+
+Сделай строго следующее.
+
+1. Найди в RequestDetail.tsx условие рендера блока действий эксперта.
+
+2. Покажи текущее условие.
+
+3. Исправь условие так, чтобы блок с тремя кнопками отображался минимум для:
+
+match.status === "selected_by_customer"
+match.status === "can_start_from"
+
+а также для action_type:
+
+customer_selected_you
+you_are_approved_for_work
+
+если страница получает action item.
+
+4. Не показывать эти кнопки для терминальных статусов:
+
+declined
+withdrawn
+accepted_work
+completed
+closed_by_other_expert
+customer_declined_start_date
+
+5. Не использовать как обязательные условия legacy-статусы:
+
+contacts_opened
+accepted
+pending_customer
+
+6. Не создавать новые endpoints и не дублировать backend-логику.
+
+Использовать те же вызовы, payload и обработчики, что уже работают в YouAreApprovedCard:
+
+- take-work
+- can-start
+- decline
+
+7. Сравни реализацию RequestDetail с:
+
+artifacts/palata/src/pages/ExpertDashboard.tsx
+компонентом YouAreApprovedCard.
+
+Payload должен быть одинаковым:
+
+take-work:
+- requestId
+- matchId
+- actionItemId, если есть
+
+can-start:
+- requestId
+- matchId
+- date
+- canStartFromFormatted
+- actionItemId, если есть
+
+decline:
+- requestId
+- matchId
+- reason
+- note
+- actionItemId, если есть
+
+8. Если в RequestDetail нет actionItemId, endpoint должен продолжить работать без него. Не делать actionItemId обязательным.
+
+9. После успешного действия в RequestDetail:
+
+- обновить detail заказа;
+- обновить match;
+- обновить action items;
+- убрать блок действий, если статус стал терминальным;
+- показать новый статус заказа.
+
+10. Не менять:
+
+- server.js
+- enum
+- migrations
+- CustomerDashboard
+- select-expert
+- matching
+- cancel
+- AI
+- Supabase/Selectel backend-логику
+
+11. Проверить два сценария:
+
+А. match.status = selected_by_customer
+В подробной странице есть:
+- «ОК, беру в работу»
+- «Могу начать с даты»
+- «Отказаться»
+
+Б. match.status = can_start_from
+Те же кнопки продолжают отображаться.
+
+12. Выполнить:
+
+pnpm --filter @workspace/palata run build
+
+13. Сделать commit:
+
+fix: show expert actions in request detail
+
+14. Push в main.
+
+В конце показать только:
+
+- старое условие рендера;
+- новое условие;
+- подтверждение одинаковых endpoints и payload;
+- изменённый файл;
+- build;
+- commit hash;
+- статус push.

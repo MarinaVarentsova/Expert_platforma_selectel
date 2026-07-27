@@ -1,0 +1,125 @@
+Исправь только подтверждённую ошибку отмены заказа заказчиком.
+
+Текущая ошибка production:
+
+POST /api/palata/requests/:requestId/cancel
+→ HTTP 500
+→ TX_FAILED
+
+Лог PostgreSQL:
+
+operator does not exist: palata_match_status <> text
+
+Файл и место:
+
+artifacts/palata/server.js
+handleCustomerCancel
+примерно строка 5045
+
+Причина:
+
+public.palata_request_matches.status имеет тип enum palata_match_status,
+а SQL сравнивает его с text-параметром или text-массивом.
+
+Не менять бизнес-логику отмены.
+Не менять enum.
+Не добавлять новые статусы.
+Не менять frontend.
+Не менять другие endpoints.
+
+Сделай строго следующее.
+
+1. Найди точный SQL в handleCustomerCancel, который падает на сравнении:
+
+palata_request_matches.status <> text
+
+или аналогичном условии с:
+- !=
+- <>
+- ANY
+- ALL
+- NOT IN
+- массивом параметров.
+
+2. Покажи старый SQL.
+
+3. Исправь типизацию одним из безопасных способов:
+
+Вариант A, предпочтительно:
+явно привести параметр к enum:
+
+$N::public.palata_match_status
+
+или массив:
+
+$N::public.palata_match_status[]
+
+Вариант B:
+явно привести enum-колонку к text:
+
+status::text
+
+Используй вариант, который сохраняет текущую бизнес-логику без изменения списка статусов.
+
+4. Проверь все SQL внутри handleCustomerCancel, где сравнивается:
+
+public.palata_request_matches.status
+
+с параметрами или массивами.
+
+Исправь только типовые конфликты enum/text.
+
+5. После успешной отмены транзакция должна по прежней логике:
+
+- обновить palata_requests.status → cancelled;
+- закрыть активные matches предусмотренным статусом;
+- закрыть все открытые action_items;
+- создать customer_cancelled_order для затронутых экспертов;
+- записать status_event;
+- выполнить COMMIT.
+
+6. Не заменять ошибку фиктивным success.
+Не убирать транзакцию.
+Не отключать rollback.
+Не пропускать уведомления экспертам.
+
+7. Добавь или сохрани подробный currentStep/catch для CUSTOMER-CANCEL:
+
+step
+code
+message
+detail
+hint
+table
+column
+constraint
+
+8. Проверь, что после отмены заказ попадает у заказчика в колонку:
+
+«Неактуален»
+
+и исчезает из активных колонок.
+
+9. Выполни:
+
+node --check artifacts/palata/server.js
+
+pnpm --filter @workspace/palata run build
+
+10. Сделай commit:
+
+fix: align customer cancel enum comparison
+
+11. Push в main.
+
+В конце покажи только:
+
+- точный падавший SQL;
+- старое выражение сравнения;
+- новое выражение сравнения;
+- подтверждение, что бизнес-логика отмены не менялась;
+- изменённый файл;
+- node --check;
+- build;
+- commit hash;
+- статус push.

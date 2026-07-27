@@ -4711,11 +4711,11 @@ async function handleCreateRequest(req, res) {
       });
     }
 
-    // Local marker check — stop-factors are hard-blocked; ambiguous cases pass through
-    // (AI gate was already applied in /api/ai-detect-direction before order creation)
+    // Local marker check — description must match at least one KB scenario AND must not be a stop-factor.
+    // We do NOT trust that the frontend already called /api/ai-detect-direction.
     const localCheck = checkLocalMarkers(descTrimmed);
-    const guardAllowed = !localCheck.isStopFactor; // stop-factor = hard reject; everything else passes
-    const rejectionCode = guardAllowed ? null : "STOP_FACTOR";
+    const guardAllowed = localCheck.matched === true && localCheck.isStopFactor !== true;
+    const rejectionCode = guardAllowed ? null : (localCheck.isStopFactor ? "STOP_FACTOR" : "NO_CONSTRUCTION_MARKERS");
 
     console.log("[AI-DIRECTION-GUARD]", {
       descriptionLength: descTrimmed.length,

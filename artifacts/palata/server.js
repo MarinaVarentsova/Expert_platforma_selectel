@@ -5569,17 +5569,42 @@ async function handleActionItemsMe(req, res) {
   const client = await pool.connect();
   try {
     const { rows } = await client.query(
-      `SELECT id, request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
-              action_type, title, description, status, is_read, is_resolved,
-              created_at, read_at, resolved_at, payload
-       FROM public.palata_action_items
-       WHERE assigned_to_user_id = $1
-         AND status = 'open'
-         AND is_resolved = false
-       ORDER BY created_at DESC`,
+      `SELECT ai.id, ai.request_id, ai.expert_id, ai.customer_id, ai.assigned_to_user_id, ai.assigned_role,
+              ai.action_type, ai.title, ai.description, ai.status, ai.is_read, ai.is_resolved,
+              ai.created_at, ai.read_at, ai.resolved_at, ai.payload,
+              r.title                  AS r_title,
+              r.description            AS r_description,
+              r.urgency                AS r_urgency,
+              r.region_id              AS r_region_id,
+              r.expertise_direction_id AS r_expertise_direction_id,
+              r.created_at             AS r_request_created_at
+       FROM public.palata_action_items ai
+       LEFT JOIN public.palata_requests r ON r.id = ai.request_id
+       WHERE ai.assigned_to_user_id = $1
+         AND ai.status = 'open'
+         AND ai.is_resolved = false
+       ORDER BY ai.created_at DESC`,
       [userId],
     );
-    return res.json({ success: true, items: rows });
+    const items = rows.map(row => {
+      const {
+        r_title, r_description, r_urgency, r_region_id,
+        r_expertise_direction_id, r_request_created_at,
+        ...rest
+      } = row;
+      return {
+        ...rest,
+        request_summary: row.request_id ? {
+          title:                  r_title                  ?? null,
+          description:            r_description            ?? null,
+          urgency:                r_urgency                ?? null,
+          region_id:              r_region_id              ?? null,
+          expertise_direction_id: r_expertise_direction_id ?? null,
+          created_at:             r_request_created_at     ?? null,
+        } : null,
+      };
+    });
+    return res.json({ success: true, items });
   } catch (err) {
     console.error("[ACTION-ITEMS-ME] query failed", { stack: err.stack });
     return res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });

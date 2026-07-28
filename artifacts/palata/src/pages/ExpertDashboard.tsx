@@ -17,7 +17,7 @@ import { getToken, palataFetch } from "@/lib/authClient";
 import {
   Inbox, Star, User, CheckCircle2, XCircle, MapPin,
   Briefcase, FileText, GraduationCap, ClipboardList, Zap, Calendar,
-  Pencil, X, Upload, Phone,
+  Pencil, X, Upload, Phone, ChevronDown,
 } from "lucide-react";
 import {
   loadOpenActionItems, resolveActionItem,
@@ -161,6 +161,7 @@ export default function ExpertDashboard() {
   const [userPhone, setUserPhone] = useState<string | null>(null);
   const [docsState, setDocsState] = useState<DocsState>({ kind: "loading" });
   const [allDirections, setAllDirections] = useState<Array<{ id: string; name: string }>>([]);
+  const [allActionRegs, setAllActionRegs] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
     fetch("/api/palata/expertise-directions")
@@ -169,7 +170,15 @@ export default function ExpertDashboard() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch("/api/palata/regions")
+      .then(r => r.json())
+      .then(b => setAllActionRegs((b.rows ?? []) as Array<{ id: string; name: string }>))
+      .catch(() => {});
+  }, []);
+
   const directionsMap = Object.fromEntries(allDirections.map(d => [d.id, d.name]));
+  const actionRegsMap = Object.fromEntries(allActionRegs.map(r => [r.id, r.name]));
 
   const loadPendingRatings = async (userId: string) => {
     // Fetch completed matches
@@ -550,6 +559,8 @@ export default function ExpertDashboard() {
               userEmail={user.email}
               onDone={reloadActionItems}
               onMatchDeclined={handleMatchDeclined}
+              regsMap={actionRegsMap}
+              dirsMap={directionsMap}
             />
           )}
         </div>
@@ -2048,6 +2059,112 @@ function ErrorCard({ message }: { message: string }) {
   );
 }
 
+// ─── RequestSummaryBlock ──────────────────────────────────────────────────────
+
+const URGENCY_LABEL: Record<string, string> = {
+  low:    "Низкая",
+  normal: "Обычная",
+  high:   "Высокая",
+  urgent: "Срочная",
+};
+
+function RequestSummaryBlock({ item, regsMap, dirsMap }: {
+  item: ActionItem;
+  regsMap: Record<string, string>;
+  dirsMap: Record<string, string>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [, navigate] = useLocation();
+
+  const rs = item.request_summary ?? null;
+  const requestId = item.request_id;
+  const shortId = `#${requestId?.slice(0, 8).toUpperCase() ?? "—"}`;
+
+  const title       = rs?.title ?? null;
+  const description = rs?.description ?? null;
+  const urgency     = rs?.urgency ? (URGENCY_LABEL[rs.urgency] ?? rs.urgency) : null;
+  const regionName  = rs?.region_id
+    ? (regsMap[rs.region_id] ?? "Не указан")
+    : "Не указан";
+  const dirName     = rs?.expertise_direction_id
+    ? (dirsMap[rs.expertise_direction_id] ?? "Не указано")
+    : "Не указано";
+  const createdAt   = rs?.created_at
+    ? new Date(rs.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
+
+  return (
+    <div className="mt-3 border border-[#D0D0D0] rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-[#F4F4F4] hover:bg-[#EBEBEB] transition-colors select-none"
+      >
+        <span className="text-xs font-bold uppercase tracking-widest text-[#666666]">
+          Подробнее о заказе
+        </span>
+        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="px-4 py-3 space-y-2 bg-white">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Номер</p>
+              <p className="text-xs font-mono font-semibold text-slate-700">{shortId}</p>
+            </div>
+            {title && (
+              <div className="col-span-2">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Название</p>
+                <p className="text-xs font-semibold text-slate-800 leading-snug">{title}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Направление</p>
+              <p className="text-xs text-slate-700">{dirName}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Регион</p>
+              <p className="text-xs text-slate-700">{regionName}</p>
+            </div>
+            {urgency && (
+              <div>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Срочность</p>
+                <p className="text-xs text-slate-700">{urgency}</p>
+              </div>
+            )}
+            {createdAt && (
+              <div>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Дата создания</p>
+                <p className="text-xs text-slate-700">{createdAt}</p>
+              </div>
+            )}
+          </div>
+
+          {description && (
+            <div className="border-t border-slate-100 pt-2">
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Описание</p>
+              <p className="text-xs text-slate-600 leading-relaxed line-clamp-4">{description}</p>
+            </div>
+          )}
+
+          {requestId && (
+            <div className="border-t border-slate-100 pt-2">
+              <button
+                type="button"
+                onClick={() => navigate(`/requests/${requestId}`)}
+                className="text-xs font-semibold text-[#0F4C9A] hover:text-[#002B5C] hover:underline transition-colors"
+              >
+                Открыть заказ →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Expert Action Inbox ───────────────────────────────────────────────────────
 
 const ACTION_LABEL_EX: Record<string, { label: string; color: string }> = {
@@ -2083,12 +2200,14 @@ function ExpertActionItemHeader({ item }: { item: ActionItem }) {
   );
 }
 
-function ExpertActionInbox({ items, userId, userEmail, onDone, onMatchDeclined }: {
+function ExpertActionInbox({ items, userId, userEmail, onDone, onMatchDeclined, regsMap, dirsMap }: {
   items: ActionItem[];
   userId: string;
   userEmail: string;
   onDone: () => void;
   onMatchDeclined: (requestId: string) => void;
+  regsMap: Record<string, string>;
+  dirsMap: Record<string, string>;
 }) {
   if (items.length === 0) {
     return (
@@ -2108,28 +2227,30 @@ function ExpertActionInbox({ items, userId, userEmail, onDone, onMatchDeclined }
   return (
     <div className="max-w-2xl space-y-4">
       {items.map(item => (
-        <ExpertActionCard key={item.id} item={item} userId={userId} userEmail={userEmail} onDone={onDone} onMatchDeclined={onMatchDeclined} />
+        <ExpertActionCard key={item.id} item={item} userId={userId} userEmail={userEmail} onDone={onDone} onMatchDeclined={onMatchDeclined} regsMap={regsMap} dirsMap={dirsMap} />
       ))}
     </div>
   );
 }
 
-function ExpertActionCard({ item, userId, userEmail, onDone, onMatchDeclined }: {
+function ExpertActionCard({ item, userId, userEmail, onDone, onMatchDeclined, regsMap, dirsMap }: {
   item: ActionItem;
   userId: string;
   userEmail: string;
   onDone: () => void;
   onMatchDeclined: (requestId: string) => void;
+  regsMap: Record<string, string>;
+  dirsMap: Record<string, string>;
 }) {
   if (item.action_type === "customer_selected_you") {
     // Routes to YouAreApprovedCard: shows "Взять в работу", "Могу начать с даты", "Отказаться"
-    return <YouAreApprovedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} onMatchDeclined={onMatchDeclined} />;
+    return <YouAreApprovedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} onMatchDeclined={onMatchDeclined} regsMap={regsMap} dirsMap={dirsMap} />;
   }
   if (item.action_type === "you_are_approved_for_work") {
-    return <YouAreApprovedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} onMatchDeclined={onMatchDeclined} />;
+    return <YouAreApprovedCard item={item} userId={userId} userEmail={userEmail} onDone={onDone} onMatchDeclined={onMatchDeclined} regsMap={regsMap} dirsMap={dirsMap} />;
   }
   if (item.action_type === "customer_approved_start_date") {
-    return <CustomerApprovedCard item={item} onDone={onDone} />;
+    return <CustomerApprovedCard item={item} onDone={onDone} regsMap={regsMap} dirsMap={dirsMap} />;
   }
   if (item.action_type === "customer_declined_start_date") {
     return <CustomerDeclinedDateCard item={item} onDone={onDone} />;
@@ -2203,12 +2324,14 @@ type CustomerContact = {
 
 // ─── you_are_approved_for_work ────────────────────────────────────────────────
 
-function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }: {
+function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined, regsMap, dirsMap }: {
   item: ActionItem;
   userId: string;
   userEmail: string;
   onDone: () => void;
   onMatchDeclined: (requestId: string) => void;
+  regsMap: Record<string, string>;
+  dirsMap: Record<string, string>;
 }) {
   const payload    = item.payload ?? {};
   const canStartFrom = ((payload.can_start_from ?? payload.start_date) as string | null) ?? null;
@@ -2453,6 +2576,9 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
           </div>
         )}
 
+        {/* Order details */}
+        <RequestSummaryBlock item={item} regsMap={regsMap} dirsMap={dirsMap} />
+
         {/* Action buttons */}
         {action === "idle" && !dateModal && (
           <div className="flex flex-wrap gap-2 mt-4">
@@ -2671,7 +2797,12 @@ function CustomerCancelledCard({ item, onDone }: { item: ActionItem; onDone: () 
 
 // ─── customer_approved_start_date ─────────────────────────────────────────────
 
-function CustomerApprovedCard({ item, onDone }: { item: ActionItem; onDone: () => void }) {
+function CustomerApprovedCard({ item, onDone, regsMap, dirsMap }: {
+  item: ActionItem;
+  onDone: () => void;
+  regsMap: Record<string, string>;
+  dirsMap: Record<string, string>;
+}) {
   const payload = item.payload ?? {};
   const startDate = payload.start_date as string | null ?? null;
   const [done, setDone] = useState(false);
@@ -2697,6 +2828,7 @@ function CustomerApprovedCard({ item, onDone }: { item: ActionItem; onDone: () =
         )}
         <p className="text-xs text-emerald-700 font-medium">Заказ передан в работу. Ваши контакты открыты для заказчика.</p>
       </div>
+      <RequestSummaryBlock item={item} regsMap={regsMap} dirsMap={dirsMap} />
       <div className="mt-4">
         <button onClick={handleAck}
           className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">

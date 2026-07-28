@@ -36,6 +36,14 @@ export type ActionItem = {
   read_at: string | null;
   resolved_at: string | null;
   payload: Record<string, unknown> | null;
+  request_summary?: {
+    title: string | null;
+    description: string | null;
+    urgency: string | null;
+    region_id: string | null;
+    expertise_direction_id: string | null;
+    created_at: string | null;
+  } | null;
 };
 
 type CreateInput = Pick<

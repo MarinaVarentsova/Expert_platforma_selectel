@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { randomUUID } from "crypto";
 import pg from "pg";
-import { detectDirection, KNOWLEDGE_BASE_ENTRIES, checkLocalMarkers, CONSTRUCTION_DIRECTION_NAME } from "@workspace/ai-detect";
+import { detectDirection, KNOWLEDGE_BASE_ENTRIES, checkLocalMarkers, CONSTRUCTION_DIRECTION_NAME, CONFIDENCE_THRESHOLD } from "@workspace/ai-detect";
 const { Pool } = pg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

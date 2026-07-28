@@ -33,7 +33,7 @@ export interface DeclineRequestParams {
 
 export async function declineRequest(
   params: DeclineRequestParams,
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; code: string | null }> {
   const {
     requestId,
     reason,
@@ -65,7 +65,7 @@ export async function declineRequest(
     }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
 
     if (!res.success) {
-      return { error: res.error ?? "Ошибка отказа" };
+      return { error: res.error ?? "Ошибка отказа", code: res.code ?? null };
     }
 
     // runMatching after COMMIT — same as before, non-fatal
@@ -89,8 +89,8 @@ export async function declineRequest(
       }
     }
 
-    return { error: null };
+    return { error: null, code: null };
   } catch (e: unknown) {
-    return { error: (e as Error)?.message ?? "Ошибка отказа" };
+    return { error: (e as Error)?.message ?? "Ошибка отказа", code: null };
   }
 }

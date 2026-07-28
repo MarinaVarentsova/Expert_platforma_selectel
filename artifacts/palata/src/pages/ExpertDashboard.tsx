@@ -844,8 +844,8 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
         body: JSON.stringify({ date }),
       }).then(r => r.json()).catch(() => ({ success: false }));
 
-      // ── Guard: request was taken while the page was open ──
-      if (apRes.alreadyInWork) {
+      // ── Guard: request was taken / closed while the page was open ──
+      if (apRes.alreadyInWork || apRes.code === "REQUEST_STATUS_CONFLICT") {
         setBlockedOrders(p => ({ ...p, [order.id]: true }));
         return;
       }

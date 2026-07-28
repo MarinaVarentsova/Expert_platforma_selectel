@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import { randomUUID } from "crypto";
 import pg from "pg";
 import { detectDirection, KNOWLEDGE_BASE_ENTRIES, checkLocalMarkers, CONSTRUCTION_DIRECTION_NAME, CONFIDENCE_THRESHOLD } from "@workspace/ai-detect";
+import { guardDecline, guardTakeWork, guardExpertProposeDate, guardDeclineStartDate, guardCompleteWork, guardCustomerComplete, guardCustomerCancel } from "./lib/request-guards.js";
 const { Pool } = pg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -2862,12 +2863,13 @@ async function handleTakeWork(req, res) {
 
     const now = new Date().toISOString();
 
-    // ── 1. Load request (authoritative source) ────────────────────────────
+    // ── 1. Load request with row-level lock (authoritative source) ──────
     currentStep = "load_request";
     const requestRow = (await client.query(
       `SELECT id, status, customer_id, title
        FROM public.palata_requests
-       WHERE id = $1 LIMIT 1`,
+       WHERE id = $1
+       FOR UPDATE`,
       [requestId],
     )).rows[0];
 
@@ -2876,15 +2878,24 @@ async function handleTakeWork(req, res) {
       return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
     }
 
+    // Guard: block if request is already in a locked / terminal state (status only; match checked below)
+    {
+      const g = guardTakeWork(requestRow.status, "can_start_from" /* placeholder to pass status check */);
+      if (g && g.code === "REQUEST_STATUS_CONFLICT") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, ...g });
+      }
+    }
+
     const custId = requestRow.customer_id;
     const requestTitle = requestRow.title;
     const shortId = `#${requestId.slice(0, 8).toUpperCase()}`;
     const orderLabel = requestTitle ? `«${requestTitle}»` : shortId;
 
-    // ── 2. Find this expert's active match ────────────────────────────────
+    // ── 2. Find this expert's active match (with status) ──────────────────
     currentStep = "find_match";
     const matchRow = (await client.query(
-      `SELECT id FROM public.palata_request_matches
+      `SELECT id, status FROM public.palata_request_matches
        WHERE request_id = $1 AND expert_id = $2
        ORDER BY matching_round DESC, proposed_at DESC
        LIMIT 1`,
@@ -2892,6 +2903,15 @@ async function handleTakeWork(req, res) {
     )).rows[0];
 
     const matchId = matchRow?.id ?? null;
+
+    // Guard: expert's match must be in an acceptable state to take work
+    {
+      const g = guardTakeWork(requestRow.status, matchRow?.status ?? null);
+      if (g) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, ...g });
+      }
+    }
 
     // ── 3. Update expert's match → accepted_work ──────────────────────────
     currentStep = "update_match_accepted_work";
@@ -3095,11 +3115,12 @@ async function handleCompleteWork(req, res) {
 
     const completedAt = new Date().toISOString();
 
-    // ── 1. Load request ───────────────────────────────────────────────────
+    // ── 1. Load request with row-level lock ──────────────────────────────
     const requestRow = (await client.query(
-      `SELECT id, status, customer_id, title
+      `SELECT id, status, customer_id, title, assigned_expert_id
        FROM public.palata_requests
-       WHERE id = $1 LIMIT 1`,
+       WHERE id = $1
+       FOR UPDATE`,
       [requestId],
     )).rows[0];
 
@@ -3112,9 +3133,9 @@ async function handleCompleteWork(req, res) {
     const oldStatus = requestRow.status;
     const shortReqId = `#${requestId.slice(0, 8).toUpperCase()}`;
 
-    // ── 2. Find expert's active match ─────────────────────────────────────
+    // ── 2. Find expert's active match (with status) ───────────────────────
     const matchRow = (await client.query(
-      `SELECT id FROM public.palata_request_matches
+      `SELECT id, status FROM public.palata_request_matches
        WHERE request_id = $1 AND expert_id = $2
        ORDER BY matching_round DESC, proposed_at DESC
        LIMIT 1`,
@@ -3122,6 +3143,20 @@ async function handleCompleteWork(req, res) {
     )).rows[0];
 
     const matchId = matchRow?.id ?? null;
+
+    // Guard: only complete from in_work; must be the assigned expert with accepted_work match
+    {
+      const g = guardCompleteWork(
+        requestRow.status,
+        requestRow.assigned_expert_id,
+        expertId,
+        matchRow?.status ?? null,
+      );
+      if (g) {
+        await client.query("ROLLBACK");
+        return res.status(g.httpStatus ?? 409).json({ success: false, ...g });
+      }
+    }
 
     // ── 3. Match → completed ──────────────────────────────────────────────
     if (matchId) {
@@ -3838,12 +3873,38 @@ async function handleDeclineRequest(req, res) {
 
     const now = new Date().toISOString();
 
-    // 1. Resolve match id (use provided or lookup)
+    // 0. Load request with row-level lock — authoritative status check
+    const reqStatusRow = (await client.query(
+      `SELECT id, status, customer_id
+       FROM public.palata_requests
+       WHERE id = $1
+       FOR UPDATE`,
+      [requestId],
+    )).rows[0];
+    if (!reqStatusRow) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+    }
+
+    // 1. Resolve match id and load current match status
     let matchId = bodyMatchId;
-    if (!matchId) {
+    let matchStatus = null;
+    if (matchId) {
       const mRow = (await client.query(
-        `SELECT id FROM public.palata_request_matches
-         WHERE request_id = $1 AND expert_id = $2 LIMIT 1`,
+        `SELECT id, status FROM public.palata_request_matches
+         WHERE id = $1 AND request_id = $2 AND expert_id = $3 LIMIT 1`,
+        [matchId, requestId, expertId],
+      )).rows[0];
+      if (!mRow) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ success: false, error: "Match record not found" });
+      }
+      matchStatus = mRow.status;
+    } else {
+      const mRow = (await client.query(
+        `SELECT id, status FROM public.palata_request_matches
+         WHERE request_id = $1 AND expert_id = $2
+         ORDER BY matching_round DESC, proposed_at DESC LIMIT 1`,
         [requestId, expertId],
       )).rows[0];
       if (!mRow) {
@@ -3851,30 +3912,40 @@ async function handleDeclineRequest(req, res) {
         return res.status(404).json({ success: false, error: "Match record not found" });
       }
       matchId = mRow.id;
+      matchStatus = mRow.status;
     }
 
-    // 2. Update match → declined (guarded by request_id + expert_id from token)
+    // Guard: block stale / conflicting decline attempts
+    {
+      const g = guardDecline(reqStatusRow.status, matchStatus);
+      if (g) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, ...g });
+      }
+    }
+
+    // 2. Update match → declined, guarded by allowable source statuses in WHERE
     const updateResult = await client.query(
       `UPDATE public.palata_request_matches
        SET status = 'declined', decline_reason = $1, decline_note = $2, responded_at = $3
        WHERE id = $4 AND request_id = $5 AND expert_id = $6
+         AND status NOT IN ('accepted_work','completed','closed_by_other_expert','declined')
        RETURNING id`,
       [reason, note || null, now, matchId, requestId, expertId],
     );
     if (updateResult.rowCount === 0) {
+      // Race: another transaction changed match status between our SELECT FOR UPDATE and this UPDATE
       await client.query("ROLLBACK");
-      return res.status(404).json({ success: false, error: "MATCH_NOT_FOUND" });
+      return res.status(409).json({
+        success: false,
+        code: "MATCH_ALREADY_RESOLVED",
+        freshStatus: matchStatus,
+        error: "Действие больше недоступно, статус заказа изменился. Обновите страницу",
+      });
     }
 
-    // 3. Resolve customer_id (use provided or lookup)
-    let customerId = bodyCustomerId;
-    if (!customerId) {
-      const reqRow = (await client.query(
-        `SELECT customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
-        [requestId],
-      )).rows[0];
-      customerId = reqRow?.customer_id ?? null;
-    }
+    // 3. Resolve customer_id (use provided or from already-loaded request row)
+    const customerId = bodyCustomerId ?? reqStatusRow.customer_id;
 
     // 4. Resolve action item if provided
     if (actionItemId) {
@@ -4009,7 +4080,7 @@ async function handleApplyMarket(req, res) {
 
     // 1. Load request — guard in_work, get customer_id
     const requestRow = (await client.query(
-      `SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+      `SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 FOR UPDATE`,
       [requestId],
     )).rows[0];
 
@@ -4017,9 +4088,13 @@ async function handleApplyMarket(req, res) {
       await client.query("ROLLBACK");
       return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
     }
-    if (requestRow.status === "in_work") {
-      await client.query("ROLLBACK");
-      return res.json({ success: true, alreadyInWork: true });
+    // Guard: block if request is already active or closed
+    {
+      const g = guardExpertProposeDate(requestRow.status);
+      if (g) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, ...g });
+      }
     }
 
     // 2. Get expert full_name for action item description
@@ -4213,7 +4288,7 @@ async function handleApprovStartDate(req, res) {
 
     // 1. Load request, verify ownership
     const requestRow = (await client.query(
-      `SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+      `SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 FOR UPDATE`,
       [requestId],
     )).rows[0];
 
@@ -4226,8 +4301,8 @@ async function handleApprovStartDate(req, res) {
       return res.status(403).json({ success: false, error: "NOT_OWNER" });
     }
 
-    // Guard: request already in_work — mirrors handleApprove guard
-    // Resolve the action item and return early (same as original)
+    // Guard: request already in_work — resolve stale action item, return soft guard
+    // (preserved behaviour: frontend handles alreadyInWork:true gracefully)
     if (requestRow.status === "in_work") {
       await client.query(
         `UPDATE public.palata_action_items
@@ -4237,6 +4312,22 @@ async function handleApprovStartDate(req, res) {
       );
       await client.query("COMMIT");
       return res.json({ success: true, alreadyInWork: true });
+    }
+    // Guard: hard 409 for completed / cancelled — action no longer makes sense
+    if (requestRow.status === "completed" || requestRow.status === "cancelled") {
+      await client.query(
+        `UPDATE public.palata_action_items
+         SET is_resolved = true, status = 'resolved', resolved_at = $1
+         WHERE id = $2`,
+        [now, actionItemId],
+      );
+      await client.query("COMMIT");
+      return res.status(409).json({
+        success: false,
+        code: "REQUEST_STATUS_CONFLICT",
+        freshStatus: requestRow.status,
+        error: "Действие больше недоступно, статус заказа изменился. Обновите страницу",
+      });
     }
 
     // 2. Resolve customer's action item (expert_can_start_from)
@@ -4326,9 +4417,9 @@ async function handleDeclineStartDate(req, res) {
     const now = new Date().toISOString();
     const shortReqId = `#${requestId.slice(0, 8).toUpperCase()}`;
 
-    // 1. Verify request ownership
+    // 1. Verify request ownership and load status with row-level lock
     const requestRow = (await client.query(
-      `SELECT id, customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+      `SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 FOR UPDATE`,
       [requestId],
     )).rows[0];
 
@@ -4339,6 +4430,22 @@ async function handleDeclineStartDate(req, res) {
     if (requestRow.customer_id !== customerId) {
       await client.query("ROLLBACK");
       return res.status(403).json({ success: false, error: "NOT_OWNER" });
+    }
+
+    // Guard: block on in_work / completed / cancelled — resolve stale action item first
+    {
+      const g = guardDeclineStartDate(requestRow.status);
+      if (g) {
+        // Silently resolve the stale action item so it doesn't linger in the UI
+        await client.query(
+          `UPDATE public.palata_action_items
+           SET is_resolved = true, status = 'resolved', resolved_at = $1
+           WHERE id = $2 AND request_id = $3 AND assigned_to_user_id = $4 AND is_resolved = false`,
+          [now, actionItemId, requestId, customerId],
+        );
+        await client.query("COMMIT");
+        return res.status(409).json({ success: false, ...g });
+      }
     }
 
     // 2. Match → customer_declined_start_date
@@ -5084,9 +5191,18 @@ async function handleCustomerComplete(req, res) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const reqRow = (await client.query("SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    const reqRow = (await client.query("SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 FOR UPDATE", [requestId])).rows[0];
     if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
     if (reqRow.customer_id !== callerId) { await client.query("ROLLBACK"); return res.status(403).json({ success: false, error: "FORBIDDEN" }); }
+    // Guard: only complete from in_work; idempotent on already-completed
+    {
+      const g = guardCustomerComplete(reqRow.status);
+      if (g) {
+        await client.query("ROLLBACK");
+        if (g.idempotent) return res.json({ success: true });
+        return res.status(409).json({ success: false, ...g });
+      }
+    }
     const oldStatus = reqRow.status;
     await client.query("UPDATE public.palata_requests SET status = 'completed', updated_at = NOW() WHERE id = $1", [requestId]);
     await client.query("INSERT INTO public.palata_status_events (entity_type, entity_id, old_status, new_status, actor_id, note) VALUES ('request', $1, $2, 'completed', null, null)", [requestId, oldStatus]);
@@ -5119,9 +5235,18 @@ async function handleCustomerCancel(req, res) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const reqRow = (await client.query("SELECT id, status, customer_id, title FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    const reqRow = (await client.query("SELECT id, status, customer_id, title FROM public.palata_requests WHERE id = $1 FOR UPDATE", [requestId])).rows[0];
     if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
     if (reqRow.customer_id !== callerId) { await client.query("ROLLBACK"); return res.status(403).json({ success: false, error: "FORBIDDEN" }); }
+    // Guard: block on in_work / completed; idempotent on already-cancelled
+    {
+      const g = guardCustomerCancel(reqRow.status);
+      if (g) {
+        await client.query("ROLLBACK");
+        if (g.idempotent) return res.json({ success: true });
+        return res.status(409).json({ success: false, ...g });
+      }
+    }
     const oldStatus = reqRow.status;
     const requestTitle = reqRow.title ?? "";
     const shortReqId = `#${requestId.slice(0, 8).toUpperCase()}`;
@@ -5196,8 +5321,19 @@ async function handleExpertCanStart(req, res) {
     await client.query("BEGIN");
 
     currentStep = "load_request";
-    const reqRow = (await client.query("SELECT id, customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1", [requestId])).rows[0];
+    const reqRow = (await client.query(
+      `SELECT id, status, customer_id FROM public.palata_requests WHERE id = $1 FOR UPDATE`,
+      [requestId],
+    )).rows[0];
     if (!reqRow) { await client.query("ROLLBACK"); return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" }); }
+    // Guard: block if request is already active or closed
+    {
+      const g = guardExpertProposeDate(reqRow.status);
+      if (g) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, ...g });
+      }
+    }
 
     currentStep = "find_match";
     const matchRow = (await client.query("SELECT id, status FROM public.palata_request_matches WHERE id = $1 AND expert_id = $2 AND request_id = $3 LIMIT 1", [matchId, expertId, requestId])).rows[0];

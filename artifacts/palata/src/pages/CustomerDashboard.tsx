@@ -1372,8 +1372,8 @@ function ExpertCanStartCard({ item, userId, onDone }: {
       }),
     }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
 
-    // Guard: request already in_work — mirrors original guard behaviour
-    if (apRes.alreadyInWork) {
+    // Guard: request already in_work — handles both soft (alreadyInWork) and hard 409 (REQUEST_STATUS_CONFLICT)
+    if (apRes.alreadyInWork || apRes.code === "REQUEST_STATUS_CONFLICT") {
       setBlockedByInWork(true);
       setBusy(null);
       onDone();
@@ -1414,6 +1414,13 @@ function ExpertCanStartCard({ item, userId, onDone }: {
     }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
 
     if (!dcRes.success) {
+      // Guard: request already in_work or completed/cancelled — silently close the stale card
+      if (dcRes.code === "REQUEST_STATUS_CONFLICT") {
+        setBlockedByInWork(true);
+        setBusy(null);
+        onDone();
+        return;
+      }
       setBusy(null);
       return;
     }

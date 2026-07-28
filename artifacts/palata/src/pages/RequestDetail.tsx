@@ -940,7 +940,14 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
       }).then(resp => resp.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
-      if (!res.success) throw new Error(res.error ?? "TX_FAILED");
+      if (!res.success) {
+        if (res.code === "REQUEST_STATUS_CONFLICT") {
+          setCustUI({ kind: "error", message: res.error ?? "Статус заказа изменился" });
+          onReload();
+          return;
+        }
+        throw new Error(res.error ?? "TX_FAILED");
+      }
 
       const emailType = newStatus === "completed" ? "request_completed" : "request_cancelled";
       const payloads: NotifyItem[] = [];
@@ -970,7 +977,14 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
         body: JSON.stringify({ matchId: match.id, date, canStartFromFormatted: fmtDate(date), actionItemId: expertApprovedItem?.id ?? null }),
       }).then(resp => resp.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
-      if (!res.success) throw new Error(res.error ?? "TX_FAILED");
+      if (!res.success) {
+        if (res.code === "REQUEST_STATUS_CONFLICT") {
+          setMS(match.id, { kind: "error", message: res.error ?? "Статус заказа изменился" });
+          onReload();
+          return;
+        }
+        throw new Error(res.error ?? "TX_FAILED");
+      }
 
       const expertUser = usersMap[match.expert_id];
       if (customerEmail) {
@@ -989,7 +1003,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setMS(match.id, { kind: "submitting" });
     const expertUser = usersMap[match.expert_id];
     const expertName = expertUser?.full_name ?? expertUser?.email ?? null;
-    const { error } = await declineRequest({
+    const { error, code } = await declineRequest({
       requestId: r.id,
       expertId: match.expert_id,
       reason,
@@ -1003,6 +1017,10 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     });
     if (error) {
       setMS(match.id, { kind: "error", message: error });
+      // Reload so the stale page reflects the current DB state
+      if (code === "REQUEST_STATUS_CONFLICT" || code === "MATCH_ALREADY_RESOLVED") {
+        onReload();
+      }
       return;
     }
     setMS(match.id, { kind: "idle" });
@@ -1023,7 +1041,14 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         setMS(match.id, { kind: "idle" });
         return;
       }
-      if (!res.success) throw new Error(res.error ?? "TX_FAILED");
+      if (!res.success) {
+        if (res.code === "REQUEST_STATUS_CONFLICT" || res.code === "MATCH_STATUS_CONFLICT") {
+          setMS(match.id, { kind: "error", message: res.error ?? "Статус заказа изменился" });
+          onReload();
+          return;
+        }
+        throw new Error(res.error ?? "TX_FAILED");
+      }
 
       const takenExpert = usersMap[match.expert_id];
       const otherActiveMatches = matches.filter(m => m.id !== match.id && m.responded_at !== null);
@@ -1053,7 +1078,14 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         },
       }).then(res => res.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
 
-      if (!cwRes.success) throw new Error(cwRes.error ?? "TX_FAILED");
+      if (!cwRes.success) {
+        if (cwRes.code === "REQUEST_STATUS_CONFLICT" || cwRes.code === "MATCH_STATUS_CONFLICT") {
+          setMS(match.id, { kind: "error", message: cwRes.error ?? "Статус заказа изменился" });
+          onReload();
+          return;
+        }
+        throw new Error(cwRes.error ?? "TX_FAILED");
+      }
 
       // notify + email — те же получатели и шаблоны, что были раньше,
       // вызываются после успешного COMMIT

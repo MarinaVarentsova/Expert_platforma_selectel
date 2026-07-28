@@ -1,0 +1,144 @@
+Да, приступай по варианту А.
+
+Реализуй компактный раскрывающийся блок «Подробнее о заказе» в карточках раздела эксперта «Требуют действия».
+
+Подтверждённый план:
+
+1. server.js
+
+В handleActionItemsMe:
+
+- добавить LEFT JOIN palata_requests r ON r.id = ai.request_id;
+- добавить в SELECT:
+
+r.title,
+r.description,
+r.urgency,
+r.region_id,
+r.expertise_direction_id,
+r.created_at AS request_created_at
+
+- сформировать в ответе для каждого action item поле:
+
+request_summary: {
+  title,
+  description,
+  urgency,
+  region_id,
+  expertise_direction_id,
+  created_at
+}
+
+Если request_id отсутствует или заказ не найден, request_summary должен быть null.
+
+Не менять фильтрацию action items, их статусы, сортировку и бизнес-логику.
+
+2. src/lib/actionItems.ts
+
+Расширить тип ActionItem:
+
+request_summary?: {
+  title: string | null;
+  description: string | null;
+  urgency: string | null;
+  region_id: string | null;
+  expertise_direction_id: string | null;
+  created_at: string | null;
+} | null;
+
+3. ExpertDashboard.tsx
+
+Создать компактный компонент RequestSummaryBlock.
+
+По умолчанию блок свёрнут.
+
+Заголовок:
+
+«Подробнее о заказе»
+
+В раскрытом состоянии показать:
+
+- номер заказа из request_id;
+- название заказа;
+- направление экспертизы;
+- регион;
+- срочность;
+- дату создания;
+- краткое описание, если оно есть.
+
+Внизу добавить кнопку:
+
+«Открыть заказ»
+
+Переход:
+
+/requests/{requestId}
+
+4. Использовать существующие справочники направлений и регионов, если они уже загружены в ExpertDashboard.
+
+Не добавлять отдельный fetch на каждую карточку.
+
+Если справочник регионов сейчас не загружен, добавить один общий запрос на уровне ExpertDashboard, а не внутри каждой карточки.
+
+5. Добавить RequestSummaryBlock в:
+
+- YouAreApprovedCard для customer_selected_you;
+- YouAreApprovedCard для you_are_approved_for_work;
+- CustomerApprovedCard для customer_approved_start_date.
+
+6. Основные кнопки оставить без изменений:
+
+- «ОК, беру в работу»;
+- «Могу начать с даты»;
+- «Отказаться»;
+- «Понятно, приступаю»;
+- остальные существующие действия.
+
+7. Внешний вид:
+
+Использовать стили, близкие к блоку «Подробнее о заказе» на RequestDetail:
+
+- border;
+- rounded-xl;
+- компактные внутренние отступы;
+- стрелка раскрытия;
+- без полного копирования страницы заказа.
+
+Карточка action item не должна становиться слишком длинной в свёрнутом состоянии.
+
+8. Обработка неполных данных:
+
+- если нет названия региона — показать «Не указан»;
+- если нет направления — показать «Не указано»;
+- если нет срочности — не показывать строку либо показать «Не указана»;
+- если нет описания — блок описания не выводить;
+- если нет request_summary, кнопку «Открыть заказ» всё равно оставить по item.request_id, если request_id есть.
+
+9. Не менять:
+
+- Auth Service;
+- схему БД;
+- миграции;
+- статусы заказов;
+- переходы action items;
+- логику существующих кнопок;
+- другие страницы.
+
+10. После реализации выполнить:
+
+- build;
+- TypeScript check;
+- все тесты.
+
+11. Вернуть:
+
+- точный список изменённых файлов;
+- краткое описание diff;
+- результат build;
+- результат TypeScript;
+- результат тестов;
+- hash commit.
+
+Commit:
+
+feat: add order details to expert action cards

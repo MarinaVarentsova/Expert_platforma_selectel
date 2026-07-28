@@ -1,4 +1,4 @@
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 
 export type UserRow = {
   id: string;
@@ -16,7 +16,7 @@ export type UserRow = {
  */
 export async function fetchUsers(ids: string[]): Promise<UserRow[]> {
   if (ids.length === 0) return [];
-  const res = await fetch(
+  const res = await palataFetch(
     `/api/palata/users?ids=${encodeURIComponent(ids.join(","))}`,
     { headers: { Authorization: `Bearer ${getToken() ?? ""}` } },
   );

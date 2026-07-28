@@ -10,6 +10,8 @@ import {
   logout as authLogout,
   me as authMe,
   getToken,
+  clearToken,
+  resetSessionExpiredGuard,
 } from "./authClient";
 
 export type PalataRole = "customer" | "expert" | "admin";
@@ -142,6 +144,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applyToken(token);
   }, [applyToken]);
 
+  // Listen for expired-session events fired by palataFetch on any 401.
+  // Simply clearing the token and marking the state unauthenticated is enough —
+  // useRequireRole already redirects to /login when state becomes unauthenticated.
+  useEffect(() => {
+    function onSessionExpired() {
+      clearToken();
+      setState({ kind: "unauthenticated" });
+    }
+    window.addEventListener("palata:session-expired", onSessionExpired);
+    return () => window.removeEventListener("palata:session-expired", onSessionExpired);
+  }, []);
+
   const signIn = useCallback(async (
     email: string,
     password: string,
@@ -178,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     console.log("[PALATA-SESSION] redirect target =", redirectTargetForRole(user.role));
+    resetSessionExpiredGuard();
     setState({ kind: "authenticated", user });
     return { error: null };
   }, []);

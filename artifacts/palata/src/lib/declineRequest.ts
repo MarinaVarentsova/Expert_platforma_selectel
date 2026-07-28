@@ -1,4 +1,4 @@
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import { runMatching } from "./matching";
 
 const DECLINE_LABEL_RU: Record<string, string> = {
@@ -47,7 +47,7 @@ export async function declineRequest(
   } = params;
 
   try {
-    const res = await fetch(`/api/palata/requests/${requestId}/decline`, {
+    const rawRes = await palataFetch(`/api/palata/requests/${requestId}/decline`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -62,7 +62,8 @@ export async function declineRequest(
         requestTitle,
         actionItemId,
       }),
-    }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
+    });
+    const res = await rawRes.json().catch(() => ({ success: false, error: "FETCH_FAILED" }));
 
     if (!res.success) {
       return { error: res.error ?? "Ошибка отказа", code: res.code ?? null };

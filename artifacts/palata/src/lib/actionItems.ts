@@ -1,4 +1,4 @@
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import { supabase } from "./supabaseClient";
 
 // ─── Action types ─────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ export async function resolveActionItem(id: string): Promise<void> {
   try {
     const token = getToken();
     if (!token) return;
-    await fetch(`/api/palata/action-items/${encodeURIComponent(id)}/resolve`, {
+    await palataFetch(`/api/palata/action-items/${encodeURIComponent(id)}/resolve`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -85,7 +85,7 @@ export async function loadOpenActionItems(_userId?: string): Promise<ActionItem[
   try {
     const token = getToken();
     if (!token) return [];
-    const res = await fetch("/api/palata/action-items/me", {
+    const res = await palataFetch("/api/palata/action-items/me", {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];

@@ -15,6 +15,68 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+// ── Expired-session handler ───────────────────────────────────────────────────
+
+const SESSION_EXPIRED_KEY = "palata_session_expired";
+const SESSION_EXPIRED_MSG = "Сессия завершена. Войдите снова.";
+
+/** True after the first 401 so subsequent parallel 401s are no-ops. */
+let _sessionExpiredFired = false;
+
+/**
+ * Reset the guard after a successful sign-in so the user can be logged out
+ * again in a future session without reloading the page.
+ */
+export function resetSessionExpiredGuard(): void {
+  _sessionExpiredFired = false;
+}
+
+/**
+ * Called when any /api/palata/* request returns 401.
+ * Idempotent: only the first call does anything.
+ * - clears the stored token
+ * - stores a message for the login page
+ * - fires a custom DOM event that AuthContext listens to
+ */
+export function handleExpiredSession(): void {
+  if (_sessionExpiredFired) return;
+  _sessionExpiredFired = true;
+  clearToken();
+  try {
+    sessionStorage.setItem(SESSION_EXPIRED_KEY, SESSION_EXPIRED_MSG);
+  } catch {
+    // sessionStorage unavailable (e.g. private browsing with storage blocked) — ignore
+  }
+  window.dispatchEvent(new CustomEvent("palata:session-expired"));
+}
+
+// ── Palata API fetch wrapper ──────────────────────────────────────────────────
+
+/**
+ * Drop-in replacement for fetch() for all /api/palata/* calls.
+ * On HTTP 401 from a Palata endpoint, triggers handleExpiredSession() once.
+ * Returns the Response unchanged so callers can still read the body.
+ */
+export async function palataFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const url =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.href
+        : (input as Request).url;
+
+  const res = await fetch(input, init);
+
+  if (res.status === 401 && url.includes("/api/palata/")) {
+    handleExpiredSession();
+  }
+
+  return res;
+}
+
 // ── Request/Response types ───────────────────────────────────────────────────
 
 export type RegisterPayload = {

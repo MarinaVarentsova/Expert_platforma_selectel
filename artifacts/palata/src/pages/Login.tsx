@@ -12,6 +12,7 @@ const ROLE_DESTINATIONS: Record<PalataRole, string> = {
 
 type Banner =
   | { kind: "success"; message: string; sub?: string }
+  | { kind: "warning"; message: string }
   | { kind: "error";   message: string };
 
 function parseBanners(): { banner: Banner | null; prefillEmail: string } {
@@ -43,6 +44,17 @@ function parseBanners(): { banner: Banner | null; prefillEmail: string } {
       reason === "used_token"    ? "Email уже подтверждён." :
                                    "Не удалось подтвердить email.";
     return { banner: { kind: "error", message }, prefillEmail };
+  }
+
+  // Session expired — written by handleExpiredSession() in authClient.ts
+  try {
+    const expiredMsg = sessionStorage.getItem("palata_session_expired");
+    if (expiredMsg) {
+      sessionStorage.removeItem("palata_session_expired");
+      return { banner: { kind: "warning", message: expiredMsg }, prefillEmail };
+    }
+  } catch {
+    // sessionStorage unavailable — ignore
   }
 
   return { banner: null, prefillEmail };
@@ -125,6 +137,12 @@ export default function Login() {
                 <p className="text-xs text-green-700 mt-0.5">{banner.sub}</p>
               )}
             </div>
+          </div>
+        )}
+        {banner?.kind === "warning" && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+            <XCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+            <p className="text-sm text-amber-800 font-medium">{banner.message}</p>
           </div>
         )}
         {banner?.kind === "error" && (

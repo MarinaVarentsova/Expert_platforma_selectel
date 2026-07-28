@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,14 +23,15 @@ export type MatchingResult = {
 export async function runMatching(input: MatchingInput): Promise<MatchingResult> {
   const { requestId } = input;
 
-  const res = await fetch(`/api/palata/requests/${requestId}/matching/run`, {
+  const rawRes = await palataFetch(`/api/palata/requests/${requestId}/matching/run`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${getToken() ?? ""}`,
     },
     body: JSON.stringify({}),
-  }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
+  });
+  const res = await rawRes.json().catch(() => ({ success: false, error: "FETCH_FAILED" }));
 
   if (!res.success) {
     throw new Error(res.error ?? "Matching failed");

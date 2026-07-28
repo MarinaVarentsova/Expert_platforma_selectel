@@ -1,0 +1,69 @@
+Проведи точечное исправление статистики эксперта.
+
+Установлено фактически в production Selectel:
+
+Функции:
+- public.palata_refresh_expert_stats()
+- public.palata_refresh_expert_stats_on_match()
+
+сейчас являются пустыми заглушками:
+
+BEGIN
+  RETURN NEW;
+END;
+
+Из-за этого существующие включённые триггеры не обновляют:
+- palata_expert_profiles.avg_customer_rating
+- palata_expert_profiles.completed_orders_count
+
+Также handleCompleteWork обновляет только:
+palata_request_contacts.expert_status = 'completed'
+
+но не обновляет:
+palata_request_matches.status = 'completed'
+
+Нужно:
+
+1. Найти текущую систему миграций проекта.
+2. Создать новую отдельную миграцию, не редактируя старую применённую миграцию.
+3. В миграции выполнить CREATE OR REPLACE FUNCTION для:
+   - public.palata_refresh_expert_stats()
+   - public.palata_refresh_expert_stats_on_match()
+
+4. Функция public.palata_refresh_expert_stats() должна после INSERT/UPDATE в palata_expert_ratings:
+   - найти профиль по palata_expert_profiles.user_id = NEW.expert_id;
+   - установить avg_customer_rating как ROUND(AVG(score)::numeric, 2)
+     из palata_expert_ratings по expert_id = NEW.expert_id;
+   - установить completed_orders_count как COUNT(*) из palata_request_matches
+     по expert_id = NEW.expert_id и status = 'completed';
+   - вернуть NEW.
+
+5. Функция public.palata_refresh_expert_stats_on_match() должна после INSERT или UPDATE status в palata_request_matches:
+   - найти профиль по palata_expert_profiles.user_id = NEW.expert_id;
+   - пересчитать completed_orders_count по статусу completed;
+   - вернуть NEW.
+
+6. В handleCompleteWork внутри существующей транзакции после успешного завершения работы добавить:
+
+UPDATE public.palata_request_matches
+SET status = 'completed',
+    updated_at = NOW()
+WHERE request_id = $1
+  AND expert_id = $2;
+
+Сначала проверь наличие updated_at в palata_request_matches.
+Если updated_at нет — обновлять только status.
+
+7. Добавить одноразовый backfill в миграцию:
+   - пересчитать avg_customer_rating для всех существующих профилей;
+   - пересчитать completed_orders_count для всех существующих профилей.
+
+8. Не менять frontend.
+9. Не менять схему таблиц.
+10. Не менять логику рейтинга заказчиков.
+11. Не трогать palata_customer_ratings.
+12. Не менять автоподбор, он уже читает эти поля.
+13. Показать точный diff.
+14. Выполнить build/tests.
+15. Сделать отдельный commit:
+fix: restore expert rating statistics

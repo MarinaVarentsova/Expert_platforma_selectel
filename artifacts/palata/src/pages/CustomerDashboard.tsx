@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearch } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import { fetchUsers } from "@/lib/users";
 import { fetchRequests } from "@/lib/requests";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -217,7 +217,7 @@ export default function CustomerDashboard() {
     if (guard.status !== "ok") return;
     const userId = guard.user.id;
 
-    fetch("/api/palata/requests/customer", {
+    palataFetch("/api/palata/requests/customer", {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     })
       .then(r => r.json())
@@ -266,7 +266,7 @@ export default function CustomerDashboard() {
   function reloadRequests() {
     if (guard.status !== "ok") return;
     const userId = guard.user.id;
-    fetch("/api/palata/requests/customer", {
+    palataFetch("/api/palata/requests/customer", {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     })
       .then(r => r.json())
@@ -655,7 +655,7 @@ function ProfileView({
     console.log("[profile-save] regionIds[0]:", regionIds[0]);
     console.log("[profile-save] palata_customer_profiles payload:", cpPayload);
     const [r1, r2] = await Promise.all([
-      fetch("/api/palata/users/me", {
+      palataFetch("/api/palata/users/me", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
         body: JSON.stringify({ full_name: fullName.trim() || null, phone: phone.trim() || null }),
@@ -1190,7 +1190,7 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
     setSelectedExpertId(expert.expert_id);
     setSelecting(expert.expert_id);
 
-    const seRes = await fetch(`/api/palata/requests/${item.request_id}/select-expert`, {
+    const seRes = await palataFetch(`/api/palata/requests/${item.request_id}/select-expert`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1321,7 +1321,7 @@ function ExpertCanStartCard({ item, userId, onDone }: {
   useEffect(() => {
     async function load() {
       const [checkRes, { data: expertData }] = await Promise.all([
-        fetch(`/api/palata/requests/${item.request_id}/start-date/check`, {
+        palataFetch(`/api/palata/requests/${item.request_id}/start-date/check`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1359,7 +1359,7 @@ function ExpertCanStartCard({ item, userId, onDone }: {
     if (!expertId) return;
     setBusy("approve");
 
-    const apRes = await fetch(`/api/palata/requests/${item.request_id}/start-date/approve`, {
+    const apRes = await palataFetch(`/api/palata/requests/${item.request_id}/start-date/approve`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1401,7 +1401,7 @@ function ExpertCanStartCard({ item, userId, onDone }: {
     if (!expertId) return;
     setBusy("decline");
 
-    const dcRes = await fetch(`/api/palata/requests/${item.request_id}/start-date/decline`, {
+    const dcRes = await palataFetch(`/api/palata/requests/${item.request_id}/start-date/decline`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

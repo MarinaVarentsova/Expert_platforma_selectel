@@ -4,7 +4,7 @@ import { ClipboardList, Zap, Star, User, Briefcase, ChevronDown, ChevronUp } fro
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrentUser } from "@/lib/useAuth";
 import { fetchUsers } from "@/lib/users";
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 
 import { runMatching } from "@/lib/matching";
 import { notify, type NotifyItem } from "@/lib/notifyApi";
@@ -341,7 +341,7 @@ function ExpertTopNav({ userId, userName, userEmail }: {
         setRating(d?.avg_customer_rating ?? null);
       });
 
-    fetch("/api/palata/action-items/counts", {
+    palataFetch("/api/palata/action-items/counts", {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     })
       .then(r => r.json())
@@ -433,7 +433,7 @@ function CustomerTopNav({ userId, userName, userEmail }: {
         }
       });
 
-    fetch("/api/palata/action-items/counts", {
+    palataFetch("/api/palata/action-items/counts", {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     })
       .then(r => r.json())
@@ -523,14 +523,14 @@ export default function RequestDetail() {
 
     async function load() {
       const [detailRes, filesRes, emailEventsRes] = await Promise.all([
-        fetch(`/api/palata/requests/${encodeURIComponent(id!)}/detail`, {
+        palataFetch(`/api/palata/requests/${encodeURIComponent(id!)}/detail`, {
           headers: { Authorization: `Bearer ${getToken() ?? ""}` },
         }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" })),
         fetch(`/api/palata/request-files?request_id=${encodeURIComponent(id!)}`)
           .then(r => r.json())
           .then(b => ({ data: (b.rows ?? []) as RequestFile[], error: null }))
           .catch(() => ({ data: [] as RequestFile[], error: null })),
-        fetch(`/api/palata/email-events?request_id=${encodeURIComponent(id!)}`, {
+        palataFetch(`/api/palata/email-events?request_id=${encodeURIComponent(id!)}`, {
           headers: { Authorization: `Bearer ${getToken() ?? ""}` },
         }).then(r => r.json()).catch(() => ({ success: false, rows: [] as EmailEvent[] })),
       ]);
@@ -754,7 +754,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     setEditSaving(true);
     setEditError(null);
     try {
-      const res = await fetch(`/api/palata/requests/${r.id}`, {
+      const res = await palataFetch(`/api/palata/requests/${r.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
         body: JSON.stringify({
@@ -884,7 +884,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
       const expertUser = usersMap[match.expert_id];
 
-      const seRes = await fetch(`/api/palata/requests/${r.id}/select-expert`, {
+      const seRes = await palataFetch(`/api/palata/requests/${r.id}/select-expert`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -936,7 +936,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       const endpoint = newStatus === "completed"
         ? `/api/palata/requests/${r.id}/customer-complete`
         : `/api/palata/requests/${r.id}/cancel`;
-      const res = await fetch(endpoint, {
+      const res = await palataFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
       }).then(resp => resp.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
@@ -972,7 +972,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleCanStart(match: Match, date: string) {
     setMS(match.id, { kind: "submitting" });
     try {
-      const res = await fetch(`/api/palata/requests/${r.id}/can-start`, {
+      const res = await palataFetch(`/api/palata/requests/${r.id}/can-start`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
         body: JSON.stringify({ matchId: match.id, date, canStartFromFormatted: fmtDate(date), actionItemId: expertApprovedItem?.id ?? null }),
@@ -1031,7 +1031,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleTakeWork(match: Match) {
     setMS(match.id, { kind: "submitting" });
     try {
-      const res = await fetch(`/api/palata/requests/${r.id}/take-work`, {
+      const res = await palataFetch(`/api/palata/requests/${r.id}/take-work`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
         body: JSON.stringify({ actionItemId: expertApprovedItem?.id ?? null }),
@@ -1070,7 +1070,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleCompleteWork(match: Match) {
     setMS(match.id, { kind: "submitting" });
     try {
-      const cwRes = await fetch(`/api/palata/requests/${r.id}/complete`, {
+      const cwRes = await palataFetch(`/api/palata/requests/${r.id}/complete`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1124,7 +1124,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleAdminStatusChange() {
     if (adminStatus === r.status) return;
     setAdminSubmitting(true); setAdminError(null);
-    const res = await fetch(`/api/palata/admin/requests/${r.id}/status`, {
+    const res = await palataFetch(`/api/palata/admin/requests/${r.id}/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
       body: JSON.stringify({ status: adminStatus }),
@@ -1139,7 +1139,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
     if (!match) return;
     setAdminSubmitting(true); setAdminError(null);
     const expertName = userName(usersMap[match.expert_id]) ?? match.expert_id;
-    const res = await fetch(`/api/palata/admin/requests/${r.id}/assign`, {
+    const res = await palataFetch(`/api/palata/admin/requests/${r.id}/assign`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
       body: JSON.stringify({ expertId: match.expert_id, expertName }),
@@ -1151,7 +1151,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   async function handleAdminReturnToMatching() {
     setAdminSubmitting(true); setAdminError(null);
-    const res = await fetch(`/api/palata/admin/requests/${r.id}/rematch`, {
+    const res = await palataFetch(`/api/palata/admin/requests/${r.id}/rematch`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
     }).then(resp => resp.json()).catch(() => ({ success: false, message: "FETCH_FAILED" }));
@@ -1163,7 +1163,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   async function handleAdminComment() {
     if (!adminComment.trim()) return;
     setAdminSubmitting(true); setAdminError(null);
-    await fetch(`/api/palata/admin/requests/${r.id}/comment`, {
+    await palataFetch(`/api/palata/admin/requests/${r.id}/comment`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
       body: JSON.stringify({ comment: adminComment.trim(), currentStatus: r.status }),
@@ -1175,7 +1175,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
   async function handleAdminClose() {
     setAdminSubmitting(true); setAdminError(null);
-    const res = await fetch(`/api/palata/admin/requests/${r.id}/close`, {
+    const res = await palataFetch(`/api/palata/admin/requests/${r.id}/close`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
     }).then(resp => resp.json()).catch(() => ({ success: false, message: "FETCH_FAILED" }));

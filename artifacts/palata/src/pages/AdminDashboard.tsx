@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import AdminLayout from "@/components/AdminLayout";
 import { FileText, Clock, Zap, CheckCircle2, AlertTriangle, TrendingUp, Settings, LayoutDashboard, Timer, ShieldAlert } from "lucide-react";
@@ -103,7 +103,7 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/palata/admin/requests", {
+    palataFetch("/api/palata/admin/requests", {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     })
       .then(r => r.json())

@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/useAuth";
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import { notify } from "@/lib/notifyApi";
 import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check, ClipboardList, Zap, Star, User, Sparkles, AlertCircle } from "lucide-react";
 
@@ -245,7 +245,7 @@ export default function NewRequest() {
       const token = getToken();
       if (token) reqHeaders["Authorization"] = `Bearer ${token}`;
 
-      const reqRes = await fetch("/api/palata/requests", {
+      const reqRes = await palataFetch("/api/palata/requests", {
         method: "POST",
         headers: reqHeaders,
         body: JSON.stringify({

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
 
@@ -283,7 +283,7 @@ export default function AdminMetrics() {
     if (guard.status !== "ok") return;
 
     async function load() {
-      const metricsBody = await fetch("/api/palata/admin/requests/metrics", {
+      const metricsBody = await palataFetch("/api/palata/admin/requests/metrics", {
         headers: { Authorization: `Bearer ${getToken() ?? ""}` },
       }).then(r => r.json()).catch(() => ({ success: false, requests: [], matches: [], events: [] }));
 

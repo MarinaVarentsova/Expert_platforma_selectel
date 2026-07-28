@@ -13,7 +13,7 @@ import {
   verifyCertificate, mergeDirectionIds, normalizeCertNumber,
   type CertResult,
 } from "@/lib/certificates";
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import {
   Inbox, Star, User, CheckCircle2, XCircle, MapPin,
   Briefcase, FileText, GraduationCap, ClipboardList, Zap, Calendar,
@@ -173,7 +173,7 @@ export default function ExpertDashboard() {
 
   const loadPendingRatings = async (userId: string) => {
     // Fetch completed matches
-    const pendingRes = await fetch("/api/palata/requests/expert/matches?status=completed", {
+    const pendingRes = await palataFetch("/api/palata/requests/expert/matches?status=completed", {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     }).then(r => r.json()).catch(() => ({ success: false, rows: [] }));
     const matchErr = pendingRes.success ? null : { message: pendingRes.error ?? "Ошибка загрузки" };
@@ -261,7 +261,7 @@ export default function ExpertDashboard() {
     const userId = guard.user.id;
 
     // ── Critical queries: needed for first visible render ──────────────────
-    fetch("/api/palata/requests/expert/matches", {
+    palataFetch("/api/palata/requests/expert/matches", {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     })
       .then(r => r.json())
@@ -307,7 +307,7 @@ export default function ExpertDashboard() {
   function reloadMatches(): Promise<void> {
     if (guard.status !== "ok") return Promise.resolve();
     const userId = guard.user.id;
-    return fetch("/api/palata/requests/expert/matches", {
+    return palataFetch("/api/palata/requests/expert/matches", {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     })
       .then(r => r.json())
@@ -742,7 +742,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
     // Show all requests except "неактуально" (cancelled) and "в работе" (completed / in_work)
     const HIDDEN_STATUSES = ["cancelled", "completed", "in_work"];
 
-    const marketRes = await fetch("/api/palata/requests/expert/market", {
+    const marketRes = await palataFetch("/api/palata/requests/expert/market", {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED", orders: [], myMatches: [] }));
 
@@ -835,7 +835,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
         }
       }
 
-      const apRes = await fetch(`/api/palata/requests/${order.id}/apply-market`, {
+      const apRes = await palataFetch(`/api/palata/requests/${order.id}/apply-market`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1202,7 +1202,7 @@ function ProfileView({
       if (p.palata_registry_verified && p.palata_registry_number) {
         const result = await verifyCertificate(p.palata_registry_number, allDirections, user.full_name ?? "");
         if (result?.status === "verified") {
-          const _insApiRes = await fetch("/api/palata/expert-certificate", {
+          const _insApiRes = await palataFetch("/api/palata/expert-certificate", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -1214,7 +1214,7 @@ function ProfileView({
           const insErr = (!_insApiRes.ok || !_insApiBody?.success) ? { message: _insApiBody?.message ?? String(_insApiRes.status) } : null;
           if (!insErr) {
             if (result.directionIds.length > 0) {
-              await fetch("/api/palata/expert-directions", {
+              await palataFetch("/api/palata/expert-directions", {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
@@ -1329,7 +1329,7 @@ function ProfileView({
 
     // 5. Save user + profile
     const [r1, r2] = await Promise.all([
-      fetch("/api/palata/users/me", {
+      palataFetch("/api/palata/users/me", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
         body: JSON.stringify({ full_name: fullName.trim() || null, phone: phone.trim() || null }),
@@ -1364,7 +1364,7 @@ function ProfileView({
 
     // 6. Recalculate directions from verified certs only
     const newDirIds = mergeDirectionIds(verifiedResults);
-    await fetch("/api/palata/expert-directions", {
+    await palataFetch("/api/palata/expert-directions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1375,7 +1375,7 @@ function ProfileView({
     setDirIds(newDirIds);
 
     // 7. Save only verified certs (replace all)
-    await fetch("/api/palata/expert-certificate", {
+    await palataFetch("/api/palata/expert-certificate", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1400,7 +1400,7 @@ function ProfileView({
 
     // 9. Save regions
     console.log("[expert-save] regs before save:", regs);
-    const regReplaceRes = await fetch("/api/palata/expert-regions", {
+    const regReplaceRes = await palataFetch("/api/palata/expert-regions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2245,7 +2245,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
   useEffect(() => {
     async function load() {
       // Load match + embedded request from Selectel via backend
-      const matchesBody = await fetch("/api/palata/requests/expert/matches", {
+      const matchesBody = await palataFetch("/api/palata/requests/expert/matches", {
         headers: { Authorization: `Bearer ${getToken() ?? ""}` },
       }).then(res => res.json()).catch(() => ({ success: false, rows: [] })) as {
         success: boolean;
@@ -2278,7 +2278,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
       if (custId) {
         const [{ data: uData }, { data: cData }] = await Promise.all([
           fetchUsers([custId]).then(rows => ({ data: rows[0] ?? null, error: null })),
-          fetch(`/api/palata/request-contacts?request_id=${encodeURIComponent(item.request_id ?? "")}`, {
+          palataFetch(`/api/palata/request-contacts?request_id=${encodeURIComponent(item.request_id ?? "")}`, {
             headers: { Authorization: `Bearer ${getToken() ?? ""}` },
           }).then(r => r.json())
             .then((b: { success: boolean; contact?: { customer_phone: string | null; customer_email: string | null } | null }) => ({
@@ -2316,7 +2316,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
 
     console.log("[take-work] START", { requestId: item.request_id, currentExpertId: userId });
 
-    const twRes = await fetch(`/api/palata/requests/${item.request_id}/take-work`, {
+    const twRes = await palataFetch(`/api/palata/requests/${item.request_id}/take-work`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2364,7 +2364,7 @@ function YouAreApprovedCard({ item, userId, userEmail, onDone, onMatchDeclined }
     const formatted = new Date(proposeDate).toLocaleDateString("ru-RU", {
       day: "2-digit", month: "long", year: "numeric",
     });
-    const res = await fetch(`/api/palata/requests/${item.request_id}/can-start`, {
+    const res = await palataFetch(`/api/palata/requests/${item.request_id}/can-start`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

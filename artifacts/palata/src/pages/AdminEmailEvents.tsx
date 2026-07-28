@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { fetchUsers } from "@/lib/users";
 import { fetchRequests } from "@/lib/requests";
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
 import { RefreshCw } from "lucide-react";
@@ -58,7 +58,7 @@ export default function AdminEmailEvents() {
 
     let fetchRes: { success: boolean; rows?: Row[]; total?: number; error?: string };
     try {
-      fetchRes = await fetch(`/api/palata/email-events?${params.toString()}`, {
+      fetchRes = await palataFetch(`/api/palata/email-events?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       }).then(r => r.json());
     } catch {

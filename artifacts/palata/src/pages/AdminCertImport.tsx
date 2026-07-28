@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { getToken } from "@/lib/authClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import { useAuth } from "@/lib/useAuth";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -169,7 +169,7 @@ export default function AdminCertImport() {
     setStatsLoading(true);
     try {
       const token = getToken();
-      const res = await fetch("/api/palata/cert-import/stats", {
+      const res = await palataFetch("/api/palata/cert-import/stats", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const body = await res.json().catch(() => null);
@@ -326,7 +326,7 @@ export default function AdminCertImport() {
       } | null = null;
 
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-        const importRes = await fetch("/api/palata/cert-import", {
+        const importRes = await palataFetch("/api/palata/cert-import", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

@@ -5,7 +5,7 @@ import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/useAuth";
 import { getToken, palataFetch } from "@/lib/authClient";
 import { notify } from "@/lib/notifyApi";
-import { Upload, X, FileText, FileSpreadsheet, Image, File, ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check, ClipboardList, Zap, Star, User, Sparkles, AlertCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, ChevronDown, Check, ClipboardList, Zap, Star, User, Sparkles, AlertCircle } from "lucide-react";
 
 
 const URGENCY_OPTIONS = [
@@ -13,17 +13,6 @@ const URGENCY_OPTIONS = [
   { value: "urgent",      label: "Срочная",        sub: "7–14 дней" },
   { value: "very_urgent", label: "Очень срочная",  sub: "до 7 дней" },
 ];
-
-const ALLOWED_MIME = [
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "image/jpeg",
-  "image/png",
-];
-const ACCEPT_ATTR = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -117,10 +106,8 @@ export default function NewRequest() {
     customer_email: currentUser?.email ?? "",
   });
 
-  const [files, setFiles]     = useState<File[]>([]);
   const [state, setState]     = useState<SubmitState>({ kind: "idle" });
   const [errors, setErrors]   = useState<Partial<Record<keyof FormData, string>>>({});
-  const fileRef = useRef<HTMLInputElement>(null);
 
   // AI direction detection state
   const [aiStatus, setAiStatus]           = useState<AiStatus>("idle");
@@ -157,19 +144,6 @@ export default function NewRequest() {
       e.customer_email = "Укажите email или телефон для связи";
     setErrors(e);
     return Object.keys(e).length === 0;
-  }
-
-  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const selected = Array.from(e.target.files ?? []).filter(f => ALLOWED_MIME.includes(f.type));
-    setFiles(prev => {
-      const existing = new Set(prev.map(f => f.name + f.size));
-      return [...prev, ...selected.filter(f => !existing.has(f.name + f.size))];
-    });
-    e.target.value = "";
-  }
-
-  function removeFile(idx: number) {
-    setFiles(prev => prev.filter((_, i) => i !== idx));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -274,39 +248,6 @@ export default function NewRequest() {
 
       const requestId = reqBody.request.id as string;
       const autoTitle = reqBody.request.title as string;
-
-      // Upload files (if any)
-      if (files.length > 0) {
-        setState({ kind: "submitting", step: `Загрузка файлов (0 / ${files.length})…` });
-        const uploads = files.map(async (file, idx) => {
-          const safeName = file.name.replace(/[^a-zA-Z0-9._\-а-яёА-ЯЁ]/gu, "_");
-          const path = `requests/${requestId}/${Date.now()}_${idx}_${safeName}`;
-          const { error: uploadError } = await supabase.storage
-            .from("palata-request-files")
-            .upload(path, file, { contentType: file.type, upsert: false });
-
-          if (uploadError) {
-            console.warn("File upload skipped:", file.name, uploadError.message);
-            return null;
-          }
-
-          const fileInsRes = await fetch("/api/palata/request-files", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              request_id: requestId,
-              bucket_path: path,
-              file_name: file.name,
-              mime_type: file.type,
-              size_bytes: file.size,
-              uploader_id: currentUserId,
-            }),
-          }).then(r => r.json()).catch(() => ({ success: false }));
-          if (!fileInsRes.success) console.warn("File record error: insert failed");
-          return path;
-        });
-        await Promise.all(uploads);
-      }
 
       // Auto-matching
       setState({ kind: "submitting", step: "Подбор экспертов…" });
@@ -658,52 +599,7 @@ export default function NewRequest() {
             </Field>
           </FormCard>
 
-          {/* ── 3: Файлы ────────────────────────────────────────────── */}
-          <FormCard title="Прикреплённые документы" num="03">
-            <p className="text-xs text-[#666666] -mt-1">
-              PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — не более 50 МБ каждый
-            </p>
-
-            {files.length > 0 && (
-              <div className="space-y-1.5">
-                {files.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 bg-[#F4F4F4] rounded-lg border border-[#D0D0D0]">
-                    <span className="text-[#666666] shrink-0">{fileIconEl(f.type)}</span>
-                    <span className="text-sm text-[#111111] flex-1 truncate">{f.name}</span>
-                    <span className="text-xs text-[#666666] shrink-0">{fmtSize(f.size)}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(i)}
-                      className="text-[#666666] hover:text-red-500 transition-colors ml-0.5 shrink-0"
-                      disabled={busy}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-dashed border-[#D0D0D0] text-sm text-[#666666] hover:border-[#0F4C9A] hover:text-[#0F4C9A] hover:bg-[#0F4C9A]/5 transition-colors"
-              disabled={busy}
-            >
-              <Upload className="w-4 h-4" />
-              {files.length === 0 ? "Прикрепить файлы" : "Добавить ещё"}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              multiple
-              accept={ACCEPT_ATTR}
-              className="hidden"
-              onChange={onFileChange}
-            />
-          </FormCard>
-
-          {/* ── 4: Контакты ─────────────────────────────────────────── */}
+          {/* ── 3: Контакты ─────────────────────────────────────────── */}
           <FormCard title="Контактные данные" num="04">
             <p className="text-xs text-[#666666] -mt-1">
               Необходимы для связи с экспертом после подбора
@@ -828,16 +724,3 @@ function inputCls(hasError: boolean) {
   ].join(" ");
 }
 
-function fileIconEl(mime: string) {
-  if (mime === "application/pdf") return <FileText className="w-4 h-4" />;
-  if (mime.includes("word")) return <FileText className="w-4 h-4" />;
-  if (mime.includes("excel") || mime.includes("spreadsheet")) return <FileSpreadsheet className="w-4 h-4" />;
-  if (mime.startsWith("image/")) return <Image className="w-4 h-4" />;
-  return <File className="w-4 h-4" />;
-}
-
-function fmtSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
-}

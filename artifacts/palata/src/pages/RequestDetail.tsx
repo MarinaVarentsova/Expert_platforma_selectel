@@ -41,15 +41,6 @@ type Request = {
   region_id: string | null;
 };
 
-type RequestFile = {
-  id: string;
-  file_name: string;
-  mime_type: string | null;
-  size_bytes: number | null;
-  bucket_path: string | null;
-  created_at: string;
-};
-
 type Match = {
   id: string;
   expert_id: string;
@@ -137,7 +128,6 @@ type User = {
 
 type LoadedData = {
   request: Request;
-  files: RequestFile[];
   matches: Match[];
   contacts: ContactRecord[];
   expertProfiles: ExpertProfile[];
@@ -247,24 +237,7 @@ function fmt(date: string) {
 function fmtDate(date: string) {
   return new Date(date).toLocaleDateString("ru-RU");
 }
-function fmtSize(bytes: number | null) {
-  if (bytes == null) return "—";
-  if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
-}
 function shortId(id: string) { return id.slice(0, 8).toUpperCase(); }
-function mimeIcon(mime: string | null): string {
-  if (!mime) return "FILE";
-  if (mime.startsWith("image/")) return "IMG";
-  if (mime === "application/pdf") return "PDF";
-  if (mime.includes("word") || mime.includes("document")) return "DOC";
-  if (mime.includes("excel") || mime.includes("spreadsheet")) return "XLS";
-  return "FILE";
-}
-function filePublicUrl(bucketPath: string): string {
-  return supabase.storage.from("palata-request-files").getPublicUrl(bucketPath).data.publicUrl;
-}
 function userName(u: User | undefined) {
   return u?.full_name ?? u?.email ?? null;
 }
@@ -522,14 +495,10 @@ export default function RequestDetail() {
     setState({ kind: "loading" });
 
     async function load() {
-      const [detailRes, filesRes, emailEventsRes] = await Promise.all([
+      const [detailRes, emailEventsRes] = await Promise.all([
         palataFetch(`/api/palata/requests/${encodeURIComponent(id!)}/detail`, {
           headers: { Authorization: `Bearer ${getToken() ?? ""}` },
         }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" })),
-        fetch(`/api/palata/request-files?request_id=${encodeURIComponent(id!)}`)
-          .then(r => r.json())
-          .then(b => ({ data: (b.rows ?? []) as RequestFile[], error: null }))
-          .catch(() => ({ data: [] as RequestFile[], error: null })),
         palataFetch(`/api/palata/email-events?request_id=${encodeURIComponent(id!)}`, {
           headers: { Authorization: `Bearer ${getToken() ?? ""}` },
         }).then(r => r.json()).catch(() => ({ success: false, rows: [] as EmailEvent[] })),
@@ -550,7 +519,6 @@ export default function RequestDetail() {
       const request = reqRes.data as Request;
       const matches = (matchesRes.data as Match[]) ?? [];
       const events = (eventsRes.data as StatusEvent[]) ?? [];
-      const files = (filesRes.data as RequestFile[]) ?? [];
       const contacts = (contactsRes.data as ContactRecord[]) ?? [];
       const emailEvents = ((emailEventsRes as { rows?: EmailEvent[] }).rows ?? []) as EmailEvent[];
 
@@ -648,7 +616,7 @@ export default function RequestDetail() {
       }
 
       setState({ kind: "ok", data: {
-        request, files, matches, contacts, expertProfiles,
+        request, matches, contacts, expertProfiles,
         events, emailEvents, expertRatings, customerRatings, usersMap,
         requestRegionName, expertRegionNamesMap, expertDirectionNamesMap,
         customerAvgRating,
@@ -696,7 +664,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   const userId = currentUser?.id ?? null;
   const [, navigate] = useLocation();
 
-  const { request: r, files, matches, contacts, expertProfiles,
+  const { request: r, matches, contacts, expertProfiles,
           events, emailEvents, expertRatings, customerRatings, usersMap,
           requestRegionName, expertRegionNamesMap, expertDirectionNamesMap,
           customerAvgRating } = data;
@@ -1918,47 +1886,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
             </div>
           )}
 
-          {/* — 03: Прикреплённые документы — */}
-          <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-3 shadow-sm">
-            <div className="flex items-center gap-2.5">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#002B5C] text-white text-[9px] font-bold flex items-center justify-center">
-                03
-              </span>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-[#666666]">Прикреплённые документы</h3>
-              {files.length > 0 && (
-                <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5 ml-0.5">{files.length}</span>
-              )}
-            </div>
-            <p className="text-xs text-[#666666]">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — не более 50 МБ каждый</p>
-            {files.length === 0 ? (
-              <p className="text-sm text-slate-400 italic">Файлы не загружены</p>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {files.map(f => (
-                  <div key={f.id} className="py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors rounded">
-                    <span className="text-[10px] font-bold font-mono text-slate-400 bg-slate-100 rounded px-1.5 py-0.5 shrink-0">
-                      {mimeIcon(f.mime_type)}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 truncate">{f.file_name}</p>
-                      <p className="text-xs text-slate-400">{fmtSize(f.size_bytes)} · {fmtDate(f.created_at)}</p>
-                    </div>
-                    {f.bucket_path && (
-                      <a
-                        href={filePublicUrl(f.bucket_path)}
-                        target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-[#0F4C9A] hover:text-[#002B5C] hover:underline shrink-0 transition-colors"
-                      >
-                        Скачать
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* — 04: Контактные данные — */}
+          {/* — 03: Контактные данные — */}
           {(role !== "expert" || (myActiveMatch && (CONTACTS_REVEALED.has(myActiveMatch.status) || (myActiveMatch.status === "proposed" && !!myActiveMatch.responded_at)))) && (r.customer_name || r.customer_phone || r.customer_email) && (
             <div className="rounded-xl border border-[#D0D0D0] p-5 space-y-3 shadow-sm">
               <div className="flex items-center gap-2.5">

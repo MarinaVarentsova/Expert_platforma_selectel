@@ -1,0 +1,75 @@
+Нужно точечно удалить из Палаты весь функционал прикрепления файлов к заказам и всю связанную с этим связь с Supabase Storage.
+
+Важно:
+- не менять бизнес-логику заказов;
+- не менять авторизацию;
+- не менять БД и миграции;
+- не трогать другие функции Supabase, если они используются где-то ещё;
+- не делать широкий рефакторинг;
+- удалить только функционал файлов заказа.
+
+Что убрать:
+
+1. Из формы создания заказа NewRequest.tsx:
+- блок «Прикреплённые документы»;
+- input type="file";
+- выбор нескольких файлов;
+- проверки MIME и размера;
+- состояния selectedFiles / fileErrors / upload state;
+- загрузку в bucket palata-request-files;
+- вызовы supabase.storage.from("palata-request-files").upload(...);
+- POST /api/palata/request-files после создания заказа.
+
+2. Из режима редактирования заказа RequestDetail.tsx:
+- блок прикреплённых документов;
+- просмотр списка файлов;
+- добавление файлов;
+- удаление файлов;
+- скачивание файлов;
+- вызовы GET/POST/DELETE /api/palata/request-files;
+- функции filePublicUrl / getPublicUrl;
+- обращения к bucket palata-request-files.
+
+3. Из страницы просмотра заказа:
+- полностью убрать секцию «Прикреплённые документы»;
+- остальные блоки «Описание ситуации», «Имеющиеся материалы», «Контактные данные» оставить без изменений.
+
+4. Из frontend-кода:
+- удалить все импорты Supabase, которые использовались только для файлов заказов;
+- удалить все обращения к:
+  - supabase.storage;
+  - palata-request-files;
+  - request-files;
+- удалить неиспользуемые типы, состояния, функции и иконки, оставшиеся после удаления блока.
+
+5. Из backend server.js:
+- удалить маршруты и handlers, относящиеся только к файлам заказов:
+  - GET /api/palata/request-files;
+  - POST /api/palata/request-files;
+  - DELETE /api/palata/request-files/:fileId, если он был добавлен;
+- удалить связанные функции handleRequestFilesQuery / handleRequestFilesInsert / handleRequestFilesDelete;
+- не удалять таблицу palata_request_files из БД;
+- не создавать миграции;
+- существующие записи оставить как есть, но приложение больше не должно их читать или записывать.
+
+6. Проверить весь проект глобальным поиском по:
+- palata-request-files;
+- request-files;
+- supabase.storage;
+- getPublicUrl;
+- bucket_path;
+- filePublicUrl.
+
+После изменений не должно остаться активного кода загрузки, просмотра, скачивания или удаления файлов заказов через Supabase Storage.
+
+Не удалять общий supabase client, если он используется другими частями приложения.
+
+После выполнения:
+- показать список изменённых файлов;
+- показать, какие обращения к Supabase Storage удалены;
+- выполнить build;
+- выполнить tsc --noEmit;
+- выполнить все тесты;
+- сделать отдельный commit:
+
+remove request file uploads and Supabase storage integration

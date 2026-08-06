@@ -1,0 +1,95 @@
+[AI-PROD] Статус HTTP OpenAI = 200
+[АИ-ПРОД] выбранное направление="Строительно-техническая экспертиза"
+[AI-DIRECTION-GUARD] {
+  ОписаниеДлина: 163,
+  обнаружено: истинно,
+  Название направления: 'Строительно-техническая экспертиза',
+  directionId: '54e357c3-e27b-40ba-ab49-6b04dd72bc58',
+  уровень достоверности: 0,9,
+  matchedMarkers: [ 'затопило', 'протечка', 'восстановительный ремонт' ],
+  matchedKnowledgeScenario: null,
+  stopFactor: null,
+  разрешено: true,
+  rejectionCode: null
+}
+[AI-DIRECTION-GUARD] {
+  ОписаниеДлина: 163,
+  обнаружено: ложно,
+  directionName: null,
+  directionId: null,
+  уверенность: нулевая,
+  matchedMarkers: [],
+  matchedKnowledgeScenario: null,
+  stopFactor: null,
+  разрешено: ложно,
+  rejectionCode: 'NO_CONSTRUCTION_MARKERS'
+}
+[CUSTOMER-PROFILE] get { userId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860' }
+[ПРОФИЛЬ КЛИЕНТА] успех {
+  этап: 'получить',
+  userId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860',
+  найдено: истинно
+}
+[REQUESTS-LIST] list { callerId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860', count: 4 }
+[USERS] list { callerId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860', requestedCount: 1 }
+[СПИСОК ЗАПРОСОВ] успех { callerId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860', возвращено: 4 }
+[USERS] success { callerId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860', returned: 1 }
+[CUSTOMER-PROFILE] get { userId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860' }
+[ПРОФИЛЬ КЛИЕНТА] успех {
+  этап: 'получить',
+  userId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860',
+  найдено: истинно
+}
+[REQUESTS-LIST] list { callerId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860', count: 4 }
+[USERS] list { callerId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860', requestedCount: 1 }
+[СПИСОК ЗАПРОСОВ] успех { callerId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860', возвращено: 4 }
+[USERS] success { callerId: 'd715c0e0-5b18-403c-b0e2-b7cf57b11860', returned: 1 }
+[AI-PROD] Запрос получен
+[AI-PROD] записей в базе знаний=8
+[AI-PROD] описание длина=104
+[AI-PROD] AI_GATEWAY_TOKEN присутствие=true
+[AI-PROD] отправляет запрос в AI Gateway
+[AI-PROD] URL-адрес шлюза = http://nryvfvb50gfr57xrlqtq5omt.161.104.50.164.sslip.io/api/chat
+[AI-PROD] Модель OpenAI = gpt-4o-mini
+[AI-PROD] AI_GATEWAY_TOKEN присутствие = да
+[AI-PROD] Длина AI_GATEWAY_TOKEN = 36
+[AI-PROD] Длина укороченного токена AI_GATEWAY_TOKEN = 36
+[AI-PROD] AI_GATEWAY_TOKEN имеет окружающие пробелы = false
+[AI-PROD] OpenAI response.status = 200
+[AI-PROD] OpenAI response.statusText = OK
+[AI-PROD] OpenAI response.headers = {
+  'content-length': '629',
+  'content-type': 'application/json; charset=utf-8',
+  дата: 'Четверг, 6 августа 2026 г., 16:26:01 GMT',
+  etag: 'W/"275-BeYf7YTmPSSiGHrEztOc/PsILVk"',
+  vary: 'Accept-Encoding',
+  'x-powered-by': 'Express'
+}
+[AI-PROD] Длина содержимого шлюза 182
+[AI-PROD] разобранные ключи [
+  «обнаружено»,
+  'direction_name',
+  'уверенность',
+  'причина',
+  'matched_markers'
+]
+[AI-PROD] нормализованный результат {
+  обнаружено: ложно,
+  aiSelectedNamePresent: false,
+  уровень достоверности: 0,
+  matchedMarkersCount: 2
+}
+[AI-PROD] Статус HTTP OpenAI = 200
+[AI-PROD] selected direction="null"
+[AI-DIRECTION-GUARD] {
+  ОписаниеДлина: 104,
+  обнаружено: ложно,
+  directionName: null,
+  directionId: null,
+  уровень достоверности: 0,
+  matchedMarkers: [ 'пожар', 'очаг возгорания' ],
+  matchedKnowledgeScenario: null,
+  stopFactor: null,
+  разрешено: ложно,
+  rejectionCode: 'AI_NOT_DETECTED'
+}

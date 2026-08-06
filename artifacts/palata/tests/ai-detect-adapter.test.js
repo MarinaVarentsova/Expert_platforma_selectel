@@ -203,6 +203,55 @@ describe("AI Gateway adapter — response format normalization", () => {
     assert.equal(result.detected, false);
   });
 
+  // 7. Russian field names from Yandex gateway → detected=true works
+  it("Russian field names (обнаружено/уверенность) → detected=true, correct direction", async () => {
+    // Yandex sometimes returns mixed-language keys: detected/confidence in Russian
+    const gatewayBody = {
+      "обнаружено": true,
+      direction_name: "Строительно-техническая экспертиза",
+      "уверенность": 0.9,
+      "причина": "Залив квартиры",
+      matched_markers: ["залив", "протечка"],
+    };
+
+    global.fetch = mockFetch(gatewayBody);
+
+    const result = await detectDirection(
+      "Соседи залили квартиру, затопило весь паркет",
+      AVAILABLE_DIRS,
+      TOKEN,
+    );
+
+    assert.equal(result.status, "detected", `expected detected, got ${result.status}`);
+    assert.equal(result.detected, true);
+    assert.equal(result.direction_id, CONSTRUCTION_DIR.id);
+    assert.equal(result.direction_name, CONSTRUCTION_DIR.name);
+    assert.ok(result.confidence >= CONFIDENCE_THRESHOLD);
+  });
+
+  // 8. Russian detected=false (ложно) → correctly rejected
+  it("Russian обнаружено=false (ложно) → not_detected", async () => {
+    const gatewayBody = {
+      "обнаружено": false,
+      direction_name: null,
+      "уверенность": 0,
+      "причина": "Стоп-фактор: очаг возгорания",
+      matched_markers: ["пожар", "очаг возгорания"],
+    };
+
+    global.fetch = mockFetch(gatewayBody);
+
+    const result = await detectDirection(
+      "Нужно установить очаг возгорания после пожара",
+      AVAILABLE_DIRS,
+      TOKEN,
+    );
+
+    assert.equal(result.status, "not_detected");
+    assert.equal(result.detected, false);
+    assert.equal(result.direction_id, null);
+  });
+
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

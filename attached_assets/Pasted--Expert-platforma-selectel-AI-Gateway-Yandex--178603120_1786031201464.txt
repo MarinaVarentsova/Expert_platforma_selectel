@@ -1,0 +1,122 @@
+Работаем только в репозитории Expert_platforma_selectel (Палата).
+
+AI Gateway и Yandex уже работают корректно.
+
+Фактические логи Gateway:
+provider=yandex
+status=200
+jsonOk=true
+keys=["detected","direction_name","confidence","reason","matched_markers"]
+
+Но в форме создания заказа для описания:
+«После ремонта отваливается плитка от стены»
+
+Палата показывает:
+«По этому вопросу мы пока не подбираем экспертов».
+
+Нужно срочно найти и исправить обработку ответа AI Gateway в Палате.
+
+Проведи трассировку всей цепочки:
+1. POST Палаты в AI_GATEWAY_URL.
+2. response.json().
+3. choices[0].message.content.
+4. JSON.parse(content).
+5. преобразование результата в detected / direction / confidence.
+6. сопоставление direction_name с направлениями Палаты.
+7. финальное allowed / rejectionCode.
+8. ответ frontend.
+
+Проверь совместимость обоих форматов полей:
+
+snake_case:
+- detected
+- direction_name
+- direction_id
+- confidence
+- reason
+- matched_markers
+
+camelCase:
+- detected
+- directionName
+- directionId
+- confidence
+- reason
+- matchedMarkers
+
+Нормализуй результат в единый объект:
+
+{
+  detected: boolean,
+  directionName: string | null,
+  directionId: string | null,
+  confidence: number | null,
+  reason: string | null,
+  matchedMarkers: string[]
+}
+
+Особенно проверить:
+- не ожидает ли код поле directionName вместо direction_name;
+- не ожидает ли matchedMarkers вместо matched_markers;
+- не теряется ли detected=true;
+- корректно ли сопоставляется строка
+  «Строительно-техническая экспертиза»
+  с записью направления в БД;
+- не отклоняет ли заказ confidence из-за неверного типа;
+- не используется ли ошибочно старый формат OpenAI-ответа;
+- не показывается ли frontend старый локальный результат вместо ответа backend.
+
+Добавь временные безопасные логи без текста заказа:
+
+[AI-PROD] gateway content length
+[AI-PROD] parsed keys
+[AI-PROD] normalized result
+[AI-PROD] direction lookup result
+[AI-PROD] final decision
+
+Не логировать персональные данные и полное описание заказа.
+
+Исправить только адаптер обработки AI-ответа.
+Не менять:
+- AI Gateway;
+- Auth Service;
+- базу знаний;
+- локальные маркеры и стоп-факторы;
+- форму и дизайн;
+- алгоритм создания заказа;
+- таблицы БД.
+
+Обязательные тесты:
+
+1. Ответ:
+{
+  "detected": true,
+  "direction_name": "Строительно-техническая экспертиза",
+  "confidence": 0.95,
+  "reason": "Дефекты ремонта",
+  "matched_markers": ["отваливается плитка"]
+}
+→ allowed=true
+→ найден directionId строительно-технической экспертизы.
+
+2. Тот же ответ в camelCase
+→ тот же результат.
+
+3. detected=false
+→ заказ отклонён.
+
+4. Неизвестное direction_name
+→ безопасный fallback, без падения.
+
+5. Build, TypeScript и все тесты должны пройти.
+
+После исправления:
+- commit: fix: normalize AI gateway result in Palata
+- push в main.
+
+Верни:
+- точную корневую причину;
+- изменённые файлы;
+- diff адаптера;
+- результаты тестов;
+- hash commit.

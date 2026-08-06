@@ -1,7 +1,15 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { randomUUID, createHmac, createHash } from "crypto";
+import { randomUUID } from "crypto";
+import {
+  isValidUuid,
+  anonymizedEmail,
+  collectUserDataSummary,
+  anonymizeCustomer,
+  anonymizeExpert,
+  tryDeleteS3Object,
+} from "./lib/admin-pd-delete.js";
 import pg from "pg";
 import { detectDirection, KNOWLEDGE_BASE_ENTRIES, checkLocalMarkers, CONSTRUCTION_DIRECTION_NAME, CONFIDENCE_THRESHOLD } from "@workspace/ai-detect";
 import { guardDecline, guardTakeWork, guardExpertProposeDate, guardDeclineStartDate, guardCompleteWork, guardCustomerComplete, guardCustomerCancel } from "./lib/request-guards.js";
@@ -5791,85 +5799,20 @@ app.post("/api/ai-detect-direction", (req, res) => {
   });
 });
 
-// ── S3 Object Storage helper ──────────────────────────────────────────────────
-// Attempts to DELETE an object from Selectel S3-compatible storage using
-// AWS Signature V4 (native crypto, no extra dependencies).
-// Returns { deleted: boolean, bucketPath: string, reason?: string, detail?: string }
-
-function _s3HmacSha256(key, data) {
-  return createHmac("sha256", key).update(data).digest();
-}
-
-function _s3SigningKey(secretKey, dateStamp, region, service) {
-  const kDate    = _s3HmacSha256("AWS4" + secretKey, dateStamp);
-  const kRegion  = _s3HmacSha256(kDate, region);
-  const kService = _s3HmacSha256(kRegion, service);
-  return _s3HmacSha256(kService, "aws4_request");
-}
-
-async function tryDeleteS3Object(bucketPath) {
-  const endpoint  = process.env.SELECTEL_S3_ENDPOINT;  // e.g. https://s3.selcdn.ru
-  const bucket    = process.env.SELECTEL_S3_BUCKET;
-  const accessKey = process.env.SELECTEL_S3_ACCESS_KEY;
-  const secretKey = process.env.SELECTEL_S3_SECRET_KEY;
-  const region    = process.env.SELECTEL_S3_REGION ?? "ru-1";
-
-  if (!endpoint || !bucket || !accessKey || !secretKey) {
-    return { deleted: false, bucketPath, reason: "S3_NOT_CONFIGURED" };
-  }
-
-  try {
-    const now       = new Date();
-    const amzDate   = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z").slice(0, 16) + "Z";
-    const dateStamp = amzDate.slice(0, 8);
-    const host      = new URL(endpoint).hostname;
-    const keyPath   = `/${bucket}/${bucketPath}`;
-    const emptyHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"; // sha256("")
-
-    const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${emptyHash}\nx-amz-date:${amzDate}\n`;
-    const signedHeaders    = "host;x-amz-content-sha256;x-amz-date";
-    const canonicalRequest = `DELETE\n${keyPath}\n\n${canonicalHeaders}\n${signedHeaders}\n${emptyHash}`;
-
-    const credentialScope = `${dateStamp}/${region}/s3/aws4_request`;
-    const stringToSign    = [
-      "AWS4-HMAC-SHA256",
-      amzDate,
-      credentialScope,
-      createHash("sha256").update(canonicalRequest).digest("hex"),
-    ].join("\n");
-
-    const signingKey = _s3SigningKey(secretKey, dateStamp, region, "s3");
-    const signature  = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
-    const authHeader = `AWS4-HMAC-SHA256 Credential=${accessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-    const res = await fetch(`${endpoint}${keyPath}`, {
-      method: "DELETE",
-      headers: {
-        "Host":                   host,
-        "x-amz-content-sha256":   emptyHash,
-        "x-amz-date":             amzDate,
-        "Authorization":          authHeader,
-      },
-    });
-
-    if (res.status === 204 || res.status === 200) {
-      return { deleted: true, bucketPath };
-    }
-    const errBody = await res.text().catch(() => "");
-    return { deleted: false, bucketPath, reason: `HTTP_${res.status}`, detail: errBody.slice(0, 200) };
-  } catch (err) {
-    return { deleted: false, bucketPath, reason: "NETWORK_ERROR", detail: String(err).slice(0, 200) };
-  }
-}
-
 // ── POST /api/palata/admin/users/:userId/delete ───────────────────────────────
 // Admin-only. Anonymizes / deletes personal data for a given user (GDPR / 152-ФЗ).
 // Body: { dry_run: boolean }
-//   dry_run=true  → returns what would be affected; NO changes made
-//   dry_run=false → performs anonymization + deletes Object Storage files
+//   dry_run=true  → returns what would be affected; NO changes made.
+//   dry_run=false → performs anonymization + deletes Object Storage files.
 //
-// Audit log table is created on first call if it does not exist:
-//   See artifacts/palata/migrations/0002_admin_audit_log.sql
+// S3 semantics (expert role):
+//   - If S3 credentials are configured: physical files are deleted BEFORE DB changes.
+//     If any file deletion fails the operation is aborted with 500; no DB rows are changed.
+//   - If S3 credentials are NOT configured: DB anonymization proceeds normally and the
+//     response clearly lists files that require manual deletion from Selectel console.
+//
+// Audit log table (palata_admin_audit_log) is created on first call if missing.
+// See artifacts/palata/migrations/0002_admin_audit_log.sql.
 
 async function handleAdminDeleteUser(req, res) {
   if (!pool) { res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" }); return; }
@@ -5883,10 +5826,10 @@ async function handleAdminDeleteUser(req, res) {
 
   // ── 2. Validate params ─────────────────────────────────────────────────────
   const { userId } = req.params;
-  if (!userId) {
-    return res.status(400).json({ success: false, error: "MISSING_USER_ID" });
+  if (!isValidUuid(userId)) {
+    return res.status(400).json({ success: false, error: "INVALID_USER_ID", message: "userId must be a valid UUID" });
   }
-  const dryRun = req.body?.dry_run !== false; // default to safe dry_run=true
+  const dryRun = req.body?.dry_run !== false; // default safe: dry_run=true
 
   console.log("[ADMIN-DELETE-USER]", { adminId, targetUserId: userId, dryRun });
 
@@ -5903,7 +5846,6 @@ async function handleAdminDeleteUser(req, res) {
   const role = userRow.role; // "customer" | "expert" | "admin"
 
   if (role === "admin") {
-    // Prevent admins from accidentally deleting another admin's data
     return res.status(422).json({
       success: false,
       error: "CANNOT_DELETE_ADMIN",
@@ -5915,50 +5857,70 @@ async function handleAdminDeleteUser(req, res) {
   const summary = await collectUserDataSummary(pool, userId, role);
 
   if (dryRun) {
-    console.log("[ADMIN-DELETE-USER] dry_run complete", { userId, role, summary });
-    return res.json({
-      success: true,
-      dry_run: true,
-      user_id: userId,
-      role,
-      summary,
-    });
+    console.log("[ADMIN-DELETE-USER] dry_run complete", { userId, role });
+    return res.json({ success: true, dry_run: true, user_id: userId, role, summary });
   }
 
-  // ── 5. Perform anonymization in transaction ────────────────────────────────
-  const client = await pool.connect();
-  let anonymizedCounts;
-  let fileResults = [];
+  // ── 5. Expert: attempt S3 deletions BEFORE committing DB ──────────────────
+  // Rationale: S3 and PostgreSQL are not in the same transaction. We must choose
+  // one ordering. We prioritise "no orphan files" over "instant DB anonymization":
+  // if a file cannot be deleted, we abort rather than committing irreversible DB
+  // changes while PD files remain live.
+  //
+  // When S3 is NOT configured the file list is passed through and reported in the
+  // response so the administrator can delete them manually.
+  let expertDocRows = [];
+  let fileResults   = [];
 
-  try {
-    await client.query("BEGIN");
+  if (role === "expert") {
+    expertDocRows = (await pool.query(
+      `SELECT bucket_path, file_name FROM public.palata_expert_documents WHERE expert_id = $1`,
+      [userId],
+    )).rows;
 
-    if (role === "customer") {
-      anonymizedCounts = await anonymizeCustomer(client, userId);
-    } else {
-      // expert — collect documents first (need bucket_paths before deleting records)
-      const docRows = (await client.query(
-        `SELECT id, bucket_path, file_name FROM public.palata_expert_documents WHERE expert_id = $1`,
-        [userId],
-      )).rows;
+    const s3Configured = !!(
+      process.env.SELECTEL_S3_ENDPOINT &&
+      process.env.SELECTEL_S3_BUCKET   &&
+      process.env.SELECTEL_S3_ACCESS_KEY &&
+      process.env.SELECTEL_S3_SECRET_KEY
+    );
 
-      anonymizedCounts = await anonymizeExpert(client, userId);
-
-      // Commit DB changes before attempting S3 deletions
-      await client.query("COMMIT");
-
-      // Delete physical files from Object Storage
-      for (const doc of docRows) {
+    if (s3Configured && expertDocRows.length > 0) {
+      for (const doc of expertDocRows) {
         const result = await tryDeleteS3Object(doc.bucket_path);
         fileResults.push({ ...result, file_name: doc.file_name });
         console.log("[ADMIN-DELETE-USER] s3 delete", { bucketPath: doc.bucket_path, deleted: result.deleted, reason: result.reason });
       }
 
-      // Skip the outer COMMIT (already committed above)
-      await _writeAuditLog(pool, adminId, userId, role, dryRun, anonymizedCounts, fileResults);
-      return _buildSuccessResponse(res, userId, role, anonymizedCounts, fileResults);
+      const failed = fileResults.filter(f => !f.deleted);
+      if (failed.length > 0) {
+        console.error("[ADMIN-DELETE-USER] S3 deletions failed — aborting DB changes", { failed });
+        return res.status(500).json({
+          success: false,
+          error:   "S3_DELETION_FAILED",
+          message: "Не удалось удалить физические файлы из Object Storage. Данные в БД не изменены.",
+          files_failed: failed.map(f => ({ path: f.bucketPath, reason: f.reason, detail: f.detail })),
+        });
+      }
+    } else if (!s3Configured && expertDocRows.length > 0) {
+      // S3 not configured: mark all as not deleted, proceed with DB anonymization
+      fileResults = expertDocRows.map(doc => ({
+        deleted: false, bucketPath: doc.bucket_path, file_name: doc.file_name, reason: "S3_NOT_CONFIGURED",
+      }));
     }
+  }
 
+  // ── 6. Perform anonymization in transaction ────────────────────────────────
+  const client = await pool.connect();
+  let anonymizedCounts;
+
+  try {
+    await client.query("BEGIN");
+    if (role === "customer") {
+      anonymizedCounts = await anonymizeCustomer(client, userId);
+    } else {
+      anonymizedCounts = await anonymizeExpert(client, userId);
+    }
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
@@ -5968,324 +5930,11 @@ async function handleAdminDeleteUser(req, res) {
     client.release();
   }
 
-  // ── 6. Audit log + response (customer path) ────────────────────────────────
+  // ── 7. Audit log + response ────────────────────────────────────────────────
   await _writeAuditLog(pool, adminId, userId, role, dryRun, anonymizedCounts, fileResults);
   return _buildSuccessResponse(res, userId, role, anonymizedCounts, fileResults);
 }
 
-// ── collectUserDataSummary ────────────────────────────────────────────────────
-// Returns a preview of affected rows without making any changes.
-
-async function collectUserDataSummary(pool, userId, role) {
-  const count = async (sql, params) => {
-    const { rows } = await pool.query(sql, params);
-    return Number(rows[0]?.count ?? 0);
-  };
-
-  const tables = {};
-
-  // Shared: palata_users
-  tables.palata_users = {
-    action: "anonymize",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_users WHERE id = $1`, [userId]),
-  };
-
-  if (role === "customer") {
-    tables.palata_customer_profiles = {
-      action: "anonymize",
-      rows: await count(`SELECT COUNT(*) FROM public.palata_customer_profiles WHERE user_id = $1`, [userId]),
-    };
-    tables.palata_requests = {
-      action: "anonymize",
-      rows: await count(`SELECT COUNT(*) FROM public.palata_requests WHERE customer_id = $1`, [userId]),
-    };
-    tables.palata_request_matches = {
-      action: "delete",
-      rows: await count(
-        `SELECT COUNT(*) FROM public.palata_request_matches rm
-         JOIN public.palata_requests r ON r.id = rm.request_id
-         WHERE r.customer_id = $1`, [userId]),
-    };
-    tables.palata_request_contacts = {
-      action: "anonymize",
-      rows: await count(
-        `SELECT COUNT(*) FROM public.palata_request_contacts rc
-         JOIN public.palata_requests r ON r.id = rc.request_id
-         WHERE r.customer_id = $1`, [userId]),
-    };
-    tables.palata_status_events = {
-      action: "anonymize",
-      rows: await count(`SELECT COUNT(*) FROM public.palata_status_events WHERE actor_id = $1`, [userId]),
-    };
-    tables.palata_action_items = {
-      action: "delete",
-      rows: await count(
-        `SELECT COUNT(*) FROM public.palata_action_items
-         WHERE customer_id = $1 OR assigned_to_user_id = $1`, [userId]),
-    };
-    tables.palata_customer_ratings = {
-      action: "anonymize",
-      rows: await count(`SELECT COUNT(*) FROM public.palata_customer_ratings WHERE customer_id = $1`, [userId]),
-    };
-    tables.palata_email_events = {
-      action: "delete",
-      rows: await count(`SELECT COUNT(*) FROM public.palata_email_events WHERE recipient_id = $1`, [userId]),
-    };
-
-    return { tables, files: [] };
-  }
-
-  // Expert
-  tables.palata_expert_profiles = {
-    action: "anonymize",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_expert_profiles WHERE user_id = $1`, [userId]),
-  };
-  tables.palata_expert_regions = {
-    action: "delete",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_expert_regions WHERE expert_id = $1`, [userId]),
-  };
-  tables.palata_expert_directions = {
-    action: "delete",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_expert_directions WHERE expert_id = $1`, [userId]),
-  };
-  tables.palata_expert_certificates = {
-    action: "delete",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_expert_certificates WHERE expert_id = $1`, [userId]),
-  };
-  tables.palata_expert_documents = {
-    action: "delete",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_expert_documents WHERE expert_id = $1`, [userId]),
-  };
-  tables.palata_request_matches = {
-    action: "delete",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_request_matches WHERE expert_id = $1`, [userId]),
-  };
-  tables.palata_request_contacts = {
-    action: "anonymize",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_request_contacts WHERE expert_id = $1`, [userId]),
-  };
-  tables.palata_status_events = {
-    action: "anonymize",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_status_events WHERE actor_id = $1`, [userId]),
-  };
-  tables.palata_action_items = {
-    action: "delete",
-    rows: await count(
-      `SELECT COUNT(*) FROM public.palata_action_items
-       WHERE expert_id = $1 OR assigned_to_user_id = $1`, [userId]),
-  };
-  tables.palata_customer_ratings = {
-    action: "anonymize",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_customer_ratings WHERE expert_id = $1`, [userId]),
-  };
-  tables.palata_email_events = {
-    action: "delete",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_email_events WHERE recipient_id = $1`, [userId]),
-  };
-
-  // Files: bucket_paths for dry-run preview
-  const { rows: docRows } = await pool.query(
-    `SELECT bucket_path, file_name FROM public.palata_expert_documents WHERE expert_id = $1`,
-    [userId],
-  );
-  const files = docRows.map(r => ({ bucket_path: r.bucket_path, file_name: r.file_name }));
-
-  return { tables, files };
-}
-
-// ── anonymizeCustomer ─────────────────────────────────────────────────────────
-// All writes happen inside the caller's transaction client.
-
-async function anonymizeCustomer(client, userId) {
-  const counts = {};
-  const placeholder = `deleted_${userId}@deleted.palata`;
-
-  // palata_users
-  const u = await client.query(
-    `UPDATE public.palata_users
-     SET email = $2, full_name = NULL, phone = NULL, is_active = false, updated_at = NOW()
-     WHERE id = $1`,
-    [userId, placeholder],
-  );
-  counts.palata_users = u.rowCount;
-
-  // palata_customer_profiles — anonymize free-text PD, keep business fields
-  const cp = await client.query(
-    `UPDATE public.palata_customer_profiles
-     SET contact_name = NULL, notes = NULL, updated_at = NOW()
-     WHERE user_id = $1`,
-    [userId],
-  );
-  counts.palata_customer_profiles = cp.rowCount;
-
-  // palata_requests — anonymize description (user's personal text), keep metadata
-  const rq = await client.query(
-    `UPDATE public.palata_requests
-     SET description = NULL, updated_at = NOW()
-     WHERE customer_id = $1`,
-    [userId],
-  );
-  counts.palata_requests = rq.rowCount;
-
-  // palata_request_matches — delete (FK references only, no independent value)
-  const rm = await client.query(
-    `DELETE FROM public.palata_request_matches
-     WHERE request_id IN (SELECT id FROM public.palata_requests WHERE customer_id = $1)`,
-    [userId],
-  );
-  counts.palata_request_matches = rm.rowCount;
-
-  // palata_request_contacts — anonymize customer contact columns
-  const rc = await client.query(
-    `UPDATE public.palata_request_contacts
-     SET customer_email = NULL, customer_phone = NULL
-     WHERE request_id IN (SELECT id FROM public.palata_requests WHERE customer_id = $1)`,
-    [userId],
-  );
-  counts.palata_request_contacts = rc.rowCount;
-
-  // palata_status_events — nullify actor_id and anonymize note
-  const se = await client.query(
-    `UPDATE public.palata_status_events
-     SET actor_id = NULL, note = '[Данные обезличены]'
-     WHERE actor_id = $1`,
-    [userId],
-  );
-  counts.palata_status_events = se.rowCount;
-
-  // palata_action_items — delete
-  const ai = await client.query(
-    `DELETE FROM public.palata_action_items
-     WHERE customer_id = $1 OR assigned_to_user_id = $1`,
-    [userId],
-  );
-  counts.palata_action_items = ai.rowCount;
-
-  // palata_customer_ratings — anonymize comment
-  const cr = await client.query(
-    `UPDATE public.palata_customer_ratings
-     SET comment = NULL
-     WHERE customer_id = $1`,
-    [userId],
-  );
-  counts.palata_customer_ratings = cr.rowCount;
-
-  // palata_email_events — delete (pure PD: email addresses + templates)
-  const ee = await client.query(
-    `DELETE FROM public.palata_email_events WHERE recipient_id = $1`,
-    [userId],
-  );
-  counts.palata_email_events = ee.rowCount;
-
-  return counts;
-}
-
-// ── anonymizeExpert ───────────────────────────────────────────────────────────
-// All writes happen inside the caller's transaction client.
-// Expert documents DB records are deleted here; physical file deletion is
-// handled by the caller after COMMIT (bucket_paths collected before this call).
-
-async function anonymizeExpert(client, userId) {
-  const counts = {};
-  const placeholder = `deleted_${userId}@deleted.palata`;
-
-  // palata_users
-  const u = await client.query(
-    `UPDATE public.palata_users
-     SET email = $2, full_name = NULL, phone = NULL, is_active = false, updated_at = NOW()
-     WHERE id = $1`,
-    [userId, placeholder],
-  );
-  counts.palata_users = u.rowCount;
-
-  // palata_expert_profiles — anonymize personal free-text; keep professional registry numbers
-  const ep = await client.query(
-    `UPDATE public.palata_expert_profiles
-     SET bio = NULL, education = NULL, updated_at = NOW()
-     WHERE user_id = $1`,
-    [userId],
-  );
-  counts.palata_expert_profiles = ep.rowCount;
-
-  // palata_expert_regions — delete (expert-specific, no value without the expert)
-  const er = await client.query(
-    `DELETE FROM public.palata_expert_regions WHERE expert_id = $1`,
-    [userId],
-  );
-  counts.palata_expert_regions = er.rowCount;
-
-  // palata_expert_directions — delete
-  const ed = await client.query(
-    `DELETE FROM public.palata_expert_directions WHERE expert_id = $1`,
-    [userId],
-  );
-  counts.palata_expert_directions = ed.rowCount;
-
-  // palata_expert_certificates — delete
-  const ec = await client.query(
-    `DELETE FROM public.palata_expert_certificates WHERE expert_id = $1`,
-    [userId],
-  );
-  counts.palata_expert_certificates = ec.rowCount;
-
-  // palata_expert_documents — delete DB records (physical files handled outside)
-  const edoc = await client.query(
-    `DELETE FROM public.palata_expert_documents WHERE expert_id = $1`,
-    [userId],
-  );
-  counts.palata_expert_documents = edoc.rowCount;
-
-  // palata_request_matches — delete expert's matches
-  const rm = await client.query(
-    `DELETE FROM public.palata_request_matches WHERE expert_id = $1`,
-    [userId],
-  );
-  counts.palata_request_matches = rm.rowCount;
-
-  // palata_request_contacts — anonymize expert contact columns
-  const rc = await client.query(
-    `UPDATE public.palata_request_contacts
-     SET expert_email = NULL, expert_phone = NULL
-     WHERE expert_id = $1`,
-    [userId],
-  );
-  counts.palata_request_contacts = rc.rowCount;
-
-  // palata_status_events — nullify actor_id
-  const se = await client.query(
-    `UPDATE public.palata_status_events
-     SET actor_id = NULL, note = '[Данные обезличены]'
-     WHERE actor_id = $1`,
-    [userId],
-  );
-  counts.palata_status_events = se.rowCount;
-
-  // palata_action_items — delete
-  const ai = await client.query(
-    `DELETE FROM public.palata_action_items
-     WHERE expert_id = $1 OR assigned_to_user_id = $1`,
-    [userId],
-  );
-  counts.palata_action_items = ai.rowCount;
-
-  // palata_customer_ratings — anonymize (keep score for business analytics, remove any notes)
-  const cr = await client.query(
-    `UPDATE public.palata_customer_ratings
-     SET comment = NULL
-     WHERE expert_id = $1`,
-    [userId],
-  );
-  counts.palata_customer_ratings = cr.rowCount;
-
-  // palata_email_events — delete
-  const ee = await client.query(
-    `DELETE FROM public.palata_email_events WHERE recipient_id = $1`,
-    [userId],
-  );
-  counts.palata_email_events = ee.rowCount;
-
-  return counts;
-}
 
 // ── Audit log + response helpers ──────────────────────────────────────────────
 

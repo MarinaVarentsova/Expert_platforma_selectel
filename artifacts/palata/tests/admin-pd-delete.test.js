@@ -1,119 +1,172 @@
 /**
  * Tests for POST /api/palata/admin/users/:userId/delete
  *
- * Tests use lightweight mocks of the pool client — no live DB required.
- * Coverage:
- *   - auth: 403 for non-admin, 401 for missing token
- *   - dry_run=true: counts returned, no writes made
- *   - dry_run=false: DB writes executed + S3 deletion attempted
- *   - S3 not configured: graceful fallback with files listed in response
- *   - Unknown user: 404
+ * Tests call the actual exported functions (collectUserDataSummary,
+ * anonymizeCustomer, anonymizeExpert, tryDeleteS3Object, isValidUuid)
+ * with mock pool clients that record every SQL query executed.
+ * This verifies the real SQL, field coverage, and transaction semantics
+ * without requiring a live database.
  */
 
-import { describe, it, before } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 
-// ── Minimal mock pool factory ─────────────────────────────────────────────────
+// ── Import the real module-level functions ────────────────────────────────────
+import {
+  isValidUuid,
+  anonymizedEmail,
+  collectUserDataSummary,
+  anonymizeCustomer,
+  anonymizeExpert,
+  tryDeleteS3Object,
+} from "../../../artifacts/palata/lib/admin-pd-delete.js";
 
-function makeMockPool(rowMap = {}) {
-  // rowMap: { "sql_fragment": [rows] }
-  const calls = [];
+// ── Mock pool factory ─────────────────────────────────────────────────────────
 
+function makeMockClient(responses = {}) {
+  // responses: { "SQL_fragment": { rows, rowCount } }
+  const queries = [];
   const client = {
-    calls,
+    queries,
     query: async (sql, params = []) => {
-      calls.push({ sql: sql.trim().replace(/\s+/g, " ").slice(0, 80), params });
-
-      // Match row responses by SQL fragment
-      for (const [fragment, rows] of Object.entries(rowMap)) {
-        if (sql.includes(fragment)) {
-          return { rows, rowCount: rows.length };
-        }
+      const trimmed = sql.trim().replace(/\s+/g, " ");
+      queries.push({ sql: trimmed, params });
+      // Find matching response
+      for (const [frag, result] of Object.entries(responses)) {
+        if (trimmed.includes(frag)) return result;
       }
-      // Default: empty result
-      return { rows: [], rowCount: 0 };
+      return { rows: [{ count: "0" }], rowCount: 0 };
     },
     release: () => {},
-    connect: async () => client,
   };
-
-  client.connect = async () => client;
   return client;
 }
 
-// ── Helpers for anonymize/collect functions ───────────────────────────────────
-
-// Import the module-level helpers by inlining them here for unit testing
-// (the actual server.js functions are not exported; we test equivalent logic)
-
-function anonymizedEmail(userId) {
-  return `deleted_${userId}@deleted.palata`;
+// Convenience: find a query by SQL fragment
+function findQuery(queries, fragment) {
+  return queries.find(q => q.sql.includes(fragment));
 }
+
+const VALID_UUID    = "54e357c3-e27b-40ba-ab49-6b04dd72bc58";
+const ANOTHER_UUID  = "00000000-1111-2222-3333-444444444444";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("Admin PD delete — unit helpers", () => {
-
-  it("anonymized email is unique per user and contains no real data", () => {
-    const id1 = "54e357c3-e27b-40ba-ab49-6b04dd72bc58";
-    const id2 = "00000000-0000-0000-0000-000000000001";
-    const e1 = anonymizedEmail(id1);
-    const e2 = anonymizedEmail(id2);
-    assert.ok(e1.includes("deleted.palata"), "domain is placeholder");
-    assert.notEqual(e1, e2, "different users get different emails");
-    assert.ok(!e1.includes("@gmail"), "no real domain");
-    assert.ok(e1.startsWith("deleted_"), "prefixed with deleted_");
+describe("isValidUuid", () => {
+  it("accepts a valid UUID v4", () => {
+    assert.ok(isValidUuid(VALID_UUID));
+    assert.ok(isValidUuid("00000000-0000-0000-0000-000000000000"));
+    assert.ok(isValidUuid("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"));
   });
 
-  it("anonymized email is a valid RFC-5321 shape", () => {
-    const email = anonymizedEmail("some-uuid-value");
-    const parts = email.split("@");
-    assert.equal(parts.length, 2, "exactly one @");
-    assert.ok(parts[0].length > 0, "local part non-empty");
-    assert.ok(parts[1].includes("."), "domain has a dot");
+  it("rejects invalid values", () => {
+    assert.equal(isValidUuid("not-a-uuid"),       false, "short string");
+    assert.equal(isValidUuid(""),                  false, "empty string");
+    assert.equal(isValidUuid(null),                false, "null");
+    assert.equal(isValidUuid(undefined),           false, "undefined");
+    assert.equal(isValidUuid("12345"),             false, "numeric string");
+    // Malformed UUID that previously caused PostgreSQL to throw a 500:
+    assert.equal(isValidUuid("'; DROP TABLE palata_users;--"), false, "SQL injection");
+    assert.equal(isValidUuid("54e357c3e27b40baab496b04dd72bc58"), false, "UUID without dashes");
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("Admin PD delete — dry-run query logic", () => {
+describe("anonymizedEmail", () => {
+  it("produces a deterministic, non-empty placeholder with correct domain", () => {
+    const email = anonymizedEmail(VALID_UUID);
+    assert.ok(email.startsWith(`deleted_${VALID_UUID}@`));
+    assert.ok(email.endsWith("@deleted.palata"));
+    assert.ok(!email.includes("gmail"), "no real domain");
+  });
 
-  it("dry-run summary for customer includes all required table keys", async () => {
-    // Simulate the counts a real dry-run would return for a customer
-    const userId = "54e357c3-e27b-40ba-ab49-6b04dd72bc58";
-    const role = "customer";
+  it("is unique per user", () => {
+    assert.notEqual(anonymizedEmail(VALID_UUID), anonymizedEmail(ANOTHER_UUID));
+  });
+});
 
-    // Mock query results (COUNT queries)
-    const mockCounts = {
-      requests:        2,
-      matches:         3,
-      contacts:        2,
-      status_events:   5,
-      action_items:    1,
-      customer_ratings: 1,
-      email_events:    4,
-    };
+// ─────────────────────────────────────────────────────────────────────────────
 
-    // Build expected summary structure
-    const summary = {
-      user_id: userId,
-      role,
-      tables: {
-        palata_users:             { action: "anonymize", rows: 1 },
-        palata_customer_profiles: { action: "anonymize", rows: 1 },
-        palata_requests:          { action: "anonymize", rows: mockCounts.requests },
-        palata_request_matches:   { action: "delete",    rows: mockCounts.matches },
-        palata_request_contacts:  { action: "anonymize", rows: mockCounts.contacts },
-        palata_status_events:     { action: "anonymize", rows: mockCounts.status_events },
-        palata_action_items:      { action: "delete",    rows: mockCounts.action_items },
-        palata_customer_ratings:  { action: "anonymize", rows: mockCounts.customer_ratings },
-        palata_email_events:      { action: "delete",    rows: mockCounts.email_events },
-      },
-      files: [],
-    };
+describe("anonymizeCustomer — SQL verification", () => {
+  let client;
+  let counts;
 
-    // Verify structure: every required key present
-    const requiredTables = [
+  before(async () => {
+    client = makeMockClient();
+    counts = await anonymizeCustomer(client, VALID_UUID);
+  });
+
+  it("updates palata_users: nullifies full_name, phone; sets placeholder email; deactivates", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_users");
+    assert.ok(q, "must UPDATE palata_users");
+    // Params: [userId, email]
+    assert.equal(q.params[0], VALID_UUID, "WHERE id = userId");
+    assert.ok(q.params[1].includes("deleted.palata"), "email becomes placeholder");
+    assert.ok(q.sql.includes("full_name = NULL"), "full_name nullified");
+    assert.ok(q.sql.includes("phone = NULL"),    "phone nullified");
+    assert.ok(q.sql.includes("is_active = false"), "deactivated");
+  });
+
+  it("anonymizes palata_customer_profiles: nullifies company_name, inn, contact_name, notes", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_customer_profiles");
+    assert.ok(q, "must UPDATE palata_customer_profiles");
+    assert.ok(q.sql.includes("company_name = NULL"), "company_name nullified (ИП case)");
+    assert.ok(q.sql.includes("inn = NULL"),          "inn nullified");
+    assert.ok(q.sql.includes("contact_name = NULL"), "contact_name nullified");
+    assert.ok(q.sql.includes("notes = NULL"),        "notes nullified");
+  });
+
+  it("anonymizes palata_requests: nullifies title and description", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_requests");
+    assert.ok(q, "must UPDATE palata_requests");
+    assert.ok(q.sql.includes("title = '[Обезличено]'"), "title anonymized");
+    assert.ok(q.sql.includes("description = NULL"),     "description nullified");
+    assert.ok(q.sql.includes("customer_id = $1"),       "filtered by customer_id");
+  });
+
+  it("deletes palata_request_matches via request subquery", () => {
+    const q = findQuery(client.queries, "DELETE FROM public.palata_request_matches");
+    assert.ok(q, "must DELETE palata_request_matches");
+    assert.ok(q.sql.includes("customer_id = $1"), "scoped to customer's requests");
+  });
+
+  it("anonymizes palata_request_contacts: nullifies customer_email and customer_phone", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_request_contacts");
+    assert.ok(q, "must UPDATE palata_request_contacts");
+    assert.ok(q.sql.includes("customer_email = NULL"), "customer_email nullified");
+    assert.ok(q.sql.includes("customer_phone = NULL"), "customer_phone nullified");
+  });
+
+  it("anonymizes palata_status_events: nullifies actor_id and note", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_status_events");
+    assert.ok(q, "must UPDATE palata_status_events");
+    assert.ok(q.sql.includes("actor_id = NULL"),               "actor_id nullified");
+    assert.ok(q.sql.includes("[Данные обезличены]"),           "note replaced");
+    assert.ok(q.sql.includes("actor_id = $1"),                 "WHERE actor_id = userId");
+  });
+
+  it("deletes palata_action_items assigned to user", () => {
+    const q = findQuery(client.queries, "DELETE FROM public.palata_action_items");
+    assert.ok(q, "must DELETE palata_action_items");
+    assert.ok(q.sql.includes("customer_id = $1"), "includes customer_id filter");
+    assert.ok(q.sql.includes("assigned_to_user_id = $1"), "includes assigned_to_user_id filter");
+  });
+
+  it("anonymizes palata_customer_ratings: nullifies comment", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_customer_ratings");
+    assert.ok(q, "must UPDATE palata_customer_ratings");
+    assert.ok(q.sql.includes("comment = NULL"), "comment nullified");
+  });
+
+  it("deletes palata_email_events", () => {
+    const q = findQuery(client.queries, "DELETE FROM public.palata_email_events");
+    assert.ok(q, "must DELETE palata_email_events");
+    assert.ok(q.sql.includes("recipient_id = $1"), "filtered by recipient_id");
+  });
+
+  it("returns counts for all required tables", () => {
+    const required = [
       "palata_users",
       "palata_customer_profiles",
       "palata_requests",
@@ -124,46 +177,103 @@ describe("Admin PD delete — dry-run query logic", () => {
       "palata_customer_ratings",
       "palata_email_events",
     ];
-
-    for (const table of requiredTables) {
-      assert.ok(summary.tables[table] !== undefined, `${table} must be in dry-run summary`);
-      assert.ok(["anonymize", "delete"].includes(summary.tables[table].action),
-        `${table} action must be anonymize or delete`);
-      assert.equal(typeof summary.tables[table].rows, "number",
-        `${table} must have numeric row count`);
+    for (const t of required) {
+      assert.ok(Object.hasOwn(counts, t), `counts must include ${t}`);
+      assert.equal(typeof counts[t], "number", `counts.${t} must be numeric`);
     }
+  });
+});
 
-    assert.ok(Array.isArray(summary.files), "files must be an array");
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("anonymizeExpert — SQL verification", () => {
+  let client;
+  let counts;
+
+  before(async () => {
+    client = makeMockClient();
+    counts = await anonymizeExpert(client, VALID_UUID);
   });
 
-  it("dry-run summary for expert includes all required table keys", () => {
-    const userId = "54e357c3-e27b-40ba-ab49-6b04dd72bc58";
-    const role = "expert";
+  it("updates palata_users with placeholder email, nullifies full_name and phone", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_users");
+    assert.ok(q, "must UPDATE palata_users");
+    assert.ok(q.params[1].includes("deleted.palata"), "email becomes placeholder");
+    assert.ok(q.sql.includes("full_name = NULL"),   "full_name nullified");
+    assert.ok(q.sql.includes("phone = NULL"),       "phone nullified");
+    assert.ok(q.sql.includes("is_active = false"),  "deactivated");
+  });
 
-    const summary = {
-      user_id: userId,
-      role,
-      tables: {
-        palata_users:               { action: "anonymize", rows: 1 },
-        palata_expert_profiles:     { action: "anonymize", rows: 1 },
-        palata_expert_regions:      { action: "delete",    rows: 2 },
-        palata_expert_directions:   { action: "delete",    rows: 1 },
-        palata_expert_certificates: { action: "delete",    rows: 3 },
-        palata_expert_documents:    { action: "delete",    rows: 2 },
-        palata_request_matches:     { action: "delete",    rows: 5 },
-        palata_request_contacts:    { action: "anonymize", rows: 3 },
-        palata_status_events:       { action: "anonymize", rows: 8 },
-        palata_action_items:        { action: "delete",    rows: 2 },
-        palata_customer_ratings:    { action: "anonymize", rows: 1 },
-        palata_email_events:        { action: "delete",    rows: 6 },
-      },
-      files: [
-        { bucket_path: "experts/doc-123.pdf", file_name: "diploma.pdf" },
-        { bucket_path: "experts/cert-456.pdf", file_name: "cert.pdf" },
-      ],
-    };
+  it("anonymizes palata_expert_profiles: bio, education AND registry numbers", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_expert_profiles");
+    assert.ok(q, "must UPDATE palata_expert_profiles");
+    assert.ok(q.sql.includes("bio = NULL"),                            "bio nullified");
+    assert.ok(q.sql.includes("education = NULL"),                      "education nullified");
+    assert.ok(q.sql.includes("palata_registry_number = NULL"),         "palata registry nullified");
+    assert.ok(q.sql.includes("centrsudexpert_registry_number = NULL"), "centrsudexpert registry nullified");
+  });
 
-    const requiredTables = [
+  it("deletes palata_expert_regions", () => {
+    const q = findQuery(client.queries, "DELETE FROM public.palata_expert_regions");
+    assert.ok(q, "must DELETE palata_expert_regions");
+    assert.ok(q.sql.includes("expert_id = $1"), "filtered by expert_id");
+  });
+
+  it("deletes palata_expert_directions", () => {
+    const q = findQuery(client.queries, "DELETE FROM public.palata_expert_directions");
+    assert.ok(q, "must DELETE palata_expert_directions");
+  });
+
+  it("deletes palata_expert_certificates", () => {
+    const q = findQuery(client.queries, "DELETE FROM public.palata_expert_certificates");
+    assert.ok(q, "must DELETE palata_expert_certificates");
+  });
+
+  it("deletes palata_expert_documents DB records (physical files handled by caller)", () => {
+    const q = findQuery(client.queries, "DELETE FROM public.palata_expert_documents");
+    assert.ok(q, "must DELETE palata_expert_documents");
+    assert.ok(q.sql.includes("expert_id = $1"), "filtered by expert_id");
+  });
+
+  it("deletes palata_request_matches", () => {
+    const q = findQuery(client.queries, "DELETE FROM public.palata_request_matches");
+    assert.ok(q, "must DELETE palata_request_matches");
+    assert.ok(q.sql.includes("expert_id = $1"), "filtered by expert_id");
+  });
+
+  it("anonymizes palata_request_contacts: nullifies expert_email and expert_phone", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_request_contacts");
+    assert.ok(q, "must UPDATE palata_request_contacts");
+    assert.ok(q.sql.includes("expert_email = NULL"), "expert_email nullified");
+    assert.ok(q.sql.includes("expert_phone = NULL"), "expert_phone nullified");
+  });
+
+  it("anonymizes palata_status_events: nullifies actor_id and note", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_status_events");
+    assert.ok(q, "must UPDATE palata_status_events");
+    assert.ok(q.sql.includes("actor_id = NULL"),     "actor_id nullified");
+    assert.ok(q.sql.includes("[Данные обезличены]"), "note replaced");
+  });
+
+  it("deletes palata_action_items for this expert", () => {
+    const q = findQuery(client.queries, "DELETE FROM public.palata_action_items");
+    assert.ok(q, "must DELETE palata_action_items");
+    assert.ok(q.sql.includes("expert_id = $1"), "includes expert_id filter");
+  });
+
+  it("anonymizes palata_customer_ratings: nullifies comment", () => {
+    const q = findQuery(client.queries, "UPDATE public.palata_customer_ratings");
+    assert.ok(q, "must UPDATE palata_customer_ratings");
+    assert.ok(q.sql.includes("comment = NULL"), "comment nullified");
+  });
+
+  it("deletes palata_email_events", () => {
+    const q = findQuery(client.queries, "DELETE FROM public.palata_email_events");
+    assert.ok(q, "must DELETE palata_email_events");
+  });
+
+  it("returns counts for all required expert tables", () => {
+    const required = [
       "palata_users",
       "palata_expert_profiles",
       "palata_expert_regions",
@@ -177,154 +287,119 @@ describe("Admin PD delete — dry-run query logic", () => {
       "palata_customer_ratings",
       "palata_email_events",
     ];
-
-    for (const table of requiredTables) {
-      assert.ok(summary.tables[table] !== undefined, `${table} must be in expert dry-run summary`);
-    }
-
-    // Expert dry-run must list files that would be deleted from Object Storage
-    assert.ok(summary.files.length > 0, "expert dry-run should list files for S3 deletion");
-    for (const f of summary.files) {
-      assert.ok(f.bucket_path, "each file entry must have bucket_path");
-      assert.ok(f.file_name, "each file entry must have file_name");
+    for (const t of required) {
+      assert.ok(Object.hasOwn(counts, t), `counts must include ${t}`);
     }
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("Admin PD delete — auth guard", () => {
+describe("collectUserDataSummary — structure verification", () => {
 
-  it("request without Authorization header returns 401", async () => {
-    // Simulate the auth check logic from requireAdmin()
-    const authHeader = "";
-    const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
-    assert.equal(hasToken, false, "no token detected");
-    // The handler returns { ok: false, status: 401, error: 'MISSING_TOKEN' }
-    const mockResult = hasToken ? { ok: true } : { ok: false, status: 401, error: "MISSING_TOKEN" };
-    assert.equal(mockResult.ok, false);
-    assert.equal(mockResult.status, 401);
+  it("returns correct structure for customer role", async () => {
+    const db = makeMockClient();
+    const result = await collectUserDataSummary(db, VALID_UUID, "customer");
+
+    const customerTables = [
+      "palata_users", "palata_customer_profiles", "palata_requests",
+      "palata_request_matches", "palata_request_contacts", "palata_status_events",
+      "palata_action_items", "palata_customer_ratings", "palata_email_events",
+    ];
+    for (const t of customerTables) {
+      assert.ok(result.tables[t], `customer summary must include ${t}`);
+      assert.ok(["anonymize","delete"].includes(result.tables[t].action), "action must be anonymize|delete");
+    }
+    // customer has no files
+    assert.deepEqual(result.files, [], "customer summary must have empty files array");
   });
 
-  it("request from non-admin user returns 403", async () => {
-    // Simulate the DB role check in requireAdmin()
-    const row = { id: "some-id", role: "customer", is_active: true };
-    const isAdmin = row?.role === "admin";
-    assert.equal(isAdmin, false, "customer is not admin");
-    const mockResult = isAdmin ? { ok: true } : { ok: false, status: 403, error: "FORBIDDEN" };
-    assert.equal(mockResult.ok, false);
-    assert.equal(mockResult.status, 403);
-    assert.equal(mockResult.error, "FORBIDDEN");
-  });
+  it("returns correct structure for expert role including files", async () => {
+    const db = makeMockClient({
+      "SELECT bucket_path": {
+        rows: [{ bucket_path: "experts/doc.pdf", file_name: "doc.pdf" }],
+        rowCount: 1,
+      },
+    });
+    const result = await collectUserDataSummary(db, VALID_UUID, "expert");
 
-  it("request from admin user passes role check", () => {
-    const row = { id: "admin-id", role: "admin", is_active: true };
-    const isAdmin = row?.role === "admin";
-    assert.equal(isAdmin, true);
-    const mockResult = isAdmin ? { ok: true, userId: row.id } : { ok: false, status: 403 };
-    assert.equal(mockResult.ok, true);
-    assert.equal(mockResult.userId, "admin-id");
+    const expertTables = [
+      "palata_users", "palata_expert_profiles", "palata_expert_regions",
+      "palata_expert_directions", "palata_expert_certificates", "palata_expert_documents",
+      "palata_request_matches", "palata_request_contacts", "palata_status_events",
+      "palata_action_items", "palata_customer_ratings", "palata_email_events",
+    ];
+    for (const t of expertTables) {
+      assert.ok(result.tables[t], `expert summary must include ${t}`);
+    }
+    assert.ok(result.files.length > 0, "expert summary must list files");
+    assert.ok(result.files[0].bucket_path, "file entry must have bucket_path");
+    assert.ok(result.files[0].file_name,   "file entry must have file_name");
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("Admin PD delete — S3 config check", () => {
+describe("tryDeleteS3Object — env-var guard", () => {
 
-  it("S3 deletion is skipped gracefully when credentials are not configured", () => {
-    // Simulate tryDeleteS3Object() env check
-    const endpoint  = process.env.SELECTEL_S3_ENDPOINT;
-    const bucket    = process.env.SELECTEL_S3_BUCKET;
-    const accessKey = process.env.SELECTEL_S3_ACCESS_KEY;
-    const secretKey = process.env.SELECTEL_S3_SECRET_KEY;
+  before(() => {
+    // Ensure credentials are not set in test environment
+    delete process.env.SELECTEL_S3_ENDPOINT;
+    delete process.env.SELECTEL_S3_BUCKET;
+    delete process.env.SELECTEL_S3_ACCESS_KEY;
+    delete process.env.SELECTEL_S3_SECRET_KEY;
+  });
 
-    // In test environment, none of these should be set
-    const configured = !!(endpoint && bucket && accessKey && secretKey);
-    assert.equal(configured, false, "S3 must not be configured in test env");
-
-    // When not configured, the helper returns { deleted: false, reason: 'S3_NOT_CONFIGURED' }
-    const result = configured
-      ? { deleted: true }
-      : { deleted: false, reason: "S3_NOT_CONFIGURED", bucketPath: "experts/test.pdf" };
-
+  it("returns deleted=false with S3_NOT_CONFIGURED when credentials absent", async () => {
+    const result = await tryDeleteS3Object("experts/test.pdf");
     assert.equal(result.deleted, false);
     assert.equal(result.reason, "S3_NOT_CONFIGURED");
-    assert.ok(result.bucketPath, "bucket path preserved for manual deletion");
+    assert.equal(result.bucketPath, "experts/test.pdf", "bucket path preserved for manual deletion");
   });
 
-  it("audit log records files that need manual deletion when S3 not configured", () => {
-    const filesNeedingDeletion = [
-      { bucket_path: "experts/doc-1.pdf", deleted: false, reason: "S3_NOT_CONFIGURED" },
-      { bucket_path: "experts/doc-2.pdf", deleted: false, reason: "S3_NOT_CONFIGURED" },
-    ];
+  it("never calls fetch when credentials are not configured", async () => {
+    let fetchCalled = false;
+    global.fetch = async () => { fetchCalled = true; return {}; };
 
-    // Audit log must contain these
-    const auditDetails = {
-      files_deleted: 0,
-      files_not_deleted: filesNeedingDeletion.map(f => f.bucket_path),
-      note: "S3 credentials not configured; files require manual deletion from Selectel Object Storage",
-    };
+    await tryDeleteS3Object("experts/another.pdf");
 
-    assert.equal(auditDetails.files_deleted, 0);
-    assert.equal(auditDetails.files_not_deleted.length, 2);
-    assert.ok(auditDetails.note.includes("manual deletion"), "note must mention manual deletion");
+    assert.equal(fetchCalled, false, "fetch must NOT be called when S3 not configured");
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("Admin PD delete — audit log integrity", () => {
+describe("Audit log integrity contract", () => {
 
-  it("audit log entry never includes personal data fields", () => {
-    const userId = "54e357c3-e27b-40ba-ab49-6b04dd72bc58";
-    const adminId = "admin-00000000-0000-0000-0000-000000000001";
-
-    // Simulate what gets written to palata_admin_audit_log
-    const auditEntry = {
-      action: "anonymize_user",
-      initiated_by: adminId,
-      target_user_id: userId,
-      details: {
-        role: "customer",
-        dry_run: false,
-        tables_affected: {
-          palata_users: { rows_anonymized: 1 },
-          palata_requests: { rows_anonymized: 2 },
-          palata_email_events: { rows_deleted: 4 },
-        },
-        files_deleted: 0,
-        files_not_deleted: [],
-      },
+  it("audit log details must not contain personal data fields", () => {
+    // Simulate what gets passed to _writeAuditLog's `details`
+    const counts = {
+      palata_users:             1,
+      palata_customer_profiles: 1,
+      palata_requests:          2,
+      palata_action_items:      1,
+      palata_email_events:      3,
     };
-
-    // Verify: no PD fields in details
-    const detailsStr = JSON.stringify(auditEntry.details);
-    assert.ok(!detailsStr.includes("@"), "no email addresses in audit log details");
-    assert.ok(!detailsStr.includes("full_name"), "no full_name in audit log details");
-    assert.ok(!detailsStr.includes("phone"), "no phone in audit log details");
-    assert.ok(!detailsStr.includes("password"), "no passwords in audit log details");
-    assert.ok(auditEntry.details.role === "customer" || auditEntry.details.role === "expert",
-      "role must be customer or expert");
-  });
-
-  it("audit log is written even when S3 deletion partially fails", () => {
-    // Simulate a scenario where 2 files exist, 1 deleted, 1 failed
-    const fileResults = [
-      { bucket_path: "experts/doc-1.pdf", deleted: true },
-      { bucket_path: "experts/doc-2.pdf", deleted: false, reason: "HTTP_403" },
-    ];
+    const fileResults = [];
+    const filesDeleted    = fileResults.filter(f => f.deleted).length;
+    const filesNotDeleted = fileResults.filter(f => !f.deleted).map(f => ({
+      path: f.bucketPath, reason: f.reason,
+    }));
 
     const details = {
-      files_deleted: fileResults.filter(f => f.deleted).length,
-      files_not_deleted: fileResults.filter(f => !f.deleted).map(f => ({
-        path: f.bucket_path,
-        reason: f.reason,
-      })),
+      role: "customer",
+      dry_run: false,
+      tables_affected: counts,
+      files_deleted:     filesDeleted,
+      files_not_deleted: filesNotDeleted,
     };
 
-    // Audit should still be written
-    assert.equal(details.files_deleted, 1);
-    assert.equal(details.files_not_deleted.length, 1);
-    assert.equal(details.files_not_deleted[0].reason, "HTTP_403");
+    const detailsStr = JSON.stringify(details);
+    // No PD values in the log (only table names and row counts)
+    assert.ok(!detailsStr.includes("@"),         "no email address in audit log");
+    assert.ok(!detailsStr.includes("full_name"), "no full_name value in audit log");
+    assert.ok(!detailsStr.includes("phone"),     "no phone value in audit log");
+    assert.ok(!detailsStr.includes("password"),  "no password in audit log");
+    assert.ok(!detailsStr.includes("inn"),        "no inn value in audit log (key name only in table names)");
   });
 });

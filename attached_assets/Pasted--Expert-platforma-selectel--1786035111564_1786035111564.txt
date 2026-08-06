@@ -1,0 +1,115 @@
+Работаем только в репозитории Expert_platforma_selectel.
+
+Аудит завершён. Корневая причина подтверждена:
+
+1. POST /api/ai-detect-direction вызывает Yandex через AI Gateway и возвращает положительное решение.
+2. POST /api/palata/requests повторно вызывает checkLocalMarkers(description).
+3. Локальные маркеры могут отменить положительный AI-результат и вернуть 422 NO_CONSTRUCTION_MARKERS.
+4. Все 8 записей базы знаний уже реально входят в system prompt.
+5. Прямых вызовов OpenAI нет.
+6. OPENAI_API_KEY нигде не используется.
+7. AI_GATEWAY_URL имеет опасный fallback на Vercel.
+
+Нужно внести только следующие изменения.
+
+1. Убрать повторную локальную проверку текста при создании заказа
+
+В обработчике POST /api/palata/requests:
+
+- сохранить проверку, что expertise_direction_id совпадает с допустимым направлением;
+- убрать использование checkLocalMarkers(description) как обязательного финального гейта;
+- не возвращать 422 NO_CONSTRUCTION_MARKERS, если frontend уже получил валидный direction_id от /api/ai-detect-direction.
+
+Финальная серверная проверка при создании должна быть:
+
+- direction_id существует;
+- direction_id совпадает с допустимым направлением;
+- пользователь авторизован;
+- обязательные поля валидны.
+
+Не запускать второй независимый semantic/local анализ описания.
+
+2. Локальные маркеры оставить только как fallback внутри POST /api/ai-detect-direction:
+
+- нет AI_GATEWAY_TOKEN;
+- Gateway недоступен;
+- HTTP не 200;
+- JSON невалиден;
+- AI не определил направление.
+
+3. Stop factors оставить только в /api/ai-detect-direction и не дублировать в /api/palata/requests.
+
+4. Убрать fallback на Vercel
+
+Было:
+
+const gatewayUrl =
+  process.env.AI_GATEWAY_URL ||
+  "https://ai-gateway-core.vercel.app/api/chat";
+
+Должно быть:
+
+const gatewayUrl = process.env.AI_GATEWAY_URL;
+
+if (!gatewayUrl) {
+  return {
+    status: "openai_error",
+    error: "AI_GATEWAY_URL_MISSING"
+  };
+}
+
+Никаких скрытых fallback URL.
+
+5. Переименовать технические переменные и логи только там, где это не ломает контракт:
+
+- openAiResponse → gatewayResponse;
+- OpenAI response.status → AI Gateway response.status;
+- OpenAI HTTP status → AI Gateway HTTP status;
+- OpenAI model → Requested model.
+
+Не менять бизнес-логику и формат API.
+
+6. Удалить упоминания OPENAI_API_KEY из документации и .env.example, если они есть.
+
+Код чтения OPENAI_API_KEY не добавлять.
+
+7. Добавить тесты:
+
+A. AI endpoint вернул detected=true и валидный direction_id, затем POST /api/palata/requests создаёт заказ даже если checkLocalMarkers(description) дал бы false.
+
+B. Неверный expertise_direction_id → 422.
+
+C. AI_GATEWAY_URL отсутствует → запрос не уходит на Vercel, возвращается контролируемая ошибка/fallback.
+
+D. AI Gateway недоступен → local fallback в /api/ai-detect-direction продолжает работать.
+
+E. Один submit создаёт заказ после одного AI-решения и без второго текстового гейта.
+
+8. Не менять:
+- AI Gateway;
+- Yandex API;
+- базу знаний;
+- frontend;
+- Auth Service;
+- структуру БД;
+- список направлений;
+- CONFIDENCE_THRESHOLD.
+
+9. Запустить:
+- новые тесты;
+- существующие тесты;
+- tsc --noEmit;
+- vite build.
+
+10. Commit:
+fix: remove duplicate local guard and Vercel fallback
+
+11. Push в main.
+
+Вернуть:
+- изменённые файлы;
+- точный diff обработчика POST /api/palata/requests;
+- точный diff AI_GATEWAY_URL;
+- результаты тестов;
+- hash commit;
+- подтверждение push.

@@ -51,6 +51,10 @@ function mockFetch(body, { ok = true, status = 200 } = {}) {
 // Because detectDirection uses the global `fetch`, we replace it before each test.
 const { detectDirection, resolveDirectionName, DIRECTION_ALIASES, CONFIDENCE_THRESHOLD } = await import("../../../lib/ai-detect/src/index.js");
 
+// All tests in this file use mocked fetch. Set AI_GATEWAY_URL so detectDirection
+// does not return AI_GATEWAY_URL_MISSING before reaching the mock.
+process.env.AI_GATEWAY_URL = "http://test-gateway.local/api/chat";
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("AI Gateway adapter — response format normalization", () => {

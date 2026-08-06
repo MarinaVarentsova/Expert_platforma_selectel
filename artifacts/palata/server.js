@@ -4722,30 +4722,27 @@ async function handleCreateRequest(req, res) {
     return res.status(503).json({ success: false, error: "DB_UNAVAILABLE", message: "База данных недоступна" });
   }
 
-  // 2.5. Server-side expertise direction guard ─────────────────────────────
-  // Verify the direction UUID refers to the one allowed direction ("Строительно-техническая экспертиза")
-  // and that the description passes the local knowledge-base check.
-  // This blocks any direct API bypass regardless of what the frontend sent.
+  // 2.5. Server-side direction guard ────────────────────────────────────────
+  // Verifies the direction UUID matches the single allowed direction.
+  // Semantic / local-marker analysis of the description is done exclusively
+  // by POST /api/ai-detect-direction before the frontend calls this endpoint.
+  // Duplicating that check here caused AI-approved requests to be rejected
+  // when the description used synonyms not present in the hardcoded marker list.
   {
     const constructionDir = await getConstructionDirection(pool);
-    const descTrimmed = String(description).trim();
 
     if (!constructionDir) {
       console.warn("[AI-DIRECTION-GUARD]", {
-        descriptionLength: descTrimmed.length,
-        detected: false, directionName: null, directionId: String(expertise_direction_id),
-        confidence: 0, matchedMarkers: [], matchedKnowledgeScenario: null,
-        stopFactor: null, allowed: false, rejectionCode: "DIRECTION_LOOKUP_FAILED",
+        directionId: String(expertise_direction_id),
+        allowed: false, rejectionCode: "DIRECTION_LOOKUP_FAILED",
       });
       return res.status(503).json({ success: false, error: "DB_UNAVAILABLE", message: "Конфигурация направлений недоступна" });
     }
 
     if (String(expertise_direction_id) !== constructionDir.id) {
       console.log("[AI-DIRECTION-GUARD]", {
-        descriptionLength: descTrimmed.length,
-        detected: false, directionName: null, directionId: String(expertise_direction_id),
-        confidence: 0, matchedMarkers: [], matchedKnowledgeScenario: null,
-        stopFactor: null, allowed: false, rejectionCode: "UNSUPPORTED_EXPERTISE",
+        directionId: String(expertise_direction_id),
+        allowed: false, rejectionCode: "UNSUPPORTED_EXPERTISE",
       });
       return res.status(422).json({
         success: false,
@@ -4753,33 +4750,11 @@ async function handleCreateRequest(req, res) {
         error: "На платформе пока нет экспертов по указанному направлению",
       });
     }
-
-    // Local marker check — description must match at least one KB scenario AND must not be a stop-factor.
-    // We do NOT trust that the frontend already called /api/ai-detect-direction.
-    const localCheck = checkLocalMarkers(descTrimmed);
-    const guardAllowed = localCheck.matched === true && localCheck.isStopFactor !== true;
-    const rejectionCode = guardAllowed ? null : (localCheck.isStopFactor ? "STOP_FACTOR" : "NO_CONSTRUCTION_MARKERS");
 
     console.log("[AI-DIRECTION-GUARD]", {
-      descriptionLength: descTrimmed.length,
-      detected: localCheck.matched,
-      directionName: guardAllowed ? CONSTRUCTION_DIRECTION_NAME : null,
-      directionId: guardAllowed ? constructionDir.id : null,
-      confidence: null,
-      matchedMarkers: localCheck.markers,
-      matchedKnowledgeScenario: localCheck.scenario,
-      stopFactor: localCheck.stopFactorReason,
-      allowed: guardAllowed,
-      rejectionCode,
+      directionId: constructionDir.id,
+      allowed: true, rejectionCode: null,
     });
-
-    if (!guardAllowed) {
-      return res.status(422).json({
-        success: false,
-        code: "UNSUPPORTED_EXPERTISE",
-        error: "На платформе пока нет экспертов по указанному направлению",
-      });
-    }
   }
 
   // 3. Transaction: INSERT palata_requests + INSERT palata_status_events
@@ -5726,7 +5701,7 @@ async function handleAiDetectDirection(req, res) {
   // ── Primary: AI Gateway ───────────────────────────────────────────────────
   console.log("[AI-PROD] sending request to AI Gateway");
   const result = await detectDirection(description, allowedDirections, gatewayToken);
-  console.log("[AI-PROD] OpenAI HTTP status=" + result.httpStatus);
+  console.log("[AI-PROD] AI Gateway HTTP status=" + result.httpStatus);
 
   // AI error → try local fallback
   if (result.status === "openai_error" || result.status === "parse_error") {

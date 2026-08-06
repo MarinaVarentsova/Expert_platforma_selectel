@@ -34,7 +34,8 @@
 - `VITE_SUPABASE_URL` — URL Supabase проекта
 - `VITE_SUPABASE_ANON_KEY` — публичный ключ Supabase
 - `SESSION_SECRET` — секрет сессии
-- `OPENAI_API_KEY` — для AI-определения направления экспертизы (Vercel Edge Function)
+- `AI_GATEWAY_URL` — endpoint AI Gateway (Yandex через self-hosted шлюз)
+- `AI_GATEWAY_TOKEN` — ключ доступа к AI Gateway
 
 ---
 

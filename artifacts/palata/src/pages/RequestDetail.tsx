@@ -1939,7 +1939,52 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         </div>
       </Card>
 
-      {/* ══ 6. ПОДОБРАННЫЕ ЭКСПЕРТЫ (customer + admin) ══════════════════════ */}
+      {/* ══ 6. ОЦЕНИТЬ ЭКСПЕРТА (customer) ══════════════════════════════════ */}
+      {role === "customer" && r.status === "completed" && assignedExpertId && !hasRatedExpert && (
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <h2 className="text-sm font-semibold text-slate-700">Оценить эксперта</h2>
+          </div>
+          {ratingUI.kind === "done" ? (
+            <p className="text-sm text-emerald-600 font-medium">Оценка сохранена. Спасибо!</p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500">
+                Оцените работу эксперта{assignedExpertId ? ` ${userName(usersMap[assignedExpertId]) ?? ""}` : ""}:
+              </p>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map(s => (
+                  <button
+                    key={s}
+                    onClick={() => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, score: s })}
+                    className={`text-2xl transition-colors ${ratingUI.kind === "idle" && ratingUI.score >= s ? "text-amber-400" : "text-slate-200"}`}
+                  >★</button>
+                ))}
+                <span className="ml-2 text-sm text-slate-500 self-center">
+                  {ratingUI.kind === "idle" ? `${ratingUI.score} / 5` : ""}
+                </span>
+              </div>
+              <input
+                type="text"
+                placeholder="Комментарий (необязательно)"
+                className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                value={ratingUI.kind === "idle" ? ratingUI.comment : ""}
+                onChange={e => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, comment: e.target.value })}
+              />
+              <button
+                className="btn-primary"
+                onClick={() => handleRateExpert(assignedExpertId)}
+                disabled={ratingUI.kind === "submitting"}
+              >
+                {ratingUI.kind === "submitting" ? "Сохранение…" : "Отправить оценку"}
+              </button>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* ══ 7. ПОДОБРАННЫЕ ЭКСПЕРТЫ (customer + admin) ══════════════════════ */}
       {(role === "customer" || role === "admin") && (
         <Card id="experts-section" title="Подобранные эксперты" count={matches.length}>
           {matches.length === 0 ? <Empty text="Эксперты ещё не подбирались" /> : (
@@ -2196,51 +2241,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                   </div>
                 );
               })}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* ══ 7. ОЦЕНИТЬ ЭКСПЕРТА (customer) ══════════════════════════════════ */}
-      {role === "customer" && r.status === "completed" && assignedExpertId && !hasRatedExpert && (
-        <Card>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <h2 className="text-sm font-semibold text-slate-700">Оценить эксперта</h2>
-          </div>
-          {ratingUI.kind === "done" ? (
-            <p className="text-sm text-emerald-600 font-medium">Оценка сохранена. Спасибо!</p>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-xs text-slate-500">
-                Оцените работу эксперта{assignedExpertId ? ` ${userName(usersMap[assignedExpertId]) ?? ""}` : ""}:
-              </p>
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map(s => (
-                  <button
-                    key={s}
-                    onClick={() => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, score: s })}
-                    className={`text-2xl transition-colors ${ratingUI.kind === "idle" && ratingUI.score >= s ? "text-amber-400" : "text-slate-200"}`}
-                  >★</button>
-                ))}
-                <span className="ml-2 text-sm text-slate-500 self-center">
-                  {ratingUI.kind === "idle" ? `${ratingUI.score} / 5` : ""}
-                </span>
-              </div>
-              <input
-                type="text"
-                placeholder="Комментарий (необязательно)"
-                className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                value={ratingUI.kind === "idle" ? ratingUI.comment : ""}
-                onChange={e => ratingUI.kind === "idle" && setRatingUI({ ...ratingUI, comment: e.target.value })}
-              />
-              <button
-                className="btn-primary"
-                onClick={() => handleRateExpert(assignedExpertId)}
-                disabled={ratingUI.kind === "submitting"}
-              >
-                {ratingUI.kind === "submitting" ? "Сохранение…" : "Отправить оценку"}
-              </button>
             </div>
           )}
         </Card>

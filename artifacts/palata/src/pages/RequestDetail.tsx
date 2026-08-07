@@ -748,7 +748,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           requires_travel: editTravel,
         }),
       }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED" }));
-      if (!res.success) throw new Error(res.message ?? res.error ?? "TX_FAILED");
+      if (!res.success) throw new Error(res.message ?? res.error ?? "Ошибка выполнения операции");
       setEditingRequest(false);
       onReload();
     } catch (e) {
@@ -887,7 +887,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         setShowAlreadyInWorkModal(true);
         return;
       }
-      if (!seRes.success) throw new Error(seRes.error ?? "TX_FAILED");
+      if (!seRes.success) throw new Error(seRes.error ?? "Ошибка выполнения операции");
 
       // Update local action items list to remove resolved expertsMatchedItem
       if (expertsMatchedItem) {
@@ -928,7 +928,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           onReload();
           return;
         }
-        throw new Error(res.error ?? "TX_FAILED");
+        throw new Error(res.error ?? "Ошибка выполнения операции");
       }
 
       const emailType = newStatus === "completed" ? "request_completed" : "request_cancelled";
@@ -965,7 +965,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           onReload();
           return;
         }
-        throw new Error(res.error ?? "TX_FAILED");
+        throw new Error(res.error ?? "Ошибка выполнения операции");
       }
 
       const expertUser = usersMap[match.expert_id];
@@ -1029,7 +1029,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           onReload();
           return;
         }
-        throw new Error(res.error ?? "TX_FAILED");
+        throw new Error(res.error ?? "Ошибка выполнения операции");
       }
 
       const takenExpert = usersMap[match.expert_id];
@@ -1066,7 +1066,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
           onReload();
           return;
         }
-        throw new Error(cwRes.error ?? "TX_FAILED");
+        throw new Error(cwRes.error ?? "Ошибка выполнения операции");
       }
 
       // notify + email — те же получатели и шаблоны, что были раньше,

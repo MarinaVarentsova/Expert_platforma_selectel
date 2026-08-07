@@ -33,7 +33,7 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
   const res = await rawRes.json().catch(() => ({ success: false, error: "FETCH_FAILED" }));
 
   if (!res.success) {
-    throw new Error(res.error ?? "Matching failed");
+    throw new Error(res.error ?? "Ошибка при подборе экспертов");
   }
 
   return {

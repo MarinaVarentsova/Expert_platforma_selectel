@@ -877,8 +877,12 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
   const regsMap = Object.fromEntries(allRegs.map(r => [r.id, r.name]));
 
   const baseStatuses = state.kind === "ok" ? state.myMatchStatuses : {};
+  // liveMatchStatuses (из канбана) — вспомогательный источник.
+  // baseStatuses (из loadMarket + оптимистичные обновления handleTake) всегда
+  // приоритетнее: при авто-матче эксперт мог быть в "proposed", и liveMatchStatuses
+  // бы перетёр оптимистичный "can_start_from" если бы шёл вторым.
   const myMatchStatuses = liveMatchStatuses
-    ? { ...baseStatuses, ...liveMatchStatuses }
+    ? { ...liveMatchStatuses, ...baseStatuses }
     : baseStatuses;
 
   const filtered = state.kind === "ok" ? state.orders

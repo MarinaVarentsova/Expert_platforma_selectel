@@ -46,6 +46,14 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Фиксированные имена без хэша — index.html в palata не устаревает
+        // при пересборке palata-promo.
+        entryFileNames: "assets/index.js",
+        assetFileNames: "assets/index.[ext]",
+      },
+    },
   },
   server: {
     port,

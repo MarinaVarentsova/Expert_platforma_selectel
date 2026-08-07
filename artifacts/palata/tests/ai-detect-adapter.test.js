@@ -6,7 +6,7 @@
  *  2. camelCase response (alternate gateway format) → same result
  *  3. detected=false → not_detected
  *  4. Unknown direction_name → safe no_match fallback
- *  5. OpenAI-wrapper format (choices[0].message.content) → still works
+ *  5. choices-wrapper format (choices[0].message.content) → still works
  *  6. low confidence → not_detected
  *
  * Section 2 — Alias normalization (resolveDirectionName):
@@ -33,7 +33,7 @@ const TOKEN = "test-token";
  * Build a mock fetch that returns the given gateway body.
  * Two formats are exercised:
  *   direct  – { detected, direction_name, ... }   (Yandex provider)
- *   choices – { choices: [{ message: { content: "..." } }] }  (OpenAI-compat)
+ *   choices – { choices: [{ message: { content: "..." } }] }  (choices-wrapper format)
  */
 function mockFetch(body, { ok = true, status = 200 } = {}) {
   const text = typeof body === "string" ? body : JSON.stringify(body);
@@ -157,8 +157,8 @@ describe("AI Gateway adapter — response format normalization", () => {
     assert.equal(result.direction_id, null);
   });
 
-  // 5. OpenAI-wrapper format still works
-  it("OpenAI choices wrapper format → detected=true", async () => {
+  // 5. choices-wrapper format still works
+  it("choices wrapper format → detected=true", async () => {
     const contentObj = {
       detected: true,
       direction_name: "Строительно-техническая экспертиза",

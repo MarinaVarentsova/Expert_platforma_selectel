@@ -30,8 +30,8 @@ router.post("/ai-detect-direction", async (req, res) => {
   try {
     const result = await detectDirection(description, availableDirections, gatewayToken);
 
-    if (result.status === "openai_error") {
-      req.log.error({ status: result.httpStatus, errText: result.errText }, "OpenAI API error");
+    if (result.status === "gateway_error") {
+      req.log.error({ status: result.httpStatus, errText: result.errText }, "AI Gateway error");
       res.status(502).json({ error: "AI service error" });
       return;
     }

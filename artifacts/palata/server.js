@@ -5764,7 +5764,7 @@ async function handleAiDetectDirection(req, res) {
   console.log("[AI-PROD] AI Gateway HTTP status=" + result.httpStatus);
 
   // AI error → try local fallback
-  if (result.status === "openai_error" || result.status === "parse_error") {
+  if (result.status === "gateway_error" || result.status === "parse_error") {
     console.log("[AI-PROD] AI error/parse error — falling back to local markers");
     const local = checkLocalMarkers(description);
     console.log("[AI-DIRECTION-GUARD]", {

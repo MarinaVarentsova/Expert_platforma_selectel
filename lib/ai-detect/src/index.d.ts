@@ -20,7 +20,7 @@ export declare function checkLocalMarkers(description: string): LocalMarkerResul
 
 export type DetectResult =
   | {
-      status: "openai_error";
+      status: "gateway_error";
       httpStatus: number;
       errText: string;
     }

@@ -10,7 +10,7 @@
  *    no request is sent to any external fallback URL.
  *
  * D. AI Gateway returns HTTP error → local fallback in /api/ai-detect-direction
- *    (openai_error path → checkLocalMarkers is used inside the detect endpoint only).
+ *    (gateway_error path → checkLocalMarkers is used inside the detect endpoint only).
  *
  * E. One AI decision is sufficient for order creation — no second text gate.
  */
@@ -119,7 +119,7 @@ describe("B. Invalid direction UUID → handled by direction guard", () => {
 
 describe("C. AI_GATEWAY_URL absent → no external fallback, controlled error", () => {
 
-  it("detectDirection with no AI_GATEWAY_URL returns openai_error, fetch never called", async () => {
+  it("detectDirection with no AI_GATEWAY_URL returns gateway_error, fetch never called", async () => {
     let fetchCalled = false;
     global.fetch = async () => {
       fetchCalled = true;
@@ -135,7 +135,7 @@ describe("C. AI_GATEWAY_URL absent → no external fallback, controlled error", 
     // Restore
     if (saved !== undefined) process.env.AI_GATEWAY_URL = saved;
 
-    assert.equal(result.status, "openai_error", `expected openai_error, got ${result.status}`);
+    assert.equal(result.status, "gateway_error", `expected gateway_error, got ${result.status}`);
     assert.ok(result.errText?.includes("AI_GATEWAY_URL_MISSING"), `errText should indicate missing URL, got ${result.errText}`);
     assert.equal(fetchCalled, false, "fetch must NOT be called — no external fallback");
   });
@@ -151,7 +151,7 @@ describe("C. AI_GATEWAY_URL absent → no external fallback, controlled error", 
     delete process.env.AI_GATEWAY_URL;
 
     // Empty string is falsy → same path as undefined
-    assert.equal(result.status, "openai_error");
+    assert.equal(result.status, "gateway_error");
     assert.ok(result.errText?.includes("AI_GATEWAY_URL_MISSING"));
     assert.equal(fetchCalled, false, "fetch must NOT be called with empty URL");
   });
@@ -160,9 +160,9 @@ describe("C. AI_GATEWAY_URL absent → no external fallback, controlled error", 
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("D. AI Gateway HTTP error → openai_error result (local fallback in server handler)", () => {
+describe("D. AI Gateway HTTP error → gateway_error result (local fallback in server handler)", () => {
 
-  it("detectDirection returns openai_error when gateway returns HTTP 500", async () => {
+  it("detectDirection returns gateway_error when gateway returns HTTP 500", async () => {
     global.fetch = mockFetch("Internal Server Error", { ok: false, status: 500 });
     process.env.AI_GATEWAY_URL = "http://test-gateway.local/api/chat";
 
@@ -170,12 +170,12 @@ describe("D. AI Gateway HTTP error → openai_error result (local fallback in se
 
     delete process.env.AI_GATEWAY_URL;
 
-    assert.equal(result.status, "openai_error", `expected openai_error on gateway 500, got ${result.status}`);
+    assert.equal(result.status, "gateway_error", `expected gateway_error on gateway 500, got ${result.status}`);
     assert.equal(result.httpStatus, 500);
   });
 
   it("local fallback covers construction description when gateway errors", () => {
-    // Server handler calls checkLocalMarkers on openai_error path.
+    // Server handler calls checkLocalMarkers on gateway_error path.
     // Verify a clear construction description is caught by local markers.
     const local = checkLocalMarkers("соседи залили квартиру, протечка с потолка");
     assert.equal(local.matched, true, "construction description should match local markers");

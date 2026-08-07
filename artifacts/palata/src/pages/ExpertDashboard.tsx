@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { getToken, palataFetch } from "@/lib/authClient";
 import { fetchUsers } from "@/lib/users";
@@ -679,6 +679,10 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
   liveMatchStatuses?: Record<string, string>;
 }) {
   const [state, setState] = useState<MarketState>({ kind: "loading" });
+  // Генерационный счётчик: каждый вызов loadMarket запоминает свой gen.
+  // Если к моменту завершения запроса gen устарел — ответ отбрасывается,
+  // чтобы старый slow-запрос не затирал оптимистичный statuses.
+  const loadMarketGen = useRef(0);
   const [filterDirection, setFilterDirection] = useState("");
   const [filterRegion, setFilterRegion] = useState("");
   const [filterTravel, setFilterTravel] = useState<"all" | "remote" | "travel">("all");
@@ -710,6 +714,11 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
   useEffect(() => { loadMarket(); }, [userId]);
 
   async function loadMarket(silent = false) {
+    // Захватываем текущий gen ДО любых await.
+    // Если к моменту завершения запроса gen изменился — значит стартовал новый
+    // loadMarket (или пришёл оптимистичный setState) и наш ответ уже не актуален.
+    const gen = ++loadMarketGen.current;
+
     if (!silent) setState({ kind: "loading" });
 
     // Show all requests except "неактуально" (cancelled) and "в работе" (completed / in_work)
@@ -719,6 +728,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     }).then(r => r.json()).catch(() => ({ success: false, error: "FETCH_FAILED", orders: [], myMatches: [] }));
 
+    if (loadMarketGen.current !== gen) return; // stale — отбрасываем
     if (!marketRes.success) { setState({ kind: "error", message: marketRes.error ?? "Ошибка загрузки" }); return; }
 
     type RawOrder = {
@@ -731,6 +741,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
     const allOrders = (marketRes.orders ?? []) as RawOrder[];
 
     if (allOrders.length === 0) {
+      if (loadMarketGen.current !== gen) return;
       setState({ kind: "ok", orders: [], myMatchStatuses: {} });
       return;
     }
@@ -745,6 +756,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
     const marketOrders = allOrders;
 
     if (marketOrders.length === 0) {
+      if (loadMarketGen.current !== gen) return;
       setState({ kind: "ok", orders: [], myMatchStatuses });
       return;
     }
@@ -786,6 +798,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
       };
     }).sort((a, b) => (b.customer_rating ?? 0) - (a.customer_rating ?? 0));
 
+    if (loadMarketGen.current !== gen) return; // stale — отбрасываем
     setState({ kind: "ok", orders: result, myMatchStatuses });
   }
 

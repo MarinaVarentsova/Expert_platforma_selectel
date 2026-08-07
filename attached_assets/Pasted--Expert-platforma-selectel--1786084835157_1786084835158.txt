@@ -1,0 +1,157 @@
+Работаем ТОЛЬКО в репозитории Expert_platforma_selectel — это приложение Палаты.
+
+Контекст:
+раньше исходная версия приложения разворачивалась на Vercel.
+Сейчас этот репозиторий больше НИКОГДА не разворачивается на Vercel.
+
+Текущий production:
+Selectel → Coolify → artifacts/palata/server.js.
+
+ЗАДАЧА:
+убрать только код, конфигурацию и файлы, которые были добавлены исключительно для развертывания Палаты на Vercel.
+
+Ничего другого не менять.
+
+НЕ трогать:
+- бизнес-логику;
+- frontend-функционал;
+- server.js, кроме Vercel-специфичных участков, если такие реально найдены;
+- PostgreSQL;
+- Supabase;
+- Auth Service;
+- AI Gateway;
+- Yandex AI;
+- создание заказов;
+- подбор экспертов;
+- action_items;
+- status_events;
+- документы;
+- env текущего Coolify;
+- Docker/Coolify/Nixpacks-конфигурацию.
+
+Сначала найди именно Vercel-specific части проекта.
+
+Проверить:
+
+1. vercel.json
+
+Определить, нужен ли он хоть каким-либо образом текущему запуску:
+
+Coolify
+→ package.json
+→ artifacts/palata/server.js.
+
+Если используется только Vercel — удалить.
+
+2. Старые Vercel serverless handlers.
+
+Проверить файлы/папки, которые были нужны именно из-за serverless-архитектуры Vercel.
+
+Для каждого сначала доказать, что:
+- он не импортируется artifacts/palata/server.js;
+- он не импортируется production frontend;
+- на него не ведёт текущий API route;
+- Coolify его не использует.
+
+Только после этого удалить.
+
+ВАЖНО:
+НЕ удалять папку api целиком только потому, что она когда-то использовалась Vercel.
+Если её код сейчас используется Палатой — оставить.
+
+3. Найти hardcoded ссылки:
+
+*.vercel.app
+
+Для каждой определить назначение.
+
+Если это старый адрес деплоя Палаты или старый fallback, который больше не используется в Selectel — удалить.
+
+Не менять текущий AI_GATEWAY_URL и другие Selectel URL.
+
+4. Найти Vercel-specific код:
+
+process.env.VERCEL
+process.env.VERCEL_*
+VERCEL_URL
+VERCEL_ENV
+VERCEL_REGION
+@vercel/*
+Vercel serverless detection
+условия типа:
+if (process.env.VERCEL)
+или
+process.env.VERCEL ? ... : ...
+
+Если такой код существовал только для адаптации приложения под Vercel — удалить эту ветку и оставить только обычный runtime для Coolify/Node.
+
+5. Проверить package.json.
+
+Найти:
+- Vercel-specific scripts;
+- @vercel dependencies;
+- команды deployment на Vercel.
+
+Если они больше нигде не используются — удалить.
+
+Не менять обычные:
+start
+build
+test
+dev
+и всё, что используется Coolify.
+
+6. Проверить документацию и .env.example.
+
+Удалить только устаревшие инструкции/переменные, относящиеся именно к деплою Палаты на Vercel.
+
+Не менять реальные production env Selectel/Coolify.
+
+7. После удаления выполнить полный поиск:
+
+grep -RniE "vercel|vercel\\.app|VERCEL_|@vercel" . \
+  --exclude-dir=node_modules \
+  --exclude-dir=.git \
+  --exclude-dir=dist
+
+Оставшиеся совпадения показать и объяснить.
+
+8. Проверки после изменений:
+
+- pnpm install --no-frozen-lockfile
+- pnpm --filter ./artifacts/palata run build
+- tsc --noEmit, если настроен
+- существующие тесты Палаты
+
+Критически важно:
+после удаления Vercel-кода приложение должно продолжать запускаться через:
+
+artifacts/palata/server.js
+
+и текущий функционал должен остаться без изменений.
+
+9. Не делать никакого дополнительного рефакторинга.
+
+Если участок кода не доказанно Vercel-specific — НЕ ТРОГАТЬ.
+
+10. В конце вернуть:
+
+УДАЛЕНО:
+- файл/код;
+- зачем он раньше был нужен Vercel;
+- почему сейчас безопасно удалить.
+
+ОСТАВЛЕНО:
+- совпадения со словом vercel, если остались;
+- почему они нужны.
+
+Также вернуть:
+- список изменённых файлов;
+- результаты build/tests;
+- точный diff;
+- commit hash.
+
+Commit:
+chore: remove obsolete Vercel deployment code
+
+Push в main.

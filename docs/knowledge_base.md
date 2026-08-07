@@ -28,7 +28,7 @@
 | Backend / DB | Supabase (PostgreSQL + Auth + RLS + Storage) |
 | State | React state + Tanstack Query |
 | Монорепо | pnpm workspaces |
-| Деплой | Replit (dev) + Vercel (Edge Functions для AI) |
+| Деплой | Selectel + Coolify (production) · Replit (dev) |
 
 ### Переменные окружения
 - `VITE_SUPABASE_URL` — URL Supabase проекта
@@ -385,13 +385,12 @@ palata_expert_certificates пуст?
 
 ## 11. AI-определение направления экспертизы
 
-**Файл:** `api/ai-detect-direction.ts`  
-**Vercel Edge Function**
+**Файл:** `lib/ai-detect/src/index.js`  
+**Runtime:** Node.js (Express, `artifacts/palata/server.js`)
 
-Определяет направление экспертизы по текстовому описанию заявки. Вызывается из `NewRequest.tsx` при создании заявки. Если AI возвращает направление → автоматически подставляется. Если нет → показывается предупреждение с просьбой уточнить вручную.
+Определяет направление экспертизы по текстовому описанию заявки. Вызывается из `NewRequest.tsx` через `POST /api/ai-detect-direction` → server.js → `lib/ai-detect`. Если AI возвращает направление → автоматически подставляется. Если нет → показывается предупреждение с просьбой уточнить вручную.
 
-### tsconfig для Edge Functions
-`api/tsconfig.json` с `lib: ["ES2022","DOM","DOM.Iterable"]` + `@types/node` — фикс для TypeScript ошибок с `Request`, `Response`, `fetch`, `process`.
+Переменные: `AI_GATEWAY_URL` (Yandex-шлюз на Selectel), `AI_GATEWAY_TOKEN`.
 
 ---
 

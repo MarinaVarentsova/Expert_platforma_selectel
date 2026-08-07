@@ -7,7 +7,7 @@
  * B. Invalid expertise_direction_id UUID → 422 UNSUPPORTED_EXPERTISE.
  *
  * C. AI_GATEWAY_URL absent → detectDirection returns controlled error,
- *    no request is sent to Vercel or any fallback URL.
+ *    no request is sent to any external fallback URL.
  *
  * D. AI Gateway returns HTTP error → local fallback in /api/ai-detect-direction
  *    (openai_error path → checkLocalMarkers is used inside the detect endpoint only).
@@ -117,7 +117,7 @@ describe("B. Invalid direction UUID → handled by direction guard", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("C. AI_GATEWAY_URL absent → no Vercel fallback, controlled error", () => {
+describe("C. AI_GATEWAY_URL absent → no external fallback, controlled error", () => {
 
   it("detectDirection with no AI_GATEWAY_URL returns openai_error, fetch never called", async () => {
     let fetchCalled = false;
@@ -137,7 +137,7 @@ describe("C. AI_GATEWAY_URL absent → no Vercel fallback, controlled error", ()
 
     assert.equal(result.status, "openai_error", `expected openai_error, got ${result.status}`);
     assert.ok(result.errText?.includes("AI_GATEWAY_URL_MISSING"), `errText should indicate missing URL, got ${result.errText}`);
-    assert.equal(fetchCalled, false, "fetch must NOT be called — no Vercel fallback");
+    assert.equal(fetchCalled, false, "fetch must NOT be called — no external fallback");
   });
 
   it("detectDirection with empty AI_GATEWAY_URL returns controlled error, fetch never called", async () => {

@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
 // PORT and BASE_PATH are required in Replit (injected by the workflow runner).
-// On Vercel (and other CI environments) they are absent — fall back to safe defaults.
+// In CI environments PORT and BASE_PATH may be absent — fall back to safe defaults.
 const port = Number(process.env.PORT ?? "3000");
 const basePath = process.env.BASE_PATH ?? "/";
 

@@ -1202,6 +1202,12 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   // ── Derived ────────────────────────────────────────────────────────────────
   const selectableMatches = matches.filter(m => ACTIVE_MATCH_STATUSES.has(m.status));
 
+  // Эксперт, взявший заказ в работу, всегда отображается первым в блоке «Подобранные эксперты».
+  const matchesSortedForDisplay = [...matches].sort((a, b) => {
+    const priority = (status: string) => status === "accepted_work" ? 0 : 1;
+    return priority(a.status) - priority(b.status);
+  });
+
   // ── Expert access guard: closed/declined statuses → block full detail ──────
   if (role === "expert" && myLosingMatch) {
     return (
@@ -1913,7 +1919,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         <Card id="experts-section" title="Подобранные эксперты" count={matches.length}>
           {matches.length === 0 ? <Empty text="Эксперты ещё не подбирались" /> : (
             <div className="space-y-4">
-              {matches.map(m => {
+              {matchesSortedForDisplay.map(m => {
                 const profile = profileMap[m.expert_id];
                 const user = usersMap[m.expert_id];
                 const ms = MATCH_STATUS[m.status];

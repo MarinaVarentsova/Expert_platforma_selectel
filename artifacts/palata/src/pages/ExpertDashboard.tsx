@@ -691,6 +691,9 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
   const [certErrors, setCertErrors] = useState<Record<string, boolean>>({});
   const [blockedOrders, setBlockedOrders] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // Оптимистичный оверлей: статус проставляется мгновенно после успешного отклика,
+  // очищается когда фоновый loadMarket вернёт актуальные данные с сервера.
+  const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch("/api/palata/regions")
@@ -709,8 +712,8 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
 
   useEffect(() => { loadMarket(); }, [userId]);
 
-  async function loadMarket() {
-    setState({ kind: "loading" });
+  async function loadMarket(silent = false) {
+    if (!silent) setState({ kind: "loading" });
 
     // Show all requests except "неактуально" (cancelled) and "в работе" (completed / in_work)
     const HIDDEN_STATUSES = ["cancelled", "completed", "in_work"];
@@ -825,7 +828,14 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
 
       if (!apRes.success) return;
 
-      await loadMarket();
+      // Оптимистичное обновление: сразу показываем «Вы откликнулись», не ждём перезагрузки рынка.
+      setOptimisticStatuses(p => ({ ...p, [order.id]: "can_start_from" }));
+
+      // Фоновое обновление без сброса в loading — когда придут реальные данные,
+      // оптимистичная запись удаляется и её заменяет серверный статус.
+      void loadMarket(true).then(() => {
+        setOptimisticStatuses(p => { const n = { ...p }; delete n[order.id]; return n; });
+      });
     } catch (_e) {
       // silently retry
     } finally {
@@ -837,9 +847,11 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
   const regsMap = Object.fromEntries(allRegs.map(r => [r.id, r.name]));
 
   const baseStatuses = state.kind === "ok" ? state.myMatchStatuses : {};
-  const myMatchStatuses = liveMatchStatuses
-    ? { ...baseStatuses, ...liveMatchStatuses }
-    : baseStatuses;
+  const myMatchStatuses = {
+    ...baseStatuses,
+    ...(liveMatchStatuses ?? {}),
+    ...optimisticStatuses, // наивысший приоритет — мгновенно отражает отклик эксперта
+  };
 
   const filtered = state.kind === "ok" ? state.orders
     .filter(o => {
@@ -869,7 +881,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="text-sm font-bold text-slate-700">Заказы на рынке</h2>
         {state.kind === "ok" && (
-          <button onClick={loadMarket} className="text-xs text-[#0F4C9A] hover:underline">Обновить</button>
+          <button onClick={() => loadMarket()} className="text-xs text-[#0F4C9A] hover:underline">Обновить</button>
         )}
       </div>
 

@@ -1,4 +1,4 @@
-/* ── Plus Jakarta Sans (self-hosted, replaces fonts.googleapis.com) ──────── */
+/* Plus Jakarta Sans (self-hosted) — used by palata-promo embedded build */
 @font-face {
   font-family: 'Plus Jakarta Sans';
   font-style: normal;
@@ -30,54 +30,4 @@
   font-display: swap;
   src: url('/fonts/plus-jakarta-sans/pjs-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@import "tailwindcss";
-
-:root {
-  --color-primary: #002B5C;
-  --color-secondary: #0F4C9A;
-  --color-accent: #FFFFFF;
-
-  --color-bg-light: #F4F4F4;
-  --color-bg-dark: #002B5C;
-  --color-bg-muted: #E2E8F0;
-
-  --color-text-primary: #002B5C;
-  --color-text-secondary: #0F4C9A;
-  --color-text-muted: #64748B;
-  --color-text-inverse: #FFFFFF;
-
-  --font-display: 'Plus Jakarta Sans', sans-serif;
-  --font-body: 'Plus Jakarta Sans', sans-serif;
-}
-
-@theme inline {
-  --color-primary: var(--color-primary);
-  --color-secondary: var(--color-secondary);
-  --color-accent: var(--color-accent);
-  --color-bg-light: var(--color-bg-light);
-  --color-bg-dark: var(--color-bg-dark);
-  --color-bg-muted: var(--color-bg-muted);
-  --color-text-primary: var(--color-text-primary);
-  --color-text-secondary: var(--color-text-secondary);
-  --color-text-muted: var(--color-text-muted);
-  --color-text-inverse: var(--color-text-inverse);
-  --font-display: var(--font-display);
-  --font-body: var(--font-body);
-}
-
-body {
-  font-family: var(--font-body);
-  background-color: var(--color-bg-light);
-  color: var(--color-text-primary);
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-.clip-diagonal {
-  clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%);
 }

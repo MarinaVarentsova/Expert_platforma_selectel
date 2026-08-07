@@ -794,6 +794,27 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
     if (!date) return;
     setSubmitting(p => ({ ...p, [order.id]: true }));
     setCertErrors(p => ({ ...p, [order.id]: false }));
+
+    // Запоминаем предыдущий статус для возможного отката.
+    const prevStatus = state.kind === "ok" ? (state.myMatchStatuses[order.id] ?? null) : null;
+
+    // ── Мгновенный оптимистичный ответ — до любых сетевых запросов ──────────
+    setState(prev =>
+      prev.kind === "ok"
+        ? { ...prev, myMatchStatuses: { ...prev.myMatchStatuses, [order.id]: "can_start_from" } }
+        : prev,
+    );
+
+    // Откат: восстанавливаем предыдущий статус при любой ошибке.
+    const rollback = () =>
+      setState(prev => {
+        if (prev.kind !== "ok") return prev;
+        const next = { ...prev.myMatchStatuses };
+        if (prevStatus == null) delete next[order.id];
+        else next[order.id] = prevStatus;
+        return { ...prev, myMatchStatuses: next };
+      });
+
     try {
       // ── Certificate check: expert must have a valid verified cert for this direction ──
       if (order.expertise_direction_id) {
@@ -803,6 +824,7 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
         const _certApiBody = await _certApiRes.json().catch(() => null);
         const certs = (_certApiBody?.rows ?? []) as { id: string }[];
         if (!certs || certs.length === 0) {
+          rollback();
           setCertErrors(p => ({ ...p, [order.id]: true }));
           return;
         }
@@ -819,24 +841,20 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
 
       // ── Guard: request was taken / closed while the page was open ──
       if (apRes.alreadyInWork || apRes.code === "REQUEST_STATUS_CONFLICT") {
+        rollback();
         setBlockedOrders(p => ({ ...p, [order.id]: true }));
         return;
       }
 
-      if (!apRes.success) return;
-
-      // Мгновенно показываем «Вы откликнулись»: пишем прямо в state.myMatchStatuses,
-      // не ждём фонового loadMarket — никаких гонок с overlay.
-      setState(prev =>
-        prev.kind === "ok"
-          ? { ...prev, myMatchStatuses: { ...prev.myMatchStatuses, [order.id]: "can_start_from" } }
-          : prev,
-      );
+      if (!apRes.success) {
+        rollback();
+        return;
+      }
 
       // Фоновая синхронизация без сброса в loading.
       void loadMarket(true);
     } catch (_e) {
-      // silently retry
+      rollback();
     } finally {
       setSubmitting(p => ({ ...p, [order.id]: false }));
     }

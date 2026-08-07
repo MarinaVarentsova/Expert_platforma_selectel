@@ -2224,6 +2224,7 @@ async function handleExpertRatingsInsert(req, res) {
   }
   const client = await pool.connect();
   try {
+    await client.query("BEGIN");
     const { rows } = await client.query(
       `INSERT INTO public.palata_expert_ratings
          (request_id, expert_id, customer_id, score, comment)
@@ -2231,8 +2232,16 @@ async function handleExpertRatingsInsert(req, res) {
        RETURNING id`,
       [request_id, expert_id, customer_id, score, comment ?? null],
     );
+    await client.query(
+      `INSERT INTO public.palata_status_events
+         (entity_type, entity_id, old_status, new_status, actor_id, note)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      ["request", request_id, "completed", "completed", null, `Заказчик оценил эксперта: ${score}/5`],
+    );
+    await client.query("COMMIT");
     res.json({ success: true, id: rows[0]?.id });
   } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("[EXPERT-RATINGS] insert failed", { stack: err.stack });
     res.status(500).json({ success: false, error: "INSERT_FAILED", message: String(err) });
   } finally {

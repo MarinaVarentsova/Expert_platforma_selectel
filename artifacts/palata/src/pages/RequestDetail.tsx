@@ -244,21 +244,6 @@ function starRating(score: number) {
   return "★".repeat(score) + "☆".repeat(5 - score);
 }
 
-async function logEvent(
-  entityType: string, entityId: string,
-  oldStatus: string | null, newStatus: string,
-  note?: string,
-) {
-  await palataFetch("/api/palata/status-events", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
-    body: JSON.stringify({
-      entity_type: entityType, entity_id: entityId,
-      old_status: oldStatus ?? null, new_status: newStatus,
-      actor_id: null, note: note ?? null,
-    }),
-  }).catch(() => {});
-}
 
 async function logEmailEvent(
   recipientId: string | null,
@@ -1176,7 +1161,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       }),
     }).then(r => r.json()).catch(() => ({ success: false }));
     if (!insRes.success) { setRatingUI({ kind: "idle", score: 5, comment: "" }); return; }
-    await logEvent("request", r.id, r.status, r.status, `Заказчик оценил эксперта: ${score}/5`);
     const expertUser = usersMap[expertId];
     if (expertUser?.email) {
       await logEmailEvent(expertId, expertUser.email, "expert_rated_by_customer",
@@ -1204,7 +1188,6 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
       }),
     }).then(r => r.json()).catch(() => ({ success: false }));
     if (!insRes.success) { setRatingUI({ kind: "idle", score: 5, comment: "" }); return; }
-    await logEvent("request", r.id, r.status, r.status, `Эксперт оценил заказчика: ${score}/5`);
     const custUser = usersMap[r.customer_id];
     if (custUser?.email) {
       await logEmailEvent(r.customer_id, custUser.email, "customer_rated_by_expert",

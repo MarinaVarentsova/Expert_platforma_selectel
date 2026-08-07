@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import {
   loadOpenActionItems, resolveActionItem,
-  logStatusEvent, logEmailTestEvent, type ActionItem,
+  logEmailTestEvent, type ActionItem,
 } from "@/lib/actionItems";
 
 // ─── Action inbox filter ──────────────────────────────────────────────────────

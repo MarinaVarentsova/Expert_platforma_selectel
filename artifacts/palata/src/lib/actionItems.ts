@@ -79,32 +79,6 @@ export async function loadOpenActionItems(_userId?: string): Promise<ActionItem[
 
 // ─── Logging helpers ──────────────────────────────────────────────────────────
 
-export async function logStatusEvent(
-  requestId: string,
-  oldStatus: string,
-  newStatus: string,
-  note: string,
-): Promise<void> {
-  try {
-    const token = getToken();
-    if (!token) return;
-    await palataFetch("/api/palata/status-events", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        entity_type: "request",
-        entity_id: requestId,
-        old_status: oldStatus,
-        new_status: newStatus,
-        actor_id: null,
-        note,
-      }),
-    });
-  } catch {
-    // best-effort
-  }
-}
-
 export async function logEmailTestEvent(
   recipientId: string,
   email: string,

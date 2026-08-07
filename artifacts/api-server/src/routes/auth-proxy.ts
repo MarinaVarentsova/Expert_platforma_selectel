@@ -2,12 +2,12 @@ import { Router, type Request, type Response as ExpressResponse } from "express"
 
 const router = Router();
 
-const UPSTREAM = (process.env["AUTH_SERVICE_URL"] ?? "").replace(/\/$/, "");
-const DEBUG_VERSION = "auth-proxy-debug-2026-07-09-1";
-
-if (!UPSTREAM) {
-  console.warn("[AUTH-PROXY] AUTH_SERVICE_URL is not set — /api/auth/* will return 503");
+if (!process.env["AUTH_SERVICE_URL"]) {
+  console.error("[FATAL] AUTH_SERVICE_URL environment variable is not set. Set it to the HTTPS URL of the auth service before starting.");
+  process.exit(1);
 }
+const UPSTREAM = process.env["AUTH_SERVICE_URL"].replace(/\/$/, "");
+const DEBUG_VERSION = "auth-proxy-debug-2026-07-09-1";
 
 async function proxyRequest(req: Request, res: ExpressResponse): Promise<void> {
   const hasAuthHeader = Boolean(req.headers["authorization"]);

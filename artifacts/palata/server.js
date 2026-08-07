@@ -17,16 +17,13 @@ const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = Number(process.env.PORT ?? "3000");
-const AUTH_SERVICE_URL = (process.env.AUTH_SERVICE_URL ?? "http://q1rwqqgfbmvyhwgsdr701t0h.161.104.50.164.sslip.io").replace(/\/$/, "");
+if (!process.env.AUTH_SERVICE_URL) {
+  console.error("[FATAL] AUTH_SERVICE_URL environment variable is not set. Set it to the HTTPS URL of the auth service before starting.");
+  process.exit(1);
+}
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL.replace(/\/$/, "");
 const STATIC_DIR = path.resolve(__dirname, "dist/public");
 const PALATA_DATABASE_URL = process.env.PALATA_DATABASE_URL ?? "";
-
-if (!process.env.AUTH_SERVICE_URL) {
-  console.warn(
-    "[AUTH-PROXY] AUTH_SERVICE_URL env var not set — falling back to default:",
-    AUTH_SERVICE_URL,
-  );
-}
 
 if (!PALATA_DATABASE_URL) {
   console.warn(

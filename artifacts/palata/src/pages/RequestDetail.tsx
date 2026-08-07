@@ -199,6 +199,30 @@ const URGENCY_LABEL: Record<string, string> = {
   normal: "Стандартная", urgent: "Срочная", very_urgent: "Очень срочная",
 };
 
+/** Переводит исторические англоязычные note из БД в русский текст. */
+function translateNote(note: string): string {
+  // Точные совпадения (старые записи до миграции)
+  const exact: Record<string, string> = {
+    expert_took_work:   "Эксперт взял заказ в работу",
+    expert_declined:    "Все эксперты отказались, заказ возвращён в подбор",
+    no_direction:       "Нет подходящего направления",
+    no_region_for_travel:         "Нет выезда в регион заказчика",
+    no_valid_cert_for_direction:  "Нет действительного сертификата по направлению",
+    no_candidates_after_filter:   "Нет кандидатов после фильтрации",
+  };
+  if (exact[note]) return exact[note];
+
+  // Старый формат: "no_experts_found: раунд N, причина: <key>"
+  const m = note.match(/^no_experts_found:\s*раунд\s*(\d+),\s*причина:\s*(.+)$/);
+  if (m) {
+    const round = m[1];
+    const reason = exact[m[2].trim()] ?? m[2].trim();
+    return `Автоподбор раунд ${round}: эксперты не найдены (${reason})`;
+  }
+
+  return note;
+}
+
 // Фактические значения enum public.palata_decline_reason в Selectel PostgreSQL.
 const DECLINE_REASONS: { value: string; label: string }[] = [
   { value: "busy",                 label: "Занят" },
@@ -2290,7 +2314,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                         <span className="ml-1 text-slate-300">· {e.entity_type}</span>
                       )}
                     </p>
-                    {e.note && <p className="text-xs text-slate-500 mt-1 italic">{e.note}</p>}
+                    {e.note && <p className="text-xs text-slate-500 mt-1 italic">{translateNote(e.note)}</p>}
                   </div>
                   <p className="text-xs text-slate-400 shrink-0 pt-0.5">{fmt(e.created_at)}</p>
                 </div>

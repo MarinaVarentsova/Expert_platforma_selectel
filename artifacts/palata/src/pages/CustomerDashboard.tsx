@@ -229,7 +229,7 @@ export default function CustomerDashboard() {
     fetch(`/api/palata/customer-profile/${encodeURIComponent(userId)}`)
       .then(r => r.json())
       .then((b: { success: boolean; profile?: CustomerProfile | null; error?: string }) => {
-        if (!b.success) { setProfileState({ kind: "error", message: b.error ?? "failed" }); return; }
+        if (!b.success) { setProfileState({ kind: "error", message: b.error ?? "Ошибка загрузки профиля" }); return; }
         setProfileState({ kind: "ok", profile: b.profile ?? null });
       })
       .catch((e: unknown) => setProfileState({ kind: "error", message: String(e) }));
@@ -655,7 +655,7 @@ function ProfileView({
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
         body: JSON.stringify({ full_name: fullName.trim() || null, phone: phone.trim() || null }),
       }).then(r => r.json()).then((b: { success: boolean; error?: string }) => ({
-        error: b.success ? null : { message: b.error ?? "user update failed" },
+        error: b.success ? null : { message: b.error ?? "Ошибка сохранения данных пользователя" },
       })).catch((e: unknown) => ({ error: { message: String(e) } })),
       fetch("/api/palata/customer-profile", {
         method: "POST",
@@ -663,7 +663,7 @@ function ProfileView({
         body: JSON.stringify(cpPayload),
       }).then(r => r.json()).then((b: { success: boolean; error?: string }) => ({
         data: b.success ? cpPayload : null,
-        error: b.success ? null : { message: b.error ?? "upsert failed" },
+        error: b.success ? null : { message: b.error ?? "Ошибка сохранения профиля" },
       })).catch((e: unknown) => ({ data: null, error: { message: String(e) } })),
     ]);
     console.log("[profile-save] palata_customer_profiles response → data:", r2.data, "error:", r2.error);

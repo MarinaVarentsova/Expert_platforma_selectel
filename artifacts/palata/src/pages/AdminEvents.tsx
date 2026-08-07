@@ -112,7 +112,7 @@ export default function AdminEvents() {
           <div>
             <h1 className="text-xl font-bold text-slate-900">События</h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              {total != null ? `${total} записей` : "Загрузка…"} · palata_status_events
+              {total != null ? `${total} записей` : "Загрузка…"} · история событий
             </p>
           </div>
           <button

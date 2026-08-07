@@ -265,7 +265,7 @@ export default function ExpertDashboard() {
     fetch(`/api/palata/expert-profile/${userId}`)
       .then(r => r.json())
       .then(b => {
-        if (!b.success) { setProfileState({ kind: "error", message: b.message ?? "Failed to load profile" }); return; }
+        if (!b.success) { setProfileState({ kind: "error", message: b.message ?? "Ошибка загрузки профиля" }); return; }
         setProfileState({ kind: "ok", profile: b.profile as ExpertProfile | null });
       })
       .catch(e => setProfileState({ kind: "error", message: String(e) }));
@@ -1334,7 +1334,7 @@ function ProfileView({
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
         body: JSON.stringify({ full_name: fullName.trim() || null, phone: phone.trim() || null }),
       }).then(r => r.json()).then((b: { success: boolean; error?: string }) => ({
-        error: b.success ? null : { message: b.error ?? "user update failed" },
+        error: b.success ? null : { message: b.error ?? "Ошибка сохранения данных пользователя" },
       })).catch((e: unknown) => ({ error: { message: String(e) } })),
       fetch("/api/palata/expert-profile", {
         method: "POST",
@@ -1353,7 +1353,7 @@ function ProfileView({
         }),
       })
         .then(r => r.json())
-        .then(b => ({ error: b.success ? null : { message: b.message ?? "Expert profile upsert failed" } }))
+        .then(b => ({ error: b.success ? null : { message: b.message ?? "Ошибка сохранения профиля эксперта" } }))
         .catch((e: unknown) => ({ error: { message: String(e) } })),
     ]);
     if (r1.error || r2.error) {

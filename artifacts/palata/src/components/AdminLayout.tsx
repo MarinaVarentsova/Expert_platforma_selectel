@@ -6,9 +6,9 @@ const TABS = [
   { to: "/admin/metrics",       label: "Метрики",       Icon: BarChart3,       exact: false },
   { to: "/admin/experts",       label: "Эксперты",      Icon: Users,           exact: false },
   { to: "/admin/cert-import",   label: "Сертификаты",   Icon: FileUp,          exact: false },
-  { to: "/admin/action-items",  label: "Action Items",  Icon: Activity,        exact: false },
-  { to: "/admin/events",        label: "События",       Icon: CalendarClock,   exact: false },
-  { to: "/admin/email-events",  label: "Email Events",  Icon: Mail,            exact: false },
+  { to: "/admin/action-items",  label: "Задачи",           Icon: Activity,        exact: false },
+  { to: "/admin/events",        label: "События",          Icon: CalendarClock,   exact: false },
+  { to: "/admin/email-events",  label: "Email-события",    Icon: Mail,            exact: false },
   { to: "/admin/settings",      label: "Настройки",     Icon: Settings,        exact: false },
 ];
 

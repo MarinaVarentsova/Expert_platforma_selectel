@@ -1,0 +1,114 @@
+Работаем только в репозитории Expert_platforma_selectel.
+
+Цель:
+полностью удалить остатки Vercel из этого репозитория, НЕ затронув текущий production в Selectel/Coolify.
+
+Контекст:
+- этот репозиторий больше НЕ разворачивается на Vercel;
+- production работает через Selectel + Coolify;
+- entrypoint текущего приложения: artifacts/palata/server.js;
+- AI Gateway тоже уже развёрнут отдельно в Selectel;
+- старый Vercel deployment больше не нужен.
+
+ВАЖНО:
+не удалять ничего вслепую;
+не менять бизнес-логику;
+не менять API;
+не менять Auth;
+не менять AI;
+не менять PostgreSQL;
+не менять Supabase;
+не менять frontend-функционал;
+не менять Coolify/Nixpacks настройки.
+
+Сначала аудит, потом удалить только доказанно Vercel-специфичные части.
+
+1. Найти все упоминания:
+
+vercel
+vercel.app
+VERCEL_
+@vercel
+now.json
+vercel.json
+serverless
+api/*.js если они относятся только к Vercel
+старые deployment scripts
+hardcoded Vercel URL
+fallback на Vercel
+
+2. Для каждого найденного элемента показать:
+
+- файл;
+- строку;
+- для чего используется;
+- импортируется ли текущим artifacts/palata/server.js;
+- вызывается ли в runtime Coolify;
+- нужен ли для build;
+- классификация:
+  SAFE_TO_REMOVE
+  USED_BY_COOLIFY
+  UNCERTAIN
+
+3. Отдельно проверить:
+
+- vercel.json;
+- package.json scripts;
+- root /api;
+- artifacts/*;
+- .env.example;
+- README/docs;
+- hardcoded *.vercel.app;
+- старые AI Gateway URL;
+- deployment-specific config.
+
+4. Особое правило:
+
+НЕ удалять папку или файл только потому, что он называется api/.
+
+Сначала построить dependency chain:
+artifacts/palata/server.js
+→ imports
+→ используемые модули.
+
+Если файл используется текущим runtime — оставить.
+
+5. После аудита удалить только элементы с классификацией SAFE_TO_REMOVE.
+
+6. После удаления выполнить:
+
+pnpm install --no-frozen-lockfile
+pnpm --filter ./artifacts/palata run build
+tsc --noEmit
+все существующие тесты
+
+7. Дополнительно выполнить финальный поиск:
+
+grep -RniE "vercel|vercel\.app|VERCEL_|@vercel" . \
+  --exclude-dir=node_modules \
+  --exclude-dir=.git
+
+8. Финальный критерий:
+
+- нет runtime-зависимостей от Vercel;
+- нет hardcoded vercel.app;
+- нет Vercel fallback;
+- нет Vercel deployment config, если он не нужен Coolify;
+- приложение собирается;
+- тесты проходят;
+- Coolify runtime не затронут.
+
+9. Commit:
+
+chore: remove obsolete Vercel deployment remnants
+
+10. Push в main.
+
+Вернуть:
+- что найдено;
+- что удалено;
+- что оставлено и почему;
+- точный diff;
+- результаты build/tests;
+- hash commit;
+- подтверждение push.

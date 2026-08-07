@@ -416,7 +416,7 @@ export default function AdminMetrics() {
         <div className="mb-7 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-[#002B5C]">Метрики платформы</h1>
-            <p className="text-xs text-[#666666] mt-0.5">Единый источник данных · Supabase · Real-time</p>
+            <p className="text-xs text-[#666666] mt-0.5">Единый источник данных · PostgreSQL · Real-time</p>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />

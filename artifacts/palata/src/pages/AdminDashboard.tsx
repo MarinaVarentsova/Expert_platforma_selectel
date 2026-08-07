@@ -647,7 +647,7 @@ function AdminCard({ request: r, directionMap }: { request: Request; directionMa
 function ErrorCard({ message }: { message: string }) {
   return (
     <div className="rounded-xl border border-red-200 bg-red-50 p-6 max-w-xl">
-      <p className="text-sm font-semibold text-red-700 mb-1">Ошибка Supabase</p>
+      <p className="text-sm font-semibold text-red-700 mb-1">Ошибка загрузки данных</p>
       <p className="text-xs text-red-600 font-mono">{message}</p>
     </div>
   );

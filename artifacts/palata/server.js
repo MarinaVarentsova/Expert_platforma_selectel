@@ -2896,7 +2896,7 @@ async function handleTakeWork(req, res) {
     await client.query(
       `INSERT INTO public.palata_status_events
          (entity_type, entity_id, old_status, new_status, actor_id, note)
-       VALUES ('request',$1,'expert_selection','in_work',null,'expert_took_work')`,
+       VALUES ('request',$1,'expert_selection','in_work',null,'Эксперт взял заказ в работу')`,
       [requestId],
     );
 
@@ -3445,7 +3445,7 @@ async function handleRunMatching(req, res) {
         `INSERT INTO public.palata_status_events
            (entity_type, entity_id, old_status, new_status, actor_id, note)
          VALUES ('request', $1, 'matching', 'matching', null, $2)`,
-        [requestId, `no_experts_found: раунд ${nextRound}, причина: ${reason}`],
+        [requestId, `Автоподбор раунд ${nextRound}: эксперты не найдены`],
       );
 
       // Dedup: skip action items if open manual_matching_required already exists
@@ -3860,7 +3860,7 @@ async function handleDeclineRequest(req, res) {
       await client.query(
         `INSERT INTO public.palata_status_events
            (entity_type, entity_id, old_status, new_status, actor_id, note)
-         VALUES ('request', $1, 'expert_selection', 'matching', null, 'expert_declined')`,
+         VALUES ('request', $1, 'expert_selection', 'matching', null, 'Все эксперты отказались, заказ возвращён в подбор')`,
         [requestId],
       );
       const rdRow = (await client.query(

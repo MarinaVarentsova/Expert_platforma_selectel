@@ -1,0 +1,91 @@
+Уточнение к задаче по удалению Supabase.
+
+Бизнес-решение:
+
+В платформе НЕТ рабочего сценария прикрепления файлов к заказу ни заказчиком, ни экспертом.
+
+Эксперты также НЕ загружают документы/файлы через платформу.
+
+Поэтому:
+
+1. НЕ переносить никакой file upload функционал на Selectel S3.
+
+2. Полностью удалить весь файловый функционал, связанный с Supabase Storage:
+
+- ExpertDashboard handleUpload
+- ExpertDashboard handleDelete
+- supabase.storage.from(...)
+- bucket palata-expert-documents
+- UI загрузки документов
+- file input
+- drag&drop
+- preview
+- список загруженных документов
+- delete buttons
+- state для файлов
+- file validation
+- storage helpers
+- типы/interfaces, используемые только файлами
+- backend routes, используемые только для метаданных этих файлов
+- код отображения этих документов
+- тексты интерфейса про загрузку документов
+
+3. Отдельно проверить таблицу palata_expert_documents.
+
+НЕ удалять таблицу из PostgreSQL автоматически.
+
+Сначала:
+- показать, используется ли она где-либо ещё;
+- есть ли в ней реальные production-данные;
+- есть ли ссылки на неё из других таблиц;
+- используется ли она в admin delete/anonymize.
+
+Если таблица нигде не используется — пометить как DATABASE_CLEANUP_CANDIDATE, но schema/migration сейчас не менять.
+
+4. Проверить customer attachments тем же способом.
+
+Если файловый функционал отсутствует/не используется — удалить связанный код полностью.
+
+5. После этого задача по Supabase становится:
+
+- Register.tsx → заменить Supabase READ на существующий API;
+- matching.ts → заменить Supabase READ на backend API;
+- ConnectionCheck.tsx → удалить;
+- разобраться с action_items;
+- разобраться со status_events;
+- удалить все мёртвые supabase imports;
+- удалить supabaseClient.ts;
+- удалить @supabase/supabase-js.
+
+6. Никакой S3-миграции сейчас не делать.
+
+Selectel S3 в рамках этой задачи не нужен.
+
+7. Финальный критерий:
+
+В production-коде должно быть 0:
+- supabase.from(...)
+- supabase.storage
+- createClient(...)
+- import supabase
+- VITE_SUPABASE_URL
+- VITE_SUPABASE_ANON_KEY
+
+При этом должны продолжить работать:
+- регистрация;
+- авторизация;
+- создание заказа;
+- AI-классификация;
+- matching;
+- кабинеты клиента и эксперта;
+- статусы;
+- оценки;
+- action_items;
+- status_events.
+
+Сначала вернуть, какие файловые компоненты и функции будут удалены.
+Если они не влияют ни на один рабочий сценарий — удалить их.
+
+Не делать S3 endpoints.
+Не добавлять multipart upload.
+Не добавлять file storage replacement.

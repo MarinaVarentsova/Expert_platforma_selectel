@@ -10,9 +10,7 @@ import {
   anonymizeExpert,
   tryDeleteS3Object,
 } from "./lib/admin-pd-delete.js";
-import { mkdirSync } from "fs";
 import pg from "pg";
-import multer from "multer";
 import { detectDirection, KNOWLEDGE_BASE_ENTRIES, checkLocalMarkers, CONSTRUCTION_DIRECTION_NAME, CONFIDENCE_THRESHOLD } from "@workspace/ai-detect";
 import { guardDecline, guardTakeWork, guardExpertProposeDate, guardDeclineStartDate, guardCompleteWork, guardCustomerComplete, guardCustomerCancel } from "./lib/request-guards.js";
 const { Pool } = pg;
@@ -2069,150 +2067,6 @@ app.post("/api/palata/expert-certificate", (req, res) => {
   handleExpertCertificateReplace(req, res).catch(err => {
     console.error("[EXPERT-CERT] error", { stage: "unhandled_replace", stack: err.stack });
     res.status(500).json({ success: false, error: "REPLACE_FAILED", message: String(err) });
-  });
-});
-
-// ── GET /api/palata/expert-documents/:expertId — list documents for an expert ──
-// Auth: expert can only list their own documents; admin can list any expert's documents.
-
-async function handleExpertDocumentsQuery(req, res) {
-  const auth = await requireAuth(req);
-  if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
-
-  const { expertId } = req.params;
-  if (!expertId) {
-    return res.status(400).json({ success: false, error: "MISSING_EXPERT_ID" });
-  }
-
-  // Enforce ownership: caller must be the expert themselves or an admin
-  if (auth.role !== "admin" && auth.userId !== expertId) {
-    return res.status(403).json({ success: false, error: "FORBIDDEN", message: "Доступ только к собственным документам" });
-  }
-
-  const client = await pool.connect();
-  try {
-    const { rows } = await client.query(
-      `SELECT id, expert_id, doc_type, bucket_path, file_name, mime_type, size_bytes,
-              verified, verified_by, verified_at, created_at, updated_at
-       FROM public.palata_expert_documents
-       WHERE expert_id = $1
-       ORDER BY created_at DESC`,
-      [expertId],
-    );
-    res.json({ success: true, rows });
-  } catch (err) {
-    console.error("[EXPERT-DOCUMENTS] query failed", { stack: err.stack });
-    res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
-  } finally {
-    client.release();
-  }
-}
-
-app.get("/api/palata/expert-documents/:expertId", (req, res) => {
-  handleExpertDocumentsQuery(req, res).catch(err => {
-    console.error("[EXPERT-DOCUMENTS] query unhandled", { stack: err.stack });
-    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
-  });
-});
-
-// ── POST /api/palata/expert-documents — insert a document record ──
-// Auth: only the authenticated expert can add documents to their own profile.
-// expert_id is always derived from the auth token; any client-supplied value is ignored.
-
-async function handleExpertDocumentsInsert(req, res) {
-  const auth = await requireAuth(req);
-  if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
-
-  // expert_id is always the authenticated user — never trusted from the request body
-  const expert_id = auth.userId;
-  const { doc_type, bucket_path, file_name, mime_type, size_bytes } = req.body ?? {};
-  if (!doc_type || !bucket_path || !file_name) {
-    return res.status(400).json({ success: false, error: "MISSING_REQUIRED_FIELDS" });
-  }
-  const client = await pool.connect();
-  try {
-    const { rows } = await client.query(
-      `INSERT INTO public.palata_expert_documents
-         (expert_id, doc_type, bucket_path, file_name, mime_type, size_bytes)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id`,
-      [expert_id, doc_type, bucket_path, file_name, mime_type ?? null, size_bytes ?? null],
-    );
-    res.json({ success: true, id: rows[0]?.id });
-  } catch (err) {
-    console.error("[EXPERT-DOCUMENTS] insert failed", { stack: err.stack });
-    res.status(500).json({ success: false, error: "INSERT_FAILED", message: String(err) });
-  } finally {
-    client.release();
-  }
-}
-
-app.post("/api/palata/expert-documents", (req, res) => {
-  handleExpertDocumentsInsert(req, res).catch(err => {
-    console.error("[EXPERT-DOCUMENTS] insert unhandled", { stack: err.stack });
-    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
-  });
-});
-
-// ── DELETE /api/palata/expert-documents/:id — delete a document record ──
-// Auth: expert can only delete their own documents; admin can delete any.
-// Also physically removes the file from local disk storage when present.
-
-async function handleExpertDocumentsDelete(req, res) {
-  const auth = await requireAuth(req);
-  if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
-
-  const { id } = req.params;
-  if (!id) {
-    return res.status(400).json({ success: false, error: "MISSING_ID" });
-  }
-  const client = await pool.connect();
-  try {
-    // Fetch the record first to check ownership and get the bucket_path for file cleanup
-    const { rows: existing } = await client.query(
-      `SELECT id, expert_id, bucket_path FROM public.palata_expert_documents WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    if (existing.length === 0) {
-      return res.status(404).json({ success: false, error: "NOT_FOUND" });
-    }
-    const doc = existing[0];
-
-    // Enforce ownership: expert can only delete their own documents
-    if (auth.role !== "admin" && auth.userId !== doc.expert_id) {
-      return res.status(403).json({ success: false, error: "FORBIDDEN" });
-    }
-
-    // Delete the DB record
-    await client.query(`DELETE FROM public.palata_expert_documents WHERE id = $1`, [id]);
-
-    // Attempt physical file deletion for locally-stored files (expert-documents/* prefix)
-    if (doc.bucket_path?.startsWith("expert-documents/")) {
-      const filename = doc.bucket_path.slice("expert-documents/".length);
-      const filePath = path.join(UPLOADS_DIR, filename);
-      try {
-        const { unlinkSync } = await import("fs");
-        unlinkSync(filePath);
-        console.log("[EXPERT-DOCUMENTS] physical file deleted", { filePath });
-      } catch (fsErr) {
-        // Non-fatal: log but do not fail the response
-        console.warn("[EXPERT-DOCUMENTS] could not delete physical file", { filePath, error: fsErr.message });
-      }
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("[EXPERT-DOCUMENTS] delete failed", { stack: err.stack });
-    res.status(500).json({ success: false, error: "DELETE_FAILED", message: String(err) });
-  } finally {
-    client.release();
-  }
-}
-
-app.delete("/api/palata/expert-documents/:id", (req, res) => {
-  handleExpertDocumentsDelete(req, res).catch(err => {
-    console.error("[EXPERT-DOCUMENTS] delete unhandled", { stack: err.stack });
-    res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
   });
 });
 
@@ -6064,19 +5918,6 @@ app.post("/api/palata/admin/users/:userId/delete", (req, res) => {
   });
 });
 
-// ── Multer setup for file uploads ─────────────────────────────────────────────
-const UPLOADS_DIR = path.join(__dirname, "uploads");
-try { mkdirSync(UPLOADS_DIR, { recursive: true }); } catch { /* already exists */ }
-
-const multerStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => {
-    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    cb(null, `${Date.now()}_${safe}`);
-  },
-});
-const upload = multer({ storage: multerStorage, limits: { fileSize: 20 * 1024 * 1024 } });
-
 // ── POST /api/palata/match/trigger-all ───────────────────────────────────────
 // Triggers matching for all requests in 'matching' status.
 // Exactly replicates the logic from api-server/src/lib/matcher.ts (runAllPendingMatching +
@@ -6278,83 +6119,6 @@ app.get("/api/palata/admin/users", (req, res) => {
       res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
     } finally { client.release(); }
   })().catch(err => res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }));
-});
-
-// ── POST /api/palata/expert-documents/upload — multipart file upload ──────────
-// Auth: requires valid bearer token; expert_id is derived from the authenticated user.
-// Saves the file to local disk (UPLOADS_DIR). When SELECTEL_S3_* env vars are
-// configured this endpoint should be updated to upload to Selectel Object Storage.
-app.post("/api/palata/expert-documents/upload", upload.single("file"), (req, res) => {
-  (async () => {
-    // Fully validate the token — not just check its presence
-    const auth = await requireAuth(req);
-    if (!auth.ok) {
-      // multer already saved the file; clean it up if auth fails
-      if (req.file?.path) {
-        try { const { unlinkSync } = await import("fs"); unlinkSync(req.file.path); } catch { /* ignore */ }
-      }
-      return res.status(auth.status).json({ success: false, error: auth.error });
-    }
-
-    if (!req.file) return res.status(400).json({ success: false, error: "MISSING_FILE" });
-
-    // bucket_path stores the relative path; expert_id comes from the auth token, not the client
-    const bucket_path = `expert-documents/${req.file.filename}`;
-
-    console.log("[EXPERT-DOCS-UPLOAD] saved", { userId: auth.userId, filename: req.file.filename, size: req.file.size });
-    // Return expert_id so the frontend can confirm it matches (it will always be auth.userId)
-    res.json({ success: true, bucket_path, file_name: req.file.originalname, expert_id: auth.userId });
-  })().catch(err => {
-    console.error("[EXPERT-DOCS-UPLOAD] failed", { stack: err.stack });
-    res.status(500).json({ success: false, error: "UPLOAD_FAILED", message: String(err) });
-  });
-});
-
-// ── GET /api/palata/expert-documents/download/:docId — serve a stored document ─
-// Auth: the expert who owns the document, or any admin.
-app.get("/api/palata/expert-documents/download/:docId", (req, res) => {
-  (async () => {
-    const auth = await requireAuth(req);
-    if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
-    if (!pool) return res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
-
-    const { docId } = req.params;
-    const client = await pool.connect();
-    try {
-      const { rows } = await client.query(
-        `SELECT expert_id, bucket_path, file_name, mime_type FROM public.palata_expert_documents WHERE id = $1 LIMIT 1`,
-        [docId],
-      );
-      if (rows.length === 0) return res.status(404).json({ success: false, error: "NOT_FOUND" });
-      const doc = rows[0];
-
-      if (auth.role !== "admin" && auth.userId !== doc.expert_id) {
-        return res.status(403).json({ success: false, error: "FORBIDDEN" });
-      }
-
-      if (!doc.bucket_path?.startsWith("expert-documents/")) {
-        // Legacy Supabase path — cannot serve from local disk
-        return res.status(410).json({ success: false, error: "LEGACY_STORAGE", message: "Файл хранится в устаревшем хранилище; обратитесь к администратору" });
-      }
-
-      const filename = doc.bucket_path.slice("expert-documents/".length);
-      const filePath = path.join(UPLOADS_DIR, filename);
-      const contentType = doc.mime_type ?? "application/octet-stream";
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(doc.file_name)}"`);
-      res.sendFile(filePath, err => {
-        if (err) {
-          console.error("[EXPERT-DOCS-DOWNLOAD] sendFile failed", { filePath, error: err.message });
-          if (!res.headersSent) res.status(404).json({ success: false, error: "FILE_NOT_FOUND" });
-        }
-      });
-    } finally {
-      client.release();
-    }
-  })().catch(err => {
-    console.error("[EXPERT-DOCS-DOWNLOAD] unhandled error", { stack: err.stack });
-    if (!res.headersSent) res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
-  });
 });
 
 // ── Helper: require any authenticated user ────────────────────────────────────

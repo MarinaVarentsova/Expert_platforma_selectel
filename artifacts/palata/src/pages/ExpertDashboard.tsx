@@ -16,7 +16,7 @@ import {
 import {
   Inbox, Star, User, CheckCircle2, XCircle, MapPin,
   Briefcase, FileText, GraduationCap, ClipboardList, Zap, Calendar,
-  Pencil, X, Upload, Phone, ChevronDown,
+  Pencil, X, Phone, ChevronDown,
 } from "lucide-react";
 import {
   loadOpenActionItems, resolveActionItem,
@@ -95,22 +95,6 @@ type PendingRatingsState =
   | { kind: "ok"; items: PendingCustomerRating[] }
   | { kind: "error"; message: string };
 
-type ExpertDocument = {
-  id: string;
-  doc_type: string;
-  file_name: string;
-  bucket_path: string;
-  mime_type: string | null;
-  size_bytes: number | null;
-  verified: boolean;
-  created_at: string;
-};
-
-type DocsState =
-  | { kind: "loading" }
-  | { kind: "ok"; docs: ExpertDocument[] }
-  | { kind: "error"; message: string };
-
 // ─── Lookup tables ────────────────────────────────────────────────────────────
 
 
@@ -158,7 +142,6 @@ export default function ExpertDashboard() {
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [userPhone, setUserPhone] = useState<string | null>(null);
-  const [docsState, setDocsState] = useState<DocsState>({ kind: "loading" });
   const [allDirections, setAllDirections] = useState<Array<{ id: string; name: string }>>([]);
   const [allActionRegs, setAllActionRegs] = useState<Array<{ id: string; name: string }>>([]);
 
@@ -292,16 +275,6 @@ export default function ExpertDashboard() {
       fetchUsers([userId])
         .then(rows => setUserPhone((rows[0] as { phone: string | null } | undefined)?.phone ?? null));
 
-      fetch(`/api/palata/expert-documents/${encodeURIComponent(userId)}`, {
-        headers: { Authorization: `Bearer ${getToken() ?? ""}` },
-      })
-        .then(r => r.json())
-        .then(b => {
-          if (!b.success) { setDocsState({ kind: "error", message: b.message ?? "Ошибка загрузки" }); return; }
-          setDocsState({ kind: "ok", docs: (b.rows ?? []) as ExpertDocument[] });
-        })
-        .catch(e => { setDocsState({ kind: "error", message: String(e) }); });
-
       loadPendingRatings(userId);
 
       setAiLoading(true);
@@ -361,20 +334,6 @@ export default function ExpertDashboard() {
       .then(b => {
         if (b.success) setProfileState({ kind: "ok", profile: b.profile as ExpertProfile | null });
       });
-  }
-
-  function reloadDocs() {
-    if (guard.status !== "ok") return;
-    const uid = guard.user.id;
-    fetch(`/api/palata/expert-documents/${encodeURIComponent(uid)}`, {
-      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
-    })
-      .then(r => r.json())
-      .then(b => {
-        if (!b.success) { setDocsState({ kind: "error", message: b.message ?? "Ошибка загрузки" }); return; }
-        setDocsState({ kind: "ok", docs: (b.rows ?? []) as ExpertDocument[] });
-      })
-      .catch(e => { setDocsState({ kind: "error", message: String(e) }); });
   }
 
   useEffect(() => {
@@ -1775,149 +1734,6 @@ function ProfileView({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── Documents section ─────────────────────────────────────────────────────────
-
-const DOC_TYPE_LABELS: Record<string, string> = {
-  diploma:               "Диплом",
-  certificate:           "Сертификат",
-  sro:                   "Свидетельство СРО",
-  registry_confirmation: "Справка из реестра",
-  other:                 "Другое",
-};
-
-function DocumentsSection({
-  userId,
-  docsState,
-  onReload,
-}: {
-  userId: string;
-  docsState: DocsState;
-  onReload: () => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const [docType, setDocType]     = useState("diploma");
-  const [uploadErr, setUploadErr] = useState<string | null>(null);
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setUploadErr(null);
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("expert_id", userId);
-    formData.append("doc_type", docType);
-
-    const token = getToken() ?? "";
-    const uploadRes = await fetch("/api/palata/expert-documents/upload", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    }).then(r => r.json()).catch(() => ({ success: false, message: "network error" }));
-
-    if (!uploadRes.success) { setUploadErr(uploadRes.message ?? "Ошибка загрузки файла"); setUploading(false); return; }
-
-    const dbRes = await fetch("/api/palata/expert-documents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        doc_type:    docType,
-        bucket_path: uploadRes.bucket_path,
-        file_name:   file.name,
-        mime_type:   file.type || null,
-        size_bytes:  file.size,
-      }),
-    }).then(r => r.json()).catch(() => ({ success: false, message: "network error" }));
-
-    if (!dbRes.success) { setUploadErr(dbRes.message ?? "Ошибка сохранения"); setUploading(false); return; }
-
-    setUploading(false);
-    e.target.value = "";
-    onReload();
-  }
-
-  async function handleDelete(doc: ExpertDocument) {
-    await fetch(`/api/palata/expert-documents/${encodeURIComponent(doc.id)}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
-    }).then(r => r.json()).catch(() => null);
-    onReload();
-  }
-
-  return (
-    <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <FileText className="w-4 h-4 text-slate-400" />
-          <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Мои документы</p>
-          {docsState.kind === "ok" && docsState.docs.length > 0 && (
-            <span className="text-[10px] font-bold bg-slate-100 text-slate-500 rounded-full px-1.5 py-0.5">
-              {docsState.docs.length}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <select value={docType} onChange={e => setDocType(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0F4C9A]/30 bg-white">
-            {Object.entries(DOC_TYPE_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
-            ))}
-          </select>
-          <label className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border cursor-pointer transition-all ${
-            uploading
-              ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
-              : "bg-[#F4F4F4] border-[#D0D0D0] text-[#002B5C] hover:bg-[#E9E9E9]"
-          }`}>
-            <Upload className="w-3.5 h-3.5" />
-            {uploading ? "Загрузка…" : "Загрузить"}
-            <input type="file" className="sr-only" disabled={uploading} onChange={handleUpload}
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
-          </label>
-        </div>
-      </div>
-
-      {uploadErr && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 mb-3">
-          <p className="text-xs text-red-700">{uploadErr}</p>
-        </div>
-      )}
-
-      {docsState.kind === "loading" && <p className="text-xs text-slate-400 py-4 text-center">Загрузка...</p>}
-      {docsState.kind === "error"   && <p className="text-xs text-red-500 py-2">{docsState.message}</p>}
-      {docsState.kind === "ok" && docsState.docs.length === 0 && (
-        <div className="py-8 text-center">
-          <p className="text-xs text-slate-400">Документы ещё не загружены</p>
-          <p className="text-[10px] text-slate-300 mt-1">Добавьте дипломы, сертификаты и справки из реестров</p>
-        </div>
-      )}
-      {docsState.kind === "ok" && docsState.docs.length > 0 && (
-        <div className="space-y-2">
-          {docsState.docs.map(doc => (
-            <div key={doc.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <div className="flex items-center gap-2 min-w-0">
-                <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-slate-800 truncate">{doc.file_name}</p>
-                  <p className="text-[10px] text-slate-400">
-                    {DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}
-                    {doc.size_bytes ? ` · ${(doc.size_bytes / 1024).toFixed(0)} KB` : ""}
-                    {doc.verified ? " · ✓ Проверен" : ""}
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => handleDelete(doc)}
-                className="p-1 text-slate-300 hover:text-red-400 transition-colors flex-shrink-0">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

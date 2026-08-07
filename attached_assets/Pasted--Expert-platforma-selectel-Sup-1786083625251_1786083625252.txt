@@ -1,0 +1,97 @@
+Работаем только в Expert_platforma_selectel.
+
+По результатам аудита НЕ начинай массово удалять Supabase.
+
+Нужен точный migration map, чтобы перенести Supabase без нарушения production-функционала.
+
+Ничего не изменять.
+Commit не делать.
+
+1. Найди каждый production-вызов:
+- supabase.from(...)
+- supabase.storage...
+- createClient(...)
+- VITE_SUPABASE_URL
+- VITE_SUPABASE_ANON_KEY
+
+2. Для каждого вызова составь таблицу:
+
+Файл
+Функция/компонент
+Операция: read / insert / update / delete / upload / download
+Supabase table/bucket
+Какие поля читаются/пишутся
+Какой пользовательский сценарий зависит от операции
+Есть ли уже эквивалентный endpoint /api/palata/*
+Если есть — точный endpoint
+Если нет — какой минимальный backend endpoint нужен
+Целевая система: PostgreSQL Selectel / S3 Selectel
+Риск миграции: LOW / MEDIUM / HIGH
+
+3. Отдельно разобрать:
+
+A. expertise_directions
+B. request_matches
+C. action_items
+D. status_events
+E. palata_requests / matching
+F. документы экспертов / Supabase Storage
+G. диагностический ConnectionCheck
+
+4. Для каждого блока определить порядок миграции.
+
+Предпочтительный принцип:
+- сначала READ;
+- затем WRITE;
+- затем storage;
+- только после полного отсутствия runtime-вызовов удалить supabase SDK.
+
+5. Проверить server.js и существующие /api/palata/* endpoints:
+не предлагать новый endpoint, если аналог уже существует.
+
+6. Для операций записи проверить:
+не возникнет ли двойная запись, если одновременно останутся Supabase и PostgreSQL API.
+
+7. Для файлов эксперта отдельно показать:
+- текущий bucket;
+- путь формирования object key;
+- лимиты размера;
+- допустимые MIME/type;
+- upload;
+- download/view;
+- delete;
+- где сохраняются метаданные файла;
+- какие проверки доступа существуют.
+
+НЕ переносить файлы и НЕ изменять код.
+
+8. Проверить утверждение из предыдущего аудита:
+"Supabase → Selectel S3".
+Подтвердить фактическим кодом, куда сейчас реально загружаются документы эксперта.
+
+9. Проверить AUTH_SERVICE_URL отдельно:
+объяснить, какие именно запросы идут через auth service.
+Не считать AI, PostgreSQL и S3 прямыми зависимостями auth service, если код этого не подтверждает.
+
+10. Вернуть рекомендуемые этапы вида:
+
+Этап 1 — low risk
+Этап 2 — ...
+Этап 3 — ...
+
+Для каждого:
+- файлы;
+- что меняется;
+- какие тесты нужны;
+- rollback;
+- критерий успешного завершения.
+
+Критично:
+НЕ удалять @supabase/supabase-js.
+НЕ удалять env Supabase.
+НЕ менять server.js.
+НЕ менять AI.
+НЕ менять Auth.
+НЕ менять БД.
+НЕ менять frontend.
+Сейчас нужен только технический migration map.

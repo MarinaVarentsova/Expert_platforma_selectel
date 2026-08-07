@@ -45,28 +45,7 @@ export type ActionItem = {
   } | null;
 };
 
-type CreateInput = Pick<
-  ActionItem,
-  | "request_id" | "expert_id" | "customer_id"
-  | "assigned_to_user_id" | "assigned_role"
-  | "action_type" | "title" | "description" | "payload"
->;
-
 // ─── CRUD ────────────────────────────────────────────────────────────────────
-
-export async function createActionItem(input: CreateInput): Promise<void> {
-  try {
-    const token = getToken();
-    if (!token) return;
-    await palataFetch("/api/palata/action-items", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(input),
-    });
-  } catch {
-    // best-effort
-  }
-}
 
 // resolveActionItem — writes to Selectel via backend
 export async function resolveActionItem(id: string): Promise<void> {
@@ -76,20 +55,6 @@ export async function resolveActionItem(id: string): Promise<void> {
     await palataFetch(`/api/palata/action-items/${encodeURIComponent(id)}/resolve`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    // best-effort
-  }
-}
-
-export async function cancelRequestActionItems(requestId: string, exceptId?: string): Promise<void> {
-  try {
-    const token = getToken();
-    if (!token) return;
-    await palataFetch("/api/palata/action-items/cancel-by-request", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ request_id: requestId, except_id: exceptId ?? null }),
     });
   } catch {
     // best-effort

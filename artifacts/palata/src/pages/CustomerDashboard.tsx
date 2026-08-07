@@ -13,7 +13,7 @@ import {
   Pencil, X,
 } from "lucide-react";
 import {
-  loadOpenActionItems, createActionItem, resolveActionItem, cancelRequestActionItems,
+  loadOpenActionItems, resolveActionItem,
   logStatusEvent, logEmailTestEvent, type ActionItem,
 } from "@/lib/actionItems";
 

@@ -181,21 +181,6 @@ CREATE TABLE public.palata_expert_directions (
 COMMENT ON TABLE public.palata_expert_directions IS 'Связь эксперт ↔ направление экспертизы. Заменяет palata_expert_profiles.specializations как источник для подбора.';
 
 
-CREATE TABLE public.palata_expert_documents (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    expert_id uuid NOT NULL,
-    doc_type text NOT NULL,
-    bucket_path text NOT NULL,
-    file_name text NOT NULL,
-    mime_type text,
-    size_bytes bigint,
-    verified boolean DEFAULT false NOT NULL,
-    verified_by uuid,
-    verified_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
 
 CREATE TABLE public.palata_expert_profiles (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -274,17 +259,6 @@ CREATE TABLE public.palata_request_contacts (
     expert_email text
 );
 
-
-CREATE TABLE public.palata_request_files (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    request_id uuid NOT NULL,
-    uploader_id uuid,
-    bucket_path text NOT NULL,
-    file_name text NOT NULL,
-    mime_type text,
-    size_bytes bigint,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
 
 
 CREATE TABLE public.palata_request_matches (
@@ -421,9 +395,6 @@ ALTER TABLE ONLY public.palata_expert_directions
 ALTER TABLE ONLY public.palata_expert_directions
     ADD CONSTRAINT palata_expert_directions_pkey PRIMARY KEY (id);
 
-ALTER TABLE ONLY public.palata_expert_documents
-    ADD CONSTRAINT palata_expert_documents_pkey PRIMARY KEY (id);
-
 ALTER TABLE ONLY public.palata_expert_profiles
     ADD CONSTRAINT palata_expert_profiles_pkey PRIMARY KEY (id);
 
@@ -462,9 +433,6 @@ ALTER TABLE ONLY public.palata_regions
 
 ALTER TABLE ONLY public.palata_request_contacts
     ADD CONSTRAINT palata_request_contacts_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.palata_request_files
-    ADD CONSTRAINT palata_request_files_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.palata_request_matches
     ADD CONSTRAINT palata_request_matches_pkey PRIMARY KEY (id);
@@ -554,7 +522,6 @@ CREATE INDEX idx_palata_status_events_entity ON public.palata_status_events USIN
 -- ── Триггеры ──────────────────────────────────────────────────────────────────
 
 CREATE TRIGGER trg_palata_customer_profiles_updated_at BEFORE UPDATE ON public.palata_customer_profiles FOR EACH ROW EXECUTE FUNCTION public.palata_set_updated_at();
-CREATE TRIGGER trg_palata_expert_documents_updated_at BEFORE UPDATE ON public.palata_expert_documents FOR EACH ROW EXECUTE FUNCTION public.palata_set_updated_at();
 CREATE TRIGGER trg_palata_expert_profiles_updated_at BEFORE UPDATE ON public.palata_expert_profiles FOR EACH ROW EXECUTE FUNCTION public.palata_set_updated_at();
 CREATE TRIGGER trg_palata_refresh_expert_stats_on_match AFTER INSERT OR UPDATE OF status ON public.palata_request_matches FOR EACH ROW EXECUTE FUNCTION public.palata_refresh_expert_stats_on_match();
 CREATE TRIGGER trg_palata_refresh_expert_stats_on_rating AFTER INSERT OR UPDATE ON public.palata_expert_ratings FOR EACH ROW EXECUTE FUNCTION public.palata_refresh_expert_stats();
@@ -613,12 +580,6 @@ ALTER TABLE ONLY public.palata_expert_directions
 ALTER TABLE ONLY public.palata_expert_directions
     ADD CONSTRAINT palata_expert_directions_expertise_direction_id_fkey FOREIGN KEY (expertise_direction_id) REFERENCES public.palata_expertise_directions(id);
 
-ALTER TABLE ONLY public.palata_expert_documents
-    ADD CONSTRAINT palata_expert_documents_expert_id_fkey FOREIGN KEY (expert_id) REFERENCES public.palata_users(id) ON DELETE CASCADE;
-
-ALTER TABLE ONLY public.palata_expert_documents
-    ADD CONSTRAINT palata_expert_documents_verified_by_fkey FOREIGN KEY (verified_by) REFERENCES public.palata_users(id);
-
 ALTER TABLE ONLY public.palata_expert_profiles
     ADD CONSTRAINT palata_expert_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.palata_users(id) ON DELETE CASCADE;
 
@@ -642,12 +603,6 @@ ALTER TABLE ONLY public.palata_request_contacts
 
 ALTER TABLE ONLY public.palata_request_contacts
     ADD CONSTRAINT palata_request_contacts_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.palata_requests(id) ON DELETE CASCADE;
-
-ALTER TABLE ONLY public.palata_request_files
-    ADD CONSTRAINT palata_request_files_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.palata_requests(id) ON DELETE CASCADE;
-
-ALTER TABLE ONLY public.palata_request_files
-    ADD CONSTRAINT palata_request_files_uploader_id_fkey FOREIGN KEY (uploader_id) REFERENCES public.palata_users(id);
 
 ALTER TABLE ONLY public.palata_request_matches
     ADD CONSTRAINT palata_request_matches_expert_id_fkey FOREIGN KEY (expert_id) REFERENCES public.palata_users(id);

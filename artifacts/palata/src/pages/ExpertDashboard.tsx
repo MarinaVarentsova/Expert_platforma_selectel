@@ -691,9 +691,6 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
   const [certErrors, setCertErrors] = useState<Record<string, boolean>>({});
   const [blockedOrders, setBlockedOrders] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  // Оптимистичный оверлей: статус проставляется мгновенно после успешного отклика,
-  // очищается когда фоновый loadMarket вернёт актуальные данные с сервера.
-  const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch("/api/palata/regions")
@@ -828,14 +825,16 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
 
       if (!apRes.success) return;
 
-      // Оптимистичное обновление: сразу показываем «Вы откликнулись», не ждём перезагрузки рынка.
-      setOptimisticStatuses(p => ({ ...p, [order.id]: "can_start_from" }));
+      // Мгновенно показываем «Вы откликнулись»: пишем прямо в state.myMatchStatuses,
+      // не ждём фонового loadMarket — никаких гонок с overlay.
+      setState(prev =>
+        prev.kind === "ok"
+          ? { ...prev, myMatchStatuses: { ...prev.myMatchStatuses, [order.id]: "can_start_from" } }
+          : prev,
+      );
 
-      // Фоновое обновление без сброса в loading — когда придут реальные данные,
-      // оптимистичная запись удаляется и её заменяет серверный статус.
-      void loadMarket(true).then(() => {
-        setOptimisticStatuses(p => { const n = { ...p }; delete n[order.id]; return n; });
-      });
+      // Фоновая синхронизация без сброса в loading.
+      void loadMarket(true);
     } catch (_e) {
       // silently retry
     } finally {
@@ -847,11 +846,9 @@ function MarketTab({ userId, profile, allDirections, liveMatchStatuses }: {
   const regsMap = Object.fromEntries(allRegs.map(r => [r.id, r.name]));
 
   const baseStatuses = state.kind === "ok" ? state.myMatchStatuses : {};
-  const myMatchStatuses = {
-    ...baseStatuses,
-    ...(liveMatchStatuses ?? {}),
-    ...optimisticStatuses, // наивысший приоритет — мгновенно отражает отклик эксперта
-  };
+  const myMatchStatuses = liveMatchStatuses
+    ? { ...baseStatuses, ...liveMatchStatuses }
+    : baseStatuses;
 
   const filtered = state.kind === "ok" ? state.orders
     .filter(o => {

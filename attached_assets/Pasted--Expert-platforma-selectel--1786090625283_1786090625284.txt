@@ -1,0 +1,204 @@
+Работаем только в Expert_platforma_selectel.
+
+Задача состоит из ДВУХ независимых частей.
+
+ЧАСТЬ 1 — УДАЛИТЬ ПОДТВЕРЖДЁННЫЙ МЁРТВЫЙ КОД action_items.
+ЧАСТЬ 2 — ПРОВЕСТИ АУДИТ ОСТАВШИХСЯ status_events, но НИЧЕГО в status_events пока не менять.
+
+==================================================
+ЧАСТЬ 1. УДАЛЕНИЕ МЁРТВОГО FRONTEND-КОДА action_items
+==================================================
+
+По предыдущему аудиту уже подтверждено:
+
+- createActionItem() в src/lib/actionItems.ts нигде не вызывается;
+- cancelRequestActionItems() в src/lib/actionItems.ts нигде не вызывается;
+- в CustomerDashboard.tsx они только импортируются;
+- реальные palata_action_items создаются и закрываются backend-обработчиками;
+- удаление этих двух frontend-функций не меняет рабочую бизнес-логику.
+
+Нужно:
+
+1. Удалить из CustomerDashboard.tsx мёртвые импорты:
+
+- createActionItem
+- cancelRequestActionItems
+
+2. Удалить из src/lib/actionItems.ts функции:
+
+- createActionItem()
+- cancelRequestActionItems()
+
+3. Удалить только связанные с этими двумя функциями прямые Supabase-операции:
+
+supabase.from("palata_action_items")
+
+если после удаления функций они больше нигде не нужны.
+
+4. После удаления выполнить поиск:
+
+createActionItem
+cancelRequestActionItems
+supabase.from("palata_action_items")
+
+Ожидание:
+0 runtime-вызовов во frontend.
+
+5. НЕ удалять backend endpoints:
+
+POST /api/palata/action-items
+POST /api/palata/action-items/cancel-by-request
+
+6. НЕ менять backend business logic:
+
+- handleTakeWork
+- handleCompleteWork
+- handleSelectExpert
+- handleRunMatching
+- handleDeclineRequest
+- handleApproveStartDate
+- handleDeclineStartDate
+- handleApplyMarket
+
+7. НЕ менять структуру таблицы palata_action_items.
+
+==================================================
+ЧАСТЬ 2. АУДИТ ОСТАВШИХСЯ status_events
+==================================================
+
+После удаления action_items ничего в status_events пока НЕ исправлять.
+
+Нужно найти все оставшиеся frontend-вызовы:
+
+- logStatusEvent()
+- logEvent()
+- supabase.from("palata_status_events")
+
+и все backend INSERT:
+
+INSERT INTO palata_status_events
+
+Для КАЖДОГО frontend-вызова показать:
+
+1. Файл.
+2. Функцию.
+3. Где именно она вызывается.
+4. Какое пользовательское действие вызывает событие.
+5. Какие данные пишутся:
+
+- entity_type
+- entity_id
+- old_status
+- new_status
+- actor_id
+- note
+
+6. Какой backend endpoint выполняется в тот же момент.
+
+7. Пишет ли backend уже palata_status_events для того же действия.
+
+Классифицировать каждый frontend-вызов:
+
+A. DEAD_CODE
+— функция определена, но нигде не вызывается.
+
+B. BACKEND_DUPLICATE
+— frontend пишет событие, которое backend уже пишет сам.
+
+C. FRONTEND_ONLY
+— frontend пишет событие, а backend этого события сейчас не создаёт.
+
+==================================================
+ОСОБО ПРОВЕРИТЬ СЦЕНАРИИ
+==================================================
+
+- заказчик оценил эксперта;
+- эксперт оценил заказчика;
+- complete;
+- decline;
+- select-expert;
+- start-date approve;
+- start-date decline;
+- любые смены статуса заявки;
+- любые notes, связанные с оценками.
+
+==================================================
+ПРОВЕРКА ДУБЛЕЙ
+==================================================
+
+Проверить потенциальные дубли по комбинации:
+
+entity_type
++ entity_id
++ new_status
++ note
+
+для одного пользовательского действия.
+
+Если backend уже пишет такое же событие —
+пометить BACKEND_DUPLICATE.
+
+==================================================
+ВАЖНО
+==================================================
+
+В ЧАСТИ 2:
+
+- ничего не удалять;
+- не добавлять новые endpoints;
+- не менять server.js;
+- не менять status_events;
+- не менять бизнес-логику;
+- не делать рефакторинг.
+
+Нужен только аудит.
+
+==================================================
+ПРОВЕРКИ ПОСЛЕ ЧАСТИ 1
+==================================================
+
+Запустить:
+
+pnpm --filter ./artifacts/palata run build
+tsc --noEmit
+все существующие тесты
+
+==================================================
+ФИНАЛЬНЫЙ ОТЧЁТ
+==================================================
+
+Вернуть два отдельных блока.
+
+БЛОК A — action_items:
+
+- что удалено;
+- какие строки/функции удалены;
+- остались ли createActionItem/cancelRequestActionItems;
+- остались ли frontend Supabase-вызовы к palata_action_items;
+- результаты build/tsc/tests.
+
+БЛОК B — status_events:
+
+таблица:
+
+Frontend function
+Где вызывается
+User action
+Backend endpoint
+Backend already writes event?
+Классификация
+Рекомендация
+
+И в конце дать итог:
+
+1. сколько активных frontend Supabase-вызовов осталось после удаления action_items;
+2. какие именно относятся к status_events;
+3. какие из них DEAD_CODE;
+4. какие BACKEND_DUPLICATE;
+5. какие FRONTEND_ONLY.
+
+Commit делать только за ЧАСТЬ 1:
+
+refactor: remove dead frontend action item code
+
+ЧАСТЬ 2 не коммитить, потому что это только аудит.

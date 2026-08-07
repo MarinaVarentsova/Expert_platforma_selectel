@@ -144,6 +144,21 @@ export default function CustomerDashboard() {
   const [userPhone, setUserPhone] = useState<string | null>(null);
   const [myRating, setMyRating] = useState<number | null>(null);
 
+  /**
+   * Загружает ВСЕ рейтинги, которые этот заказчик поставил экспертам,
+   * и обновляет ratedRequestIds. Вызывается независимо от action items:
+   * после resolveActionItem action item перестаёт попадать в выборку,
+   * поэтому нельзя фильтровать по request_ids из action items — бейдж
+   * «Оцените эксперта» иначе снова загорается после оценки.
+   */
+  const loadRatedRequestIds = async (userId: string) => {
+    const res = await fetch(
+      `/api/palata/expert-ratings?customer_id=${encodeURIComponent(userId)}`,
+    ).then(r => r.json()).catch(() => ({ success: false, rows: [] as { request_id: string }[] }));
+    const rows = (res.rows ?? []) as { request_id: string }[];
+    setRatedRequestIds(new Set(rows.map(r => r.request_id)));
+  };
+
   const loadPendingRatings = async (userId: string) => {
     // Load via GET /api/palata/action-items/me (no direct Supabase)
     const allItems = await loadOpenActionItems(userId);
@@ -156,20 +171,20 @@ export default function CustomerDashboard() {
 
     if (aiData.length === 0) {
       setPendingRatingsState({ kind: "ok", items: [] });
-      setRatedRequestIds(new Set());
+      // Не сбрасываем ratedRequestIds — они управляются в loadRatedRequestIds.
       return;
     }
 
     const reqIds = [...new Set(aiData.map(a => a.request_id).filter(Boolean))] as string[];
 
-    // Filter out already rated
+    // Фильтруем уже оценённые из открытых action items (для отображения вкладки «Оценить»).
+    // ratedRequestIds для канбан-карточки управляется отдельно через loadRatedRequestIds.
     const ratingsRes = await fetch(
       `/api/palata/expert-ratings?customer_id=${encodeURIComponent(userId)}&request_ids=${encodeURIComponent(reqIds.join(","))}`,
     ).then(r => r.json()).catch(() => ({ success: false, rows: [] as { request_id: string }[] }));
     const ratings = (ratingsRes.rows ?? []) as { request_id: string }[];
 
     const ratedIds = new Set((ratings ?? []).map((r: { request_id: string }) => r.request_id));
-    setRatedRequestIds(ratedIds);
 
     const unrated = aiData.filter(a => !ratedIds.has(a.request_id ?? ""));
     if (unrated.length === 0) {
@@ -250,6 +265,7 @@ export default function CustomerDashboard() {
       });
 
     loadPendingRatings(userId);
+    loadRatedRequestIds(userId);
 
     setAiLoading(true);
     loadOpenActionItems(userId).then(items => {
@@ -276,6 +292,7 @@ export default function CustomerDashboard() {
     if (guard.status !== "ok") return;
     loadOpenActionItems(guard.user.id).then(items => setActionItems(filterCustomerActionItems(items)));
     loadPendingRatings(guard.user.id);
+    loadRatedRequestIds(guard.user.id); // синхронизируем ratedRequestIds независимо от action items
     reloadRequests();
   }
 

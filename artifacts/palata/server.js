@@ -8,7 +8,6 @@ import {
   collectUserDataSummary,
   anonymizeCustomer,
   anonymizeExpert,
-  tryDeleteS3Object,
 } from "./lib/admin-pd-delete.js";
 import pg from "pg";
 import { detectDirection, KNOWLEDGE_BASE_ENTRIES, checkLocalMarkers, CONSTRUCTION_DIRECTION_NAME, CONFIDENCE_THRESHOLD } from "@workspace/ai-detect";
@@ -5767,56 +5766,8 @@ async function handleAdminDeleteUser(req, res) {
     return res.json({ success: true, dry_run: true, user_id: userId, role, summary });
   }
 
-  // ── 5. Expert: attempt S3 deletions BEFORE committing DB ──────────────────
-  // Rationale: S3 and PostgreSQL are not in the same transaction. We must choose
-  // one ordering. We prioritise "no orphan files" over "instant DB anonymization":
-  // if a file cannot be deleted, we abort rather than committing irreversible DB
-  // changes while PD files remain live.
-  //
-  // When S3 is NOT configured the file list is passed through and reported in the
-  // response so the administrator can delete them manually.
-  let expertDocRows = [];
-  let fileResults   = [];
-
-  if (role === "expert") {
-    expertDocRows = (await pool.query(
-      `SELECT bucket_path, file_name FROM public.palata_expert_documents WHERE expert_id = $1`,
-      [userId],
-    )).rows;
-
-    const s3Configured = !!(
-      process.env.SELECTEL_S3_ENDPOINT &&
-      process.env.SELECTEL_S3_BUCKET   &&
-      process.env.SELECTEL_S3_ACCESS_KEY &&
-      process.env.SELECTEL_S3_SECRET_KEY
-    );
-
-    if (s3Configured && expertDocRows.length > 0) {
-      for (const doc of expertDocRows) {
-        const result = await tryDeleteS3Object(doc.bucket_path);
-        fileResults.push({ ...result, file_name: doc.file_name });
-        console.log("[ADMIN-DELETE-USER] s3 delete", { bucketPath: doc.bucket_path, deleted: result.deleted, reason: result.reason });
-      }
-
-      const failed = fileResults.filter(f => !f.deleted);
-      if (failed.length > 0) {
-        console.error("[ADMIN-DELETE-USER] S3 deletions failed — aborting DB changes", { failed });
-        return res.status(500).json({
-          success: false,
-          error:   "S3_DELETION_FAILED",
-          message: "Не удалось удалить физические файлы из Object Storage. Данные в БД не изменены.",
-          files_failed: failed.map(f => ({ path: f.bucketPath, reason: f.reason, detail: f.detail })),
-        });
-      }
-    } else if (!s3Configured && expertDocRows.length > 0) {
-      // S3 not configured: mark all as not deleted, proceed with DB anonymization
-      fileResults = expertDocRows.map(doc => ({
-        deleted: false, bucketPath: doc.bucket_path, file_name: doc.file_name, reason: "S3_NOT_CONFIGURED",
-      }));
-    }
-  }
-
-  // ── 6. Perform anonymization in transaction ────────────────────────────────
+  // ── 5. Perform anonymization in transaction ───────────────────────────────
+  const fileResults = [];
   const client = await pool.connect();
   let anonymizedCounts;
 

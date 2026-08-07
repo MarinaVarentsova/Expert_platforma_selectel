@@ -20,11 +20,9 @@
  *   palata_expert_regions:      DELETE
  *   palata_expert_directions:   DELETE
  *   palata_expert_certificates: DELETE
- *   palata_expert_documents:    DELETE (+ S3 physical files via caller)
  *   palata_request_matches:     DELETE
  */
 
-import { createHmac, createHash } from "crypto";
 
 // ── UUID validation ───────────────────────────────────────────────────────────
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -122,10 +120,6 @@ export async function collectUserDataSummary(db, userId, role) {
     action: "delete",
     rows: await count(`SELECT COUNT(*) FROM public.palata_expert_certificates WHERE expert_id = $1`, [userId]),
   };
-  tables.palata_expert_documents = {
-    action: "delete",
-    rows: await count(`SELECT COUNT(*) FROM public.palata_expert_documents WHERE expert_id = $1`, [userId]),
-  };
   tables.palata_request_matches = {
     action: "delete",
     rows: await count(`SELECT COUNT(*) FROM public.palata_request_matches WHERE expert_id = $1`, [userId]),
@@ -155,13 +149,7 @@ export async function collectUserDataSummary(db, userId, role) {
     rows: await count(`SELECT COUNT(*) FROM public.palata_email_events WHERE recipient_id = $1`, [userId]),
   };
 
-  const { rows: docRows } = await db.query(
-    `SELECT bucket_path, file_name FROM public.palata_expert_documents WHERE expert_id = $1`,
-    [userId],
-  );
-  const files = docRows.map(r => ({ bucket_path: r.bucket_path, file_name: r.file_name }));
-
-  return { tables, files };
+  return { tables, files: [] };
 }
 
 // ── anonymizeCustomer ─────────────────────────────────────────────────────────
@@ -244,8 +232,6 @@ export async function anonymizeCustomer(client, userId) {
 }
 
 // ── anonymizeExpert ───────────────────────────────────────────────────────────
-// Expert documents DB records are deleted here; physical file deletion
-// must be done by the caller with bucket_paths collected before this call.
 
 export async function anonymizeExpert(client, userId) {
   const counts = {};
@@ -291,12 +277,6 @@ export async function anonymizeExpert(client, userId) {
   );
   counts.palata_expert_certificates = ec.rowCount;
 
-  const edoc = await client.query(
-    `DELETE FROM public.palata_expert_documents WHERE expert_id = $1`,
-    [userId],
-  );
-  counts.palata_expert_documents = edoc.rowCount;
-
   const rm = await client.query(
     `DELETE FROM public.palata_request_matches WHERE expert_id = $1`,
     [userId],
@@ -341,63 +321,3 @@ export async function anonymizeExpert(client, userId) {
   return counts;
 }
 
-// ── tryDeleteS3Object ─────────────────────────────────────────────────────────
-// Attempts DELETE using AWS Sig V4 (native crypto, no extra dependencies).
-// Returns { deleted: boolean, bucketPath: string, reason?: string }
-
-function _hmacSha256(key, data) {
-  return createHmac("sha256", key).update(data).digest();
-}
-
-export async function tryDeleteS3Object(bucketPath) {
-  const endpoint  = process.env.SELECTEL_S3_ENDPOINT;
-  const bucket    = process.env.SELECTEL_S3_BUCKET;
-  const accessKey = process.env.SELECTEL_S3_ACCESS_KEY;
-  const secretKey = process.env.SELECTEL_S3_SECRET_KEY;
-  const region    = process.env.SELECTEL_S3_REGION ?? "ru-1";
-
-  if (!endpoint || !bucket || !accessKey || !secretKey) {
-    return { deleted: false, bucketPath, reason: "S3_NOT_CONFIGURED" };
-  }
-
-  try {
-    const now       = new Date();
-    const amzDate   = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z").slice(0, 16) + "Z";
-    const dateStamp = amzDate.slice(0, 8);
-    const host      = new URL(endpoint).hostname;
-    const keyPath   = `/${bucket}/${bucketPath}`;
-    const emptyHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-
-    const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${emptyHash}\nx-amz-date:${amzDate}\n`;
-    const signedHeaders    = "host;x-amz-content-sha256;x-amz-date";
-    const canonicalRequest = `DELETE\n${keyPath}\n\n${canonicalHeaders}\n${signedHeaders}\n${emptyHash}`;
-
-    const credScope    = `${dateStamp}/${region}/s3/aws4_request`;
-    const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credScope}\n${createHash("sha256").update(canonicalRequest).digest("hex")}`;
-
-    const kDate    = _hmacSha256("AWS4" + secretKey, dateStamp);
-    const kRegion  = _hmacSha256(kDate, region);
-    const kService = _hmacSha256(kRegion, "s3");
-    const kSigning = _hmacSha256(kService, "aws4_request");
-    const sig      = createHmac("sha256", kSigning).update(stringToSign).digest("hex");
-    const auth     = `AWS4-HMAC-SHA256 Credential=${accessKey}/${credScope}, SignedHeaders=${signedHeaders}, Signature=${sig}`;
-
-    const res = await fetch(`${endpoint}${keyPath}`, {
-      method: "DELETE",
-      headers: {
-        "Host": host,
-        "x-amz-content-sha256": emptyHash,
-        "x-amz-date":           amzDate,
-        "Authorization":        auth,
-      },
-    });
-
-    if (res.status === 204 || res.status === 200) {
-      return { deleted: true, bucketPath };
-    }
-    const errBody = await res.text().catch(() => "");
-    return { deleted: false, bucketPath, reason: `HTTP_${res.status}`, detail: errBody.slice(0, 200) };
-  } catch (err) {
-    return { deleted: false, bucketPath, reason: "NETWORK_ERROR", detail: String(err).slice(0, 200) };
-  }
-}

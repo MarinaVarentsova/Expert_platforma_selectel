@@ -2,7 +2,7 @@
  * Tests for POST /api/palata/admin/users/:userId/delete
  *
  * Tests call the actual exported functions (collectUserDataSummary,
- * anonymizeCustomer, anonymizeExpert, tryDeleteS3Object, isValidUuid)
+ * anonymizeCustomer, anonymizeExpert, isValidUuid)
  * with mock pool clients that record every SQL query executed.
  * This verifies the real SQL, field coverage, and transaction semantics
  * without requiring a live database.
@@ -18,7 +18,6 @@ import {
   collectUserDataSummary,
   anonymizeCustomer,
   anonymizeExpert,
-  tryDeleteS3Object,
 } from "../../../artifacts/palata/lib/admin-pd-delete.js";
 
 // ── Mock pool factory ─────────────────────────────────────────────────────────
@@ -229,12 +228,6 @@ describe("anonymizeExpert — SQL verification", () => {
     assert.ok(q, "must DELETE palata_expert_certificates");
   });
 
-  it("deletes palata_expert_documents DB records (physical files handled by caller)", () => {
-    const q = findQuery(client.queries, "DELETE FROM public.palata_expert_documents");
-    assert.ok(q, "must DELETE palata_expert_documents");
-    assert.ok(q.sql.includes("expert_id = $1"), "filtered by expert_id");
-  });
-
   it("deletes palata_request_matches", () => {
     const q = findQuery(client.queries, "DELETE FROM public.palata_request_matches");
     assert.ok(q, "must DELETE palata_request_matches");
@@ -279,7 +272,6 @@ describe("anonymizeExpert — SQL verification", () => {
       "palata_expert_regions",
       "palata_expert_directions",
       "palata_expert_certificates",
-      "palata_expert_documents",
       "palata_request_matches",
       "palata_request_contacts",
       "palata_status_events",
@@ -314,56 +306,20 @@ describe("collectUserDataSummary — structure verification", () => {
     assert.deepEqual(result.files, [], "customer summary must have empty files array");
   });
 
-  it("returns correct structure for expert role including files", async () => {
-    const db = makeMockClient({
-      "SELECT bucket_path": {
-        rows: [{ bucket_path: "experts/doc.pdf", file_name: "doc.pdf" }],
-        rowCount: 1,
-      },
-    });
+  it("returns correct structure for expert role", async () => {
+    const db = makeMockClient();
     const result = await collectUserDataSummary(db, VALID_UUID, "expert");
 
     const expertTables = [
       "palata_users", "palata_expert_profiles", "palata_expert_regions",
-      "palata_expert_directions", "palata_expert_certificates", "palata_expert_documents",
+      "palata_expert_directions", "palata_expert_certificates",
       "palata_request_matches", "palata_request_contacts", "palata_status_events",
       "palata_action_items", "palata_customer_ratings", "palata_email_events",
     ];
     for (const t of expertTables) {
       assert.ok(result.tables[t], `expert summary must include ${t}`);
     }
-    assert.ok(result.files.length > 0, "expert summary must list files");
-    assert.ok(result.files[0].bucket_path, "file entry must have bucket_path");
-    assert.ok(result.files[0].file_name,   "file entry must have file_name");
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("tryDeleteS3Object — env-var guard", () => {
-
-  before(() => {
-    // Ensure credentials are not set in test environment
-    delete process.env.SELECTEL_S3_ENDPOINT;
-    delete process.env.SELECTEL_S3_BUCKET;
-    delete process.env.SELECTEL_S3_ACCESS_KEY;
-    delete process.env.SELECTEL_S3_SECRET_KEY;
-  });
-
-  it("returns deleted=false with S3_NOT_CONFIGURED when credentials absent", async () => {
-    const result = await tryDeleteS3Object("experts/test.pdf");
-    assert.equal(result.deleted, false);
-    assert.equal(result.reason, "S3_NOT_CONFIGURED");
-    assert.equal(result.bucketPath, "experts/test.pdf", "bucket path preserved for manual deletion");
-  });
-
-  it("never calls fetch when credentials are not configured", async () => {
-    let fetchCalled = false;
-    global.fetch = async () => { fetchCalled = true; return {}; };
-
-    await tryDeleteS3Object("experts/another.pdf");
-
-    assert.equal(fetchCalled, false, "fetch must NOT be called when S3 not configured");
+    assert.deepEqual(result.files, [], "expert summary must have empty files array");
   });
 });
 

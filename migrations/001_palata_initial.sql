@@ -187,7 +187,9 @@ CREATE TABLE palata_request_contacts (
 );
 
 -- =============================================================================
--- EXPERT DOCUMENTS
+-- EXPERT DOCUMENTS (OBSOLETE — table removed in 0003_drop_expert_documents.sql)
+-- The file upload subsystem has been removed from the application.
+-- This CREATE TABLE is kept as historical record only; do not re-add the UI.
 -- =============================================================================
 
 CREATE TABLE palata_expert_documents (

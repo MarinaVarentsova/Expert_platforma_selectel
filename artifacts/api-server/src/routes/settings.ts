@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabase } from "../lib/supabase";
+import { pool } from "../lib/db";
 import { getIntervalMinutes, setIntervalMinutes } from "../lib/scheduler";
 
 const router = Router();
@@ -16,12 +16,12 @@ router.put("/settings/matching-interval", async (req, res) => {
     res.status(400).json({ error: "intervalMinutes должно быть целым числом от 1 до 120" });
     return;
   }
-  if (!supabase) {
-    res.status(503).json({ error: "Supabase not configured" });
+  if (!pool) {
+    res.status(503).json({ error: "Database not configured" });
     return;
   }
 
-  await setIntervalMinutes(supabase, minutes);
+  await setIntervalMinutes(pool, minutes);
   req.log.info({ minutes }, "Matching interval updated via API");
   res.json({ ok: true, intervalMinutes: minutes });
 });

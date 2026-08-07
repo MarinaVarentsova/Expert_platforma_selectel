@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { supabase } from "@/lib/supabaseClient";
 import { getToken, palataFetch } from "@/lib/authClient";
+import { fetchUsers } from "@/lib/users";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import AdminLayout from "@/components/AdminLayout";
 import { FileText, Clock, Zap, CheckCircle2, AlertTriangle, TrendingUp, Settings, LayoutDashboard, Timer, ShieldAlert } from "lucide-react";
@@ -427,16 +427,10 @@ function CertsTab() {
       if (certs.length === 0) { setState({ kind: "ok", rows: [] }); return; }
 
       const expertIds = [...new Set(certs.map(c => c.expert_id))];
-      const { data: users } = await supabase
-        .from("palata_users")
-        .select("id, full_name, email, phone")
-        .in("id", expertIds);
+      const users = await fetchUsers(expertIds);
 
       const usersMap: Record<string, { full_name: string | null; email: string; phone: string | null }> =
-        Object.fromEntries(
-          ((users ?? []) as { id: string; full_name: string | null; email: string; phone: string | null }[])
-            .map(u => [u.id, u]),
-        );
+        Object.fromEntries(users.map(u => [u.id, u]));
 
       const rows: ExpiringCert[] = certs.map(c => {
         const u = usersMap[c.expert_id];

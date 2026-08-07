@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { supabase } from "@/lib/supabaseClient";
 import { runMatching } from "@/lib/matching";
 import { useAuth } from "@/lib/useAuth";
 import { getToken, palataFetch } from "@/lib/authClient";
@@ -283,36 +282,29 @@ export default function NewRequest() {
       }
 
       if (matchedCount > 0) {
-        supabase
-          .from("palata_request_matches")
-          .select("expert_id")
-          .eq("request_id", requestId)
-          .eq("status", "proposed")
-          .then(async ({ data: matchRows }) => {
-            if (!matchRows?.length) return;
-            const expertIds = matchRows.map((m: { expert_id: string }) => m.expert_id);
-            const { data: expertUsers } = await supabase
-              .from("palata_users")
-              .select("id, email, full_name")
-              .in("id", expertIds);
-            if (!expertUsers?.length) return;
-            notify(
-              (expertUsers as { id: string; email: string; full_name: string | null }[]).map(u => ({
-                type:           "expert_proposed" as const,
-                requestId,
-                requestShortId: requestId.slice(0, 8).toUpperCase(),
-                requestTitle:   autoTitle,
-                expertiseType:  directionName,
-                region:         allRegions.find(r => r.id === form.region_id)?.name ?? "—",
-                currentStatus:  "new",
-                recipientEmail: u.email,
-                recipientType:  "expert" as const,
-                recipientName:  u.full_name ?? undefined,
-                expertId:       u.id,
-                expertName:     u.full_name ?? undefined,
-              })),
-            );
-          });
+        palataFetch(`/api/palata/requests/${requestId}/matched-experts`, {
+          headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+        }).then(async res => {
+          if (!res.ok) return;
+          const body = await res.json().catch(() => ({ success: false }));
+          if (!body.success || !body.rows?.length) return;
+          notify(
+            (body.rows as { id: string; email: string; full_name: string | null }[]).map(u => ({
+              type:           "expert_proposed" as const,
+              requestId,
+              requestShortId: requestId.slice(0, 8).toUpperCase(),
+              requestTitle:   autoTitle,
+              expertiseType:  directionName,
+              region:         allRegions.find(r => r.id === form.region_id)?.name ?? "—",
+              currentStatus:  "new",
+              recipientEmail: u.email,
+              recipientType:  "expert" as const,
+              recipientName:  u.full_name ?? undefined,
+              expertId:       u.id,
+              expertName:     u.full_name ?? undefined,
+            })),
+          );
+        }).catch(() => {});
       }
 
       setState({ kind: "success", requestId, title: autoTitle, matchedCount });

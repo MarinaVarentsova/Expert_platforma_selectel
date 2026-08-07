@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { ChevronDown, Check, X } from "lucide-react";
 
 type Region = { id: string; name: string };

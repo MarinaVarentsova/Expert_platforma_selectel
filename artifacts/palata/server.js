@@ -10,7 +10,9 @@ import {
   anonymizeExpert,
   tryDeleteS3Object,
 } from "./lib/admin-pd-delete.js";
+import { mkdirSync } from "fs";
 import pg from "pg";
+import multer from "multer";
 import { detectDirection, KNOWLEDGE_BASE_ENTRIES, checkLocalMarkers, CONSTRUCTION_DIRECTION_NAME, CONFIDENCE_THRESHOLD } from "@workspace/ai-detect";
 import { guardDecline, guardTakeWork, guardExpertProposeDate, guardDeclineStartDate, guardCompleteWork, guardCustomerComplete, guardCustomerCancel } from "./lib/request-guards.js";
 const { Pool } = pg;
@@ -2071,12 +2073,22 @@ app.post("/api/palata/expert-certificate", (req, res) => {
 });
 
 // ── GET /api/palata/expert-documents/:expertId — list documents for an expert ──
+// Auth: expert can only list their own documents; admin can list any expert's documents.
 
 async function handleExpertDocumentsQuery(req, res) {
+  const auth = await requireAuth(req);
+  if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+
   const { expertId } = req.params;
   if (!expertId) {
     return res.status(400).json({ success: false, error: "MISSING_EXPERT_ID" });
   }
+
+  // Enforce ownership: caller must be the expert themselves or an admin
+  if (auth.role !== "admin" && auth.userId !== expertId) {
+    return res.status(403).json({ success: false, error: "FORBIDDEN", message: "Доступ только к собственным документам" });
+  }
+
   const client = await pool.connect();
   try {
     const { rows } = await client.query(
@@ -2104,10 +2116,17 @@ app.get("/api/palata/expert-documents/:expertId", (req, res) => {
 });
 
 // ── POST /api/palata/expert-documents — insert a document record ──
+// Auth: only the authenticated expert can add documents to their own profile.
+// expert_id is always derived from the auth token; any client-supplied value is ignored.
 
 async function handleExpertDocumentsInsert(req, res) {
-  const { expert_id, doc_type, bucket_path, file_name, mime_type, size_bytes } = req.body ?? {};
-  if (!expert_id || !doc_type || !bucket_path || !file_name) {
+  const auth = await requireAuth(req);
+  if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+
+  // expert_id is always the authenticated user — never trusted from the request body
+  const expert_id = auth.userId;
+  const { doc_type, bucket_path, file_name, mime_type, size_bytes } = req.body ?? {};
+  if (!doc_type || !bucket_path || !file_name) {
     return res.status(400).json({ success: false, error: "MISSING_REQUIRED_FIELDS" });
   }
   const client = await pool.connect();
@@ -2136,18 +2155,51 @@ app.post("/api/palata/expert-documents", (req, res) => {
 });
 
 // ── DELETE /api/palata/expert-documents/:id — delete a document record ──
+// Auth: expert can only delete their own documents; admin can delete any.
+// Also physically removes the file from local disk storage when present.
 
 async function handleExpertDocumentsDelete(req, res) {
+  const auth = await requireAuth(req);
+  if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+
   const { id } = req.params;
   if (!id) {
     return res.status(400).json({ success: false, error: "MISSING_ID" });
   }
   const client = await pool.connect();
   try {
-    await client.query(
-      `DELETE FROM public.palata_expert_documents WHERE id = $1`,
+    // Fetch the record first to check ownership and get the bucket_path for file cleanup
+    const { rows: existing } = await client.query(
+      `SELECT id, expert_id, bucket_path FROM public.palata_expert_documents WHERE id = $1 LIMIT 1`,
       [id],
     );
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, error: "NOT_FOUND" });
+    }
+    const doc = existing[0];
+
+    // Enforce ownership: expert can only delete their own documents
+    if (auth.role !== "admin" && auth.userId !== doc.expert_id) {
+      return res.status(403).json({ success: false, error: "FORBIDDEN" });
+    }
+
+    // Delete the DB record
+    await client.query(`DELETE FROM public.palata_expert_documents WHERE id = $1`, [id]);
+
+    // Attempt physical file deletion for locally-stored files (expert-documents/* prefix)
+    if (doc.bucket_path?.startsWith("expert-documents/")) {
+      const filename = doc.bucket_path.slice("expert-documents/".length);
+      const filePath = path.join(UPLOADS_DIR, filename);
+      try {
+        const { unlinkSync } = await import("fs");
+        unlinkSync(filePath);
+        console.log("[EXPERT-DOCUMENTS] physical file deleted", { filePath });
+      } catch (fsErr) {
+        // Non-fatal: log but do not fail the response
+        console.warn("[EXPERT-DOCUMENTS] could not delete physical file", { filePath, error: fsErr.message });
+      }
+    }
+
     res.json({ success: true });
   } catch (err) {
     console.error("[EXPERT-DOCUMENTS] delete failed", { stack: err.stack });
@@ -6010,6 +6062,633 @@ app.post("/api/palata/admin/users/:userId/delete", (req, res) => {
     console.error("[ADMIN-DELETE-USER] unhandled error", { stack: err.stack });
     res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
   });
+});
+
+// ── Multer setup for file uploads ─────────────────────────────────────────────
+const UPLOADS_DIR = path.join(__dirname, "uploads");
+try { mkdirSync(UPLOADS_DIR, { recursive: true }); } catch { /* already exists */ }
+
+const multerStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    cb(null, `${Date.now()}_${safe}`);
+  },
+});
+const upload = multer({ storage: multerStorage, limits: { fileSize: 20 * 1024 * 1024 } });
+
+// ── POST /api/palata/match/trigger-all ───────────────────────────────────────
+// Triggers matching for all requests in 'matching' status.
+// Exactly replicates the logic from api-server/src/lib/matcher.ts (runAllPendingMatching +
+// runMatchingForRequest) so there is one consistent matching implementation used by both
+// the scheduler (api-server) and on-demand triggers (this endpoint).
+// Auth: requires any valid session (non-critical trigger; scheduler also runs it periodically).
+app.post("/api/palata/match/trigger-all", (req, res) => {
+  (async () => {
+    const auth = await requireAuth(req);
+    if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+    if (!pool) return res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+
+    const ordersRes = await pool.query(
+      `SELECT id, expertise_direction_id, region_id, requires_travel, customer_id
+         FROM public.palata_requests WHERE status = 'matching'`,
+    );
+    if (ordersRes.rowCount === 0) return res.json({ success: true, processed: 0, matched: 0 });
+
+    // Scoring mirror of api-server/src/lib/matcher.ts::scoreExpert
+    function scoreExpert(e) {
+      const rating = e.avg_customer_rating ?? 0;
+      let score = rating * 10;
+      if (e.palata_registry_verified) score += 2;
+      if (e.centrsudexpert_verified)  score += 2;
+      score += Math.min(e.completed_orders_count, 10) * 0.1;
+      if (e.decline_rate != null) score -= e.decline_rate * 5;
+      return Math.round(score * 100) / 100;
+    }
+
+    let processed = 0;
+    let matched = 0;
+    const today = new Date().toISOString().slice(0, 10);
+
+    for (const order of ordersRes.rows) {
+      try {
+        if (!order.expertise_direction_id) continue;
+        if (order.requires_travel && !order.region_id) continue;
+
+        // Previous matches — used to exclude declined/active experts and compute round
+        const prevRes = await pool.query(
+          `SELECT expert_id, status, matching_round FROM public.palata_request_matches WHERE request_id = $1`,
+          [order.id],
+        );
+        const prevMatches = prevRes.rows;
+        const declinedIds = new Set(
+          prevMatches.filter(m => ["declined", "withdrawn"].includes(m.status)).map(m => m.expert_id),
+        );
+        const activeIds = new Set(
+          prevMatches.filter(m => !["declined", "withdrawn", "closed_by_other_expert"].includes(m.status)).map(m => m.expert_id),
+        );
+
+        // Step 1: Experts with a valid certificate in the required direction
+        const certRes = await pool.query(
+          `SELECT expert_id FROM public.palata_expert_certificates
+            WHERE status = 'verified' AND cert_valid_to >= $1
+              AND cert_direction_ids @> ARRAY[$2]::uuid[]`,
+          [today, order.expertise_direction_id],
+        );
+        const qualifiedIds = certRes.rows
+          .map(r => r.expert_id)
+          .filter(id => !declinedIds.has(id) && !activeIds.has(id));
+
+        if (qualifiedIds.length === 0) continue;
+
+        // Step 2: Expert profile data for scoring
+        const expertRes = await pool.query(
+          `SELECT user_id, business_trip_ready, avg_customer_rating, completed_orders_count,
+                  decline_rate, palata_registry_verified, centrsudexpert_verified
+             FROM public.palata_expert_profiles
+            WHERE accepts_requests = true AND user_id = ANY($1)`,
+          [qualifiedIds],
+        );
+        const experts = expertRes.rows;
+        if (experts.length === 0) continue;
+
+        // Step 3: Region eligibility for non-trip-ready experts (mirrors API-server logic)
+        const expertRegionMap = new Map();
+        if (order.requires_travel) {
+          const nonTripReadyIds = experts.filter(e => !e.business_trip_ready).map(e => e.user_id);
+          if (nonTripReadyIds.length > 0) {
+            const regRes = await pool.query(
+              `SELECT expert_id, region_id FROM public.palata_expert_regions WHERE expert_id = ANY($1)`,
+              [nonTripReadyIds],
+            );
+            for (const row of regRes.rows) {
+              if (!expertRegionMap.has(row.expert_id)) expertRegionMap.set(row.expert_id, new Set());
+              expertRegionMap.get(row.expert_id).add(row.region_id);
+            }
+          }
+        }
+
+        // Step 4: Filter, score, and select top 5 (matching API-server slice(0,5))
+        const candidates = [];
+        for (const e of experts) {
+          if (order.requires_travel && !e.business_trip_ready) {
+            const eRegs = expertRegionMap.get(e.user_id) ?? new Set();
+            if (order.region_id && !eRegs.has(order.region_id)) continue;
+          }
+          candidates.push({ expertId: e.user_id, score: scoreExpert(e) });
+        }
+        if (candidates.length === 0) continue;
+
+        candidates.sort((a, b) => b.score - a.score);
+        const selected = candidates.slice(0, 5);
+
+        const rounds = prevMatches.map(m => m.matching_round).filter(n => n != null);
+        const nextRound = rounds.length > 0 ? Math.max(...rounds) + 1 : 1;
+
+        // Step 5: Insert matches (same schema as API-server: request_id, expert_id, matching_round, status)
+        const insertValues = selected.map((_, i) => {
+          const base = i * 4;
+          return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`;
+        }).join(", ");
+        const insertParams = selected.flatMap(s => [order.id, s.expertId, nextRound, "proposed"]);
+
+        try {
+          await pool.query(
+            `INSERT INTO public.palata_request_matches
+               (request_id, expert_id, matching_round, status)
+             VALUES ${insertValues}`,
+            insertParams,
+          );
+        } catch (insertErr) {
+          console.warn("[MATCH-TRIGGER-ALL] match insert failed", { requestId: order.id, error: insertErr.message });
+          continue;
+        }
+
+        // Step 6: Transition request status (mirrors API-server)
+        await pool.query(
+          `UPDATE public.palata_requests SET status = $1, matching_round = $2 WHERE id = $3`,
+          ["expert_selection", nextRound, order.id],
+        );
+
+        // Step 7: Status event (mirrors API-server)
+        await pool.query(
+          `INSERT INTO public.palata_status_events
+             (entity_type, entity_id, old_status, new_status, actor_id, note)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          ["request", order.id, "matching", "expert_selection", null,
+           `Автоподбор (триггер) раунд ${nextRound}: ${selected.length} эксперт(ов) предложено`],
+        );
+
+        // Step 8: Action item for customer (mirrors API-server)
+        if (order.customer_id) {
+          const n = selected.length;
+          const suffix = n === 1 ? "" : n < 5 ? "а" : "ов";
+          await pool.query(
+            `INSERT INTO public.palata_action_items
+               (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+                action_type, status, is_resolved, title, description, payload)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+              order.id, null, order.customer_id, order.customer_id, "customer",
+              "experts_matched", "open", false,
+              "Подобраны эксперты для вашего заказа",
+              `Система подобрала ${n} эксперт${suffix}. Ознакомьтесь с профилями и выберите подходящего специалиста.`,
+              JSON.stringify({ request_id: order.id, matched_experts_count: n, expert_ids: selected.map(s => s.expertId), round: nextRound }),
+            ],
+          );
+        }
+
+        matched += selected.length;
+        processed++;
+      } catch (e) {
+        console.warn("[MATCH-TRIGGER-ALL] failed for request", { requestId: order.id, error: e.message });
+      }
+    }
+
+    console.log("[MATCH-TRIGGER-ALL] done", { processed, matched, triggeredBy: auth.userId });
+    res.json({ success: true, processed, matched });
+  })().catch(err => res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }));
+});
+
+// ── GET /api/palata/admin/users — list users with optional role filter ─────────
+app.get("/api/palata/admin/users", (req, res) => {
+  (async () => {
+    const admin = await requireAdmin(req);
+    if (!admin.ok) return res.status(admin.status).json({ success: false, error: admin.error });
+    if (!pool) return res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+
+    const { role, order } = req.query;
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+    if (role) { conditions.push(`role = $${idx}`); params.push(role); idx++; }
+
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const orderBy = order === "full_name" ? "ORDER BY full_name ASC NULLS LAST" : "ORDER BY created_at DESC";
+
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT id, email, full_name, phone, role, is_active, created_at FROM public.palata_users ${where} ${orderBy}`,
+        params,
+      );
+      res.json({ success: true, rows });
+    } catch (err) {
+      console.error("[ADMIN/USERS] list failed", { stack: err.stack });
+      res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+    } finally { client.release(); }
+  })().catch(err => res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }));
+});
+
+// ── POST /api/palata/expert-documents/upload — multipart file upload ──────────
+// Auth: requires valid bearer token; expert_id is derived from the authenticated user.
+// Saves the file to local disk (UPLOADS_DIR). When SELECTEL_S3_* env vars are
+// configured this endpoint should be updated to upload to Selectel Object Storage.
+app.post("/api/palata/expert-documents/upload", upload.single("file"), (req, res) => {
+  (async () => {
+    // Fully validate the token — not just check its presence
+    const auth = await requireAuth(req);
+    if (!auth.ok) {
+      // multer already saved the file; clean it up if auth fails
+      if (req.file?.path) {
+        try { const { unlinkSync } = await import("fs"); unlinkSync(req.file.path); } catch { /* ignore */ }
+      }
+      return res.status(auth.status).json({ success: false, error: auth.error });
+    }
+
+    if (!req.file) return res.status(400).json({ success: false, error: "MISSING_FILE" });
+
+    // bucket_path stores the relative path; expert_id comes from the auth token, not the client
+    const bucket_path = `expert-documents/${req.file.filename}`;
+
+    console.log("[EXPERT-DOCS-UPLOAD] saved", { userId: auth.userId, filename: req.file.filename, size: req.file.size });
+    // Return expert_id so the frontend can confirm it matches (it will always be auth.userId)
+    res.json({ success: true, bucket_path, file_name: req.file.originalname, expert_id: auth.userId });
+  })().catch(err => {
+    console.error("[EXPERT-DOCS-UPLOAD] failed", { stack: err.stack });
+    res.status(500).json({ success: false, error: "UPLOAD_FAILED", message: String(err) });
+  });
+});
+
+// ── GET /api/palata/expert-documents/download/:docId — serve a stored document ─
+// Auth: the expert who owns the document, or any admin.
+app.get("/api/palata/expert-documents/download/:docId", (req, res) => {
+  (async () => {
+    const auth = await requireAuth(req);
+    if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+    if (!pool) return res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+
+    const { docId } = req.params;
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT expert_id, bucket_path, file_name, mime_type FROM public.palata_expert_documents WHERE id = $1 LIMIT 1`,
+        [docId],
+      );
+      if (rows.length === 0) return res.status(404).json({ success: false, error: "NOT_FOUND" });
+      const doc = rows[0];
+
+      if (auth.role !== "admin" && auth.userId !== doc.expert_id) {
+        return res.status(403).json({ success: false, error: "FORBIDDEN" });
+      }
+
+      if (!doc.bucket_path?.startsWith("expert-documents/")) {
+        // Legacy Supabase path — cannot serve from local disk
+        return res.status(410).json({ success: false, error: "LEGACY_STORAGE", message: "Файл хранится в устаревшем хранилище; обратитесь к администратору" });
+      }
+
+      const filename = doc.bucket_path.slice("expert-documents/".length);
+      const filePath = path.join(UPLOADS_DIR, filename);
+      const contentType = doc.mime_type ?? "application/octet-stream";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(doc.file_name)}"`);
+      res.sendFile(filePath, err => {
+        if (err) {
+          console.error("[EXPERT-DOCS-DOWNLOAD] sendFile failed", { filePath, error: err.message });
+          if (!res.headersSent) res.status(404).json({ success: false, error: "FILE_NOT_FOUND" });
+        }
+      });
+    } finally {
+      client.release();
+    }
+  })().catch(err => {
+    console.error("[EXPERT-DOCS-DOWNLOAD] unhandled error", { stack: err.stack });
+    if (!res.headersSent) res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) });
+  });
+});
+
+// ── Helper: require any authenticated user ────────────────────────────────────
+async function requireAuth(req) {
+  const authHeader = req.headers["authorization"] ?? "";
+  const hasToken = authHeader.startsWith("Bearer ") && authHeader.slice(7).length > 0;
+  if (!hasToken) return { ok: false, status: 401, error: "MISSING_TOKEN" };
+  const token = authHeader.slice(7);
+  let meBody; let meStatus;
+  try {
+    const meRes = await fetch(`${AUTH_SERVICE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    meStatus = meRes.status;
+    try { meBody = await meRes.json(); } catch { meBody = null; }
+  } catch {
+    return { ok: false, status: 502, error: "AUTH_SERVICE_UNREACHABLE" };
+  }
+  if (meStatus !== 200 || !meBody?.success || !meBody.user?.id) {
+    return { ok: false, status: 401, error: "INVALID_TOKEN" };
+  }
+  if (!pool) return { ok: false, status: 503, error: "DATABASE_NOT_CONFIGURED" };
+  const userRes = await pool.query(
+    `SELECT id, role, is_active FROM public.palata_users WHERE id = $1 AND is_active = true LIMIT 1`,
+    [meBody.user.id],
+  );
+  const row = userRes.rows[0];
+  if (!row) return { ok: false, status: 403, error: "FORBIDDEN" };
+  return { ok: true, userId: row.id, role: row.role };
+}
+
+// ── GET /api/palata/admin/action-items ────────────────────────────────────────
+app.get("/api/palata/admin/action-items", (req, res) => {
+  (async () => {
+    const admin = await requireAdmin(req);
+    if (!admin.ok) return res.status(admin.status).json({ success: false, error: admin.error });
+
+    const { status, assigned_role, action_type, request_id, limit = "200" } = req.query;
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+    if (status)        { conditions.push(`status = $${idx}`);          params.push(status);        idx++; }
+    if (assigned_role) { conditions.push(`assigned_role = $${idx}`);   params.push(assigned_role); idx++; }
+    if (action_type)   { conditions.push(`action_type = $${idx}`);     params.push(action_type);   idx++; }
+    if (request_id)    { conditions.push(`request_id::text ILIKE $${idx}`); params.push(String(request_id) + "%"); idx++; }
+
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const limitVal = Math.min(Math.max(1, parseInt(String(limit), 10) || 200), 1000);
+
+    const countSql = `SELECT COUNT(*) AS total FROM public.palata_action_items ${where}`;
+    const rowsSql  = `SELECT id, request_id, assigned_to_user_id, assigned_role, action_type, title,
+                             status, is_read, is_resolved, created_at, resolved_at
+                      FROM public.palata_action_items ${where}
+                      ORDER BY created_at DESC
+                      LIMIT ${limitVal}`;
+    const client = await pool.connect();
+    try {
+      const [countRes, rowsRes] = await Promise.all([
+        client.query(countSql, params),
+        client.query(rowsSql, params),
+      ]);
+      res.json({ success: true, count: parseInt(countRes.rows[0].total, 10), rows: rowsRes.rows });
+    } catch (err) {
+      console.error("[ADMIN/ACTION-ITEMS] query failed", { stack: err.stack });
+      res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+    } finally { client.release(); }
+  })().catch(err => res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }));
+});
+
+// ── GET /api/palata/admin/status-events ───────────────────────────────────────
+app.get("/api/palata/admin/status-events", (req, res) => {
+  (async () => {
+    const admin = await requireAdmin(req);
+    if (!admin.ok) return res.status(admin.status).json({ success: false, error: admin.error });
+
+    const { new_status, entity_id, date_from, date_to, limit = "300" } = req.query;
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+    if (new_status) { conditions.push(`new_status = $${idx}`);              params.push(new_status); idx++; }
+    if (entity_id)  { conditions.push(`entity_id::text ILIKE $${idx}`);     params.push(String(entity_id) + "%"); idx++; }
+    if (date_from)  { conditions.push(`created_at >= $${idx}`);             params.push(new Date(String(date_from)).toISOString()); idx++; }
+    if (date_to)    { conditions.push(`created_at <= $${idx}`);             params.push(new Date(String(date_to) + "T23:59:59").toISOString()); idx++; }
+
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const limitVal = Math.min(Math.max(1, parseInt(String(limit), 10) || 300), 1000);
+
+    const countSql = `SELECT COUNT(*) AS total FROM public.palata_status_events ${where}`;
+    const rowsSql  = `SELECT id, entity_type, entity_id, old_status, new_status, actor_id, note, created_at
+                      FROM public.palata_status_events ${where}
+                      ORDER BY created_at DESC
+                      LIMIT ${limitVal}`;
+    const client = await pool.connect();
+    try {
+      const [countRes, rowsRes] = await Promise.all([
+        client.query(countSql, params),
+        client.query(rowsSql, params),
+      ]);
+      res.json({ success: true, count: parseInt(countRes.rows[0].total, 10), rows: rowsRes.rows });
+    } catch (err) {
+      console.error("[ADMIN/STATUS-EVENTS] query failed", { stack: err.stack });
+      res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+    } finally { client.release(); }
+  })().catch(err => res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }));
+});
+
+// ── POST /api/palata/action-items — create an action item ─────────────────────
+// Auth: admin can create for any user/request. Customer/expert can only create
+// items for requests where they are the customer or a matched expert.
+app.post("/api/palata/action-items", (req, res) => {
+  (async () => {
+    const auth = await requireAuth(req);
+    if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+
+    const {
+      request_id = null, expert_id = null, customer_id = null,
+      assigned_to_user_id, assigned_role, action_type, title, description, payload = null,
+    } = req.body ?? {};
+
+    if (!assigned_to_user_id || !assigned_role || !action_type || !title || !description) {
+      return res.status(400).json({ success: false, error: "MISSING_REQUIRED_FIELDS" });
+    }
+    if (!pool) return res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+
+    // Non-admin callers must have a stake in the request
+    if (auth.role !== "admin" && request_id) {
+      const reqRow = await pool.query(
+        `SELECT customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+        [request_id],
+      );
+      if (reqRow.rows.length === 0) return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+      const isCustomer = reqRow.rows[0].customer_id === auth.userId;
+      if (!isCustomer) {
+        const matchRow = await pool.query(
+          `SELECT 1 FROM public.palata_request_matches WHERE request_id = $1 AND expert_id = $2 LIMIT 1`,
+          [request_id, auth.userId],
+        );
+        if (matchRow.rows.length === 0) {
+          return res.status(403).json({ success: false, error: "FORBIDDEN", message: "Недостаточно прав для создания задания по этой заявке" });
+        }
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `INSERT INTO public.palata_action_items
+           (request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+            action_type, status, is_read, is_resolved, title, description, payload)
+         VALUES ($1, $2, $3, $4, $5, $6, 'open', false, false, $7, $8, $9)
+         RETURNING id`,
+        [request_id, expert_id, customer_id, assigned_to_user_id, assigned_role,
+         action_type, title, description, payload ? JSON.stringify(payload) : null],
+      );
+      res.json({ success: true, id: rows[0]?.id });
+    } catch (err) {
+      console.error("[ACTION-ITEMS] insert failed", { stack: err.stack });
+      res.status(500).json({ success: false, error: "INSERT_FAILED", message: String(err) });
+    } finally { client.release(); }
+  })().catch(err => res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }));
+});
+
+// ── POST /api/palata/action-items/cancel-by-request ───────────────────────────
+// Auth: admin can cancel for any request. Customer/expert can only cancel
+// items for requests where they are the customer or a matched expert.
+app.post("/api/palata/action-items/cancel-by-request", (req, res) => {
+  (async () => {
+    const auth = await requireAuth(req);
+    if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+
+    const { request_id, except_id = null } = req.body ?? {};
+    if (!request_id) return res.status(400).json({ success: false, error: "MISSING_REQUEST_ID" });
+    if (!pool) return res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+
+    // Non-admin callers must have a stake in the request
+    if (auth.role !== "admin") {
+      const reqRow = await pool.query(
+        `SELECT customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+        [request_id],
+      );
+      if (reqRow.rows.length === 0) return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+      const isCustomer = reqRow.rows[0].customer_id === auth.userId;
+      if (!isCustomer) {
+        const matchRow = await pool.query(
+          `SELECT 1 FROM public.palata_request_matches WHERE request_id = $1 AND expert_id = $2 LIMIT 1`,
+          [request_id, auth.userId],
+        );
+        if (matchRow.rows.length === 0) {
+          return res.status(403).json({ success: false, error: "FORBIDDEN" });
+        }
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      let sql = `UPDATE public.palata_action_items
+                 SET is_resolved = true, status = 'cancelled', resolved_at = now()
+                 WHERE request_id = $1 AND is_resolved = false`;
+      const params = [request_id];
+      if (except_id) { sql += ` AND id != $2`; params.push(except_id); }
+      await client.query(sql, params);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[ACTION-ITEMS] cancel-by-request failed", { stack: err.stack });
+      res.status(500).json({ success: false, error: "UPDATE_FAILED", message: String(err) });
+    } finally { client.release(); }
+  })().catch(err => res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }));
+});
+
+// ── POST /api/palata/status-events — log a status transition ──────────────────
+// Auth: actor_id is always derived from the authenticated user — never from the
+// request body — to prevent forging audit events on behalf of other users.
+// Non-admin callers must have a stake in the entity (customer or expert on the request).
+app.post("/api/palata/status-events", (req, res) => {
+  (async () => {
+    const auth = await requireAuth(req);
+    if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+
+    const { entity_type, entity_id, old_status = null, new_status, note = null } = req.body ?? {};
+    // actor_id is always the authenticated user — client-supplied value is ignored
+    const actor_id = auth.userId;
+    if (!entity_type || !entity_id || !new_status) {
+      return res.status(400).json({ success: false, error: "MISSING_REQUIRED_FIELDS" });
+    }
+    if (!pool) return res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+
+    // Non-admin callers must have a stake in the request they're logging events for
+    if (auth.role !== "admin" && entity_type === "request") {
+      const reqRow = await pool.query(
+        `SELECT customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`,
+        [entity_id],
+      );
+      if (reqRow.rows.length === 0) return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+      const isCustomer = reqRow.rows[0].customer_id === auth.userId;
+      if (!isCustomer) {
+        const matchRow = await pool.query(
+          `SELECT 1 FROM public.palata_request_matches WHERE request_id = $1 AND expert_id = $2 LIMIT 1`,
+          [entity_id, auth.userId],
+        );
+        if (matchRow.rows.length === 0) {
+          return res.status(403).json({ success: false, error: "FORBIDDEN" });
+        }
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `INSERT INTO public.palata_status_events
+           (entity_type, entity_id, old_status, new_status, actor_id, note)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id`,
+        [entity_type, entity_id, old_status, new_status, actor_id, note],
+      );
+      res.json({ success: true, id: rows[0]?.id });
+    } catch (err) {
+      console.error("[STATUS-EVENTS] insert failed", { stack: err.stack });
+      res.status(500).json({ success: false, error: "INSERT_FAILED", message: String(err) });
+    } finally { client.release(); }
+  })().catch(err => res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }));
+});
+
+// ── GET /api/palata/requests/:requestId/matched-experts ───────────────────────
+// Returns user info for experts with proposed matches on a request.
+// Accessible to the request's customer, admins, or matched experts.
+app.get("/api/palata/requests/:requestId/matched-experts", (req, res) => {
+  (async () => {
+    const auth = await requireAuth(req);
+    if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+    if (!pool) return res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+
+    const { requestId } = req.params;
+    const client = await pool.connect();
+    try {
+      // Access check: customer, admin, or matched expert
+      const reqRow = (await client.query(
+        `SELECT customer_id FROM public.palata_requests WHERE id = $1 LIMIT 1`, [requestId],
+      )).rows[0];
+      if (!reqRow) return res.status(404).json({ success: false, error: "REQUEST_NOT_FOUND" });
+
+      const isAdmin    = auth.role === "admin";
+      const isCustomer = reqRow.customer_id === auth.userId;
+      if (!isAdmin && !isCustomer) {
+        const matchCheck = (await client.query(
+          `SELECT 1 FROM public.palata_request_matches WHERE request_id = $1 AND expert_id = $2 LIMIT 1`,
+          [requestId, auth.userId],
+        )).rows.length > 0;
+        if (!matchCheck) return res.status(403).json({ success: false, error: "FORBIDDEN" });
+      }
+
+      const expertIds = (await client.query(
+        `SELECT expert_id FROM public.palata_request_matches WHERE request_id = $1 AND status = 'proposed'`,
+        [requestId],
+      )).rows.map(r => r.expert_id);
+
+      if (expertIds.length === 0) return res.json({ success: true, rows: [] });
+
+      const usersRes = await client.query(
+        `SELECT id, email, full_name FROM public.palata_users WHERE id = ANY($1)`,
+        [expertIds],
+      );
+      res.json({ success: true, rows: usersRes.rows });
+    } catch (err) {
+      console.error("[MATCHED-EXPERTS] query failed", { stack: err.stack });
+      res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+    } finally { client.release(); }
+  })().catch(err => res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }));
+});
+
+// ── GET /api/palata/action-items/open-by-request ─────────────────────────────
+// Returns open action items for the current user scoped to a specific request.
+app.get("/api/palata/action-items/open-by-request", (req, res) => {
+  (async () => {
+    const auth = await requireAuth(req);
+    if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+    if (!pool) return res.status(503).json({ success: false, error: "DATABASE_NOT_CONFIGURED" });
+
+    const { request_id } = req.query;
+    if (!request_id) return res.status(400).json({ success: false, error: "MISSING_REQUEST_ID" });
+
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT * FROM public.palata_action_items
+          WHERE assigned_to_user_id = $1 AND request_id = $2 AND is_resolved = false`,
+        [auth.userId, request_id],
+      );
+      res.json({ success: true, items: rows });
+    } catch (err) {
+      console.error("[ACTION-ITEMS/OPEN-BY-REQUEST] query failed", { stack: err.stack });
+      res.status(500).json({ success: false, error: "QUERY_FAILED", message: String(err) });
+    } finally { client.release(); }
+  })().catch(err => res.status(500).json({ success: false, error: "HANDLER_FAILED", message: String(err) }));
 });
 
 app.use(express.static(STATIC_DIR));

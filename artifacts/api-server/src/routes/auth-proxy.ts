@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response as ExpressResponse } from "express";
 
 const router = Router();
 
@@ -9,7 +9,7 @@ if (!UPSTREAM) {
   console.warn("[AUTH-PROXY] AUTH_SERVICE_URL is not set — /api/auth/* will return 503");
 }
 
-async function proxyRequest(req: Request, res: Response): Promise<void> {
+async function proxyRequest(req: Request, res: ExpressResponse): Promise<void> {
   const hasAuthHeader = Boolean(req.headers["authorization"]);
 
   console.log("[AUTH-PROXY] incoming", {
@@ -44,7 +44,7 @@ async function proxyRequest(req: Request, res: Response): Promise<void> {
     init.body = JSON.stringify(req.body);
   }
 
-  let upstream: Response;
+  let upstream: Awaited<ReturnType<typeof fetch>>;
   try {
     upstream = await fetch(upstreamUrl, init);
   } catch (err) {
@@ -85,7 +85,7 @@ async function proxyRequest(req: Request, res: Response): Promise<void> {
   res.status(upstream.status).json(body);
 }
 
-router.get("/debug/auth-proxy", (_req: Request, res: Response) => {
+router.get("/debug/auth-proxy", (_req: Request, res: ExpressResponse) => {
   res.json({
     ok: true,
     service: "api-server",
@@ -95,7 +95,7 @@ router.get("/debug/auth-proxy", (_req: Request, res: Response) => {
   });
 });
 
-router.all(/^\/auth(.*)$/, (req: Request, res: Response) => {
+router.all(/^\/auth(.*)$/, (req: Request, res: ExpressResponse) => {
   proxyRequest(req, res).catch((err: unknown) => {
     const stack = err instanceof Error ? err.stack : String(err);
     console.error("[AUTH-PROXY] ERROR stack =", stack);

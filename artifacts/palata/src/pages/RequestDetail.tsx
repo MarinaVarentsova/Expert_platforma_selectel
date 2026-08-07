@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { ClipboardList, Zap, Star, User, Briefcase, ChevronDown, ChevronUp } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
 import { useCurrentUser } from "@/lib/useAuth";
 import { fetchUsers } from "@/lib/users";
 import { getToken, palataFetch } from "@/lib/authClient";
@@ -250,11 +249,15 @@ async function logEvent(
   oldStatus: string | null, newStatus: string,
   note?: string,
 ) {
-  await supabase.from("palata_status_events").insert({
-    entity_type: entityType, entity_id: entityId,
-    old_status: oldStatus ?? null, new_status: newStatus,
-    actor_id: null, note: note ?? null,
-  });
+  await palataFetch("/api/palata/status-events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() ?? ""}` },
+    body: JSON.stringify({
+      entity_type: entityType, entity_id: entityId,
+      old_status: oldStatus ?? null, new_status: newStatus,
+      actor_id: null, note: note ?? null,
+    }),
+  }).catch(() => {});
 }
 
 async function logEmailEvent(
@@ -792,13 +795,14 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
   const [openRequestItems, setOpenRequestItems] = useState<ActionItem[]>([]);
   useEffect(() => {
     if (!userId) return;
-    supabase
-      .from("palata_action_items")
-      .select("*")
-      .eq("assigned_to_user_id", userId)
-      .eq("request_id", r.id)
-      .eq("is_resolved", false)
-      .then(({ data }) => setOpenRequestItems((data ?? []) as ActionItem[]));
+    const token = getToken();
+    if (!token) return;
+    palataFetch(`/api/palata/action-items/open-by-request?request_id=${encodeURIComponent(r.id)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => res.json())
+      .then(body => setOpenRequestItems((body.items ?? []) as ActionItem[]))
+      .catch(() => {});
   }, [userId, r.id]);
 
   const expertsMatchedItem = openRequestItems.find(i => i.action_type === "experts_matched");

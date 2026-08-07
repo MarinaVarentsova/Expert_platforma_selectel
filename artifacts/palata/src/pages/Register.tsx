@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { supabase } from "@/lib/supabaseClient";
 import { register as authRegister } from "@/lib/authClient";
 import { runAllPendingMatching } from "@/lib/matching";
 import {
@@ -71,10 +70,10 @@ export default function Register() {
   const PALATA_URL = "палатаэкспертов.рф";
 
   useEffect(() => {
-    supabase.from("palata_expertise_directions")
-      .select("id, name")
-      .order("sort_order")
-      .then(({ data }) => setAllDirections(data ?? []));
+    fetch("/api/palata/expertise-directions")
+      .then(r => r.json())
+      .then(({ rows }) => setAllDirections((rows ?? []) as Array<{ id: string; name: string }>))
+      .catch(() => {});
   }, []);
 
   // Consent checkboxes

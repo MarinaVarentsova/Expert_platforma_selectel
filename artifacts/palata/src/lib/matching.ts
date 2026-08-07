@@ -1,4 +1,3 @@
-import { supabase } from "./supabaseClient";
 import { getToken, palataFetch } from "@/lib/authClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -45,22 +44,19 @@ export async function runMatching(input: MatchingInput): Promise<MatchingResult>
 }
 
 // ─── Run matching for all pending orders ──────────────────────────────────────
-
+// The server-side scheduler handles periodic matching. This is a best-effort
+// trigger called after expert registration; failures are non-fatal.
 export async function runAllPendingMatching(): Promise<void> {
-  const { data: orders } = await supabase
-    .from("palata_requests")
-    .select("id, expertise_direction_id, region_id, requires_travel, customer_id")
-    .eq("status", "matching");
-
-  for (const order of orders ?? []) {
-    try {
-      await runMatching({
-        requestId:            order.id,
-        expertiseDirectionId: order.expertise_direction_id ?? null,
-        regionIds:            order.region_id ? [order.region_id] : [],
-        requiresTravel:       order.requires_travel ?? false,
-        customerId:           order.customer_id ?? undefined,
-      });
-    } catch { /* non-fatal: continue with next */ }
+  try {
+    const token = getToken();
+    if (!token) return;
+    // Calls the Palata server's own matching trigger endpoint, which handles all pending requests
+    // using the same PostgreSQL pool as the rest of the server (no cross-service HTTP dependency).
+    await palataFetch("/api/palata/match/trigger-all", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    // non-fatal: server scheduler will handle it within the next interval
   }
 }

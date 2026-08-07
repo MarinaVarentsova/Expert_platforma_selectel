@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { supabase } from "@/lib/supabaseClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import { fetchUsers } from "@/lib/users";
 import { fetchRequests } from "@/lib/requests";
 import { runMatching } from "@/lib/matching";
@@ -13,7 +13,6 @@ import {
   verifyCertificate, mergeDirectionIds, normalizeCertNumber,
   type CertResult,
 } from "@/lib/certificates";
-import { getToken, palataFetch } from "@/lib/authClient";
 import {
   Inbox, Star, User, CheckCircle2, XCircle, MapPin,
   Briefcase, FileText, GraduationCap, ClipboardList, Zap, Calendar,
@@ -293,7 +292,9 @@ export default function ExpertDashboard() {
       fetchUsers([userId])
         .then(rows => setUserPhone((rows[0] as { phone: string | null } | undefined)?.phone ?? null));
 
-      fetch(`/api/palata/expert-documents/${encodeURIComponent(userId)}`)
+      fetch(`/api/palata/expert-documents/${encodeURIComponent(userId)}`, {
+        headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+      })
         .then(r => r.json())
         .then(b => {
           if (!b.success) { setDocsState({ kind: "error", message: b.message ?? "Ошибка загрузки" }); return; }
@@ -365,7 +366,9 @@ export default function ExpertDashboard() {
   function reloadDocs() {
     if (guard.status !== "ok") return;
     const uid = guard.user.id;
-    fetch(`/api/palata/expert-documents/${encodeURIComponent(uid)}`)
+    fetch(`/api/palata/expert-documents/${encodeURIComponent(uid)}`, {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    })
       .then(r => r.json())
       .then(b => {
         if (!b.success) { setDocsState({ kind: "error", message: b.message ?? "Ошибка загрузки" }); return; }
@@ -1805,20 +1808,26 @@ function DocumentsSection({
     setUploading(true);
     setUploadErr(null);
 
-    const path = `${userId}/${Date.now()}_${file.name}`;
-    const { error: storErr } = await supabase.storage
-      .from("palata-expert-documents")
-      .upload(path, file, { cacheControl: "3600", upsert: false });
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("expert_id", userId);
+    formData.append("doc_type", docType);
 
-    if (storErr) { setUploadErr(storErr.message); setUploading(false); return; }
+    const token = getToken() ?? "";
+    const uploadRes = await fetch("/api/palata/expert-documents/upload", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    }).then(r => r.json()).catch(() => ({ success: false, message: "network error" }));
+
+    if (!uploadRes.success) { setUploadErr(uploadRes.message ?? "Ошибка загрузки файла"); setUploading(false); return; }
 
     const dbRes = await fetch("/api/palata/expert-documents", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        expert_id:   userId,
         doc_type:    docType,
-        bucket_path: path,
+        bucket_path: uploadRes.bucket_path,
         file_name:   file.name,
         mime_type:   file.type || null,
         size_bytes:  file.size,
@@ -1833,9 +1842,10 @@ function DocumentsSection({
   }
 
   async function handleDelete(doc: ExpertDocument) {
-    await supabase.storage.from("palata-expert-documents").remove([doc.bucket_path]);
-    await fetch(`/api/palata/expert-documents/${encodeURIComponent(doc.id)}`, { method: "DELETE" })
-      .then(r => r.json()).catch(() => null);
+    await fetch(`/api/palata/expert-documents/${encodeURIComponent(doc.id)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    }).then(r => r.json()).catch(() => null);
     onReload();
   }
 

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Pool } from "pg";
 import { runAllPendingMatching } from "./matcher";
 import { checkExpiringCerts } from "./cert-checker";
 import { logger } from "./logger";
@@ -12,7 +12,7 @@ const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 let _intervalMinutes = DEFAULT_INTERVAL_MINUTES;
 let _timerId: ReturnType<typeof setInterval> | null = null;
-let _dbRef: SupabaseClient | null = null;
+let _dbRef: Pool | null = null;
 
 function runScheduled() {
   if (!_dbRef) return;
@@ -33,7 +33,7 @@ function applyTimer(isInitial: boolean) {
 }
 
 /** Schedule a daily task at a fixed clock hour in Moscow time (UTC+3). */
-function scheduleDailyCertCheck(db: SupabaseClient) {
+function scheduleDailyCertCheck(db: Pool) {
   function msUntilNextRun(): number {
     const now = Date.now();
     const nowMsk = new Date(now + MSK_OFFSET_MS);
@@ -67,17 +67,17 @@ function scheduleDailyCertCheck(db: SupabaseClient) {
   schedule();
 }
 
-export async function initScheduler(db: SupabaseClient): Promise<void> {
+export async function initScheduler(db: Pool): Promise<void> {
   _dbRef = db;
 
   try {
-    const { data } = await db
-      .from("palata_settings")
-      .select("value")
-      .eq("key", SETTING_KEY)
-      .maybeSingle();
-    if (data?.value) {
-      const parsed = parseInt(data.value as string, 10);
+    const res = await db.query<{ value: string }>(
+      `SELECT value FROM public.palata_settings WHERE key = $1 LIMIT 1`,
+      [SETTING_KEY],
+    );
+    const row = res.rows[0];
+    if (row?.value) {
+      const parsed = parseInt(row.value, 10);
       if (!isNaN(parsed) && parsed >= 1 && parsed <= 120) {
         _intervalMinutes = parsed;
       }
@@ -96,14 +96,16 @@ export function getIntervalMinutes(): number {
   return _intervalMinutes;
 }
 
-export async function setIntervalMinutes(db: SupabaseClient, minutes: number): Promise<void> {
+export async function setIntervalMinutes(db: Pool, minutes: number): Promise<void> {
   _intervalMinutes = minutes;
   applyTimer(false);
 
   try {
-    await db.from("palata_settings").upsert(
-      { key: SETTING_KEY, value: String(minutes) },
-      { onConflict: "key" },
+    await db.query(
+      `INSERT INTO public.palata_settings (key, value)
+       VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [SETTING_KEY, String(minutes)],
     );
   } catch {
     // non-fatal: in-memory change already applied

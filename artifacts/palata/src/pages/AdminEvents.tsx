@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "wouter";
-import { supabase } from "@/lib/supabaseClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import { fetchRequests } from "@/lib/requests";
 import { fetchUsers } from "@/lib/users";
 import AdminLayout from "@/components/AdminLayout";
@@ -46,22 +46,24 @@ export default function AdminEvents() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
 
-    let q = supabase
-      .from("palata_status_events")
-      .select("id, entity_type, entity_id, old_status, new_status, actor_id, note, created_at", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .limit(300);
+    const token = getToken();
+    if (!token) { setError("Нет токена авторизации"); setLoading(false); return; }
 
-    if (fStatus)   q = q.eq("new_status", fStatus);
-    if (fRequest)  q = q.ilike("entity_id", `${fRequest}%`);
-    if (fDateFrom) q = q.gte("created_at", new Date(fDateFrom).toISOString());
-    if (fDateTo)   q = q.lte("created_at", new Date(fDateTo + "T23:59:59").toISOString());
+    const params = new URLSearchParams({ limit: "300" });
+    if (fStatus)   params.set("new_status", fStatus);
+    if (fRequest)  params.set("entity_id", fRequest);
+    if (fDateFrom) params.set("date_from", fDateFrom);
+    if (fDateTo)   params.set("date_to", fDateTo);
 
-    const { data, error: err, count } = await q;
-    if (err) { setError(err.message); setLoading(false); return; }
+    const res = await palataFetch(`/api/palata/admin/status-events?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => null);
+    if (!res || !res.ok) { setError("Ошибка загрузки"); setLoading(false); return; }
+    const body = await res.json().catch(() => null);
+    if (!body?.success) { setError(body?.error ?? "Ошибка загрузки"); setLoading(false); return; }
 
-    const items = (data ?? []) as Row[];
-    setTotal(count ?? items.length);
+    const items = (body.rows ?? []) as Row[];
+    setTotal(body.count ?? items.length);
 
     const actorIds   = [...new Set(items.map(r => r.actor_id).filter(Boolean))] as string[];
     const requestIds = [...new Set(items.filter(r => r.entity_type === "request").map(r => r.entity_id))];

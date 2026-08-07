@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { getToken, palataFetch } from "@/lib/authClient";
 import AdminLayout from "@/components/AdminLayout";
 import { useRequireRole } from "@/lib/useRequireRole";
@@ -41,15 +40,17 @@ export default function AdminExperts() {
 
   async function loadExperts() {
     setLoading(true);
-    const { data: users } = await supabase
-      .from("palata_users")
-      .select("id, full_name, email, phone")
-      .eq("role", "expert")
-      .order("full_name");
+    const token = getToken();
+    const usersRes = await palataFetch("/api/palata/admin/users?role=expert&order=full_name", {
+      headers: { Authorization: `Bearer ${token ?? ""}` },
+    }).catch(() => null);
+    if (!usersRes || !usersRes.ok) { setLoading(false); return; }
+    const usersBody = await usersRes.json().catch(() => null);
+    const users = (usersBody?.rows ?? []) as { id: string; full_name: string | null; email: string; phone: string | null }[];
 
-    if (!users || users.length === 0) { setLoading(false); return; }
+    if (users.length === 0) { setLoading(false); return; }
 
-    const ids = (users as { id: string }[]).map(u => u.id);
+    const ids = users.map(u => u.id);
 
     const [{ data: profiles }, { data: expDirs }, { data: expRegs }] = await Promise.all([
       fetch(`/api/palata/expert-profile?user_ids=${encodeURIComponent(ids.join(","))}`)

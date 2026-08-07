@@ -76,9 +76,9 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.106.1",
     "@workspace/ai-detect": "workspace:*",
     "express": "^5.2.1",
+    "multer": "^2.2.0",
     "pg": "^8.20.0",
     "xlsx": "^0.18.5"
   }

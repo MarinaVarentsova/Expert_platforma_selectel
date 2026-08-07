@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, useSearch } from "wouter";
-import { supabase } from "@/lib/supabaseClient";
 import { getToken, palataFetch } from "@/lib/authClient";
 import { fetchUsers } from "@/lib/users";
 import { fetchRequests } from "@/lib/requests";
@@ -236,12 +235,8 @@ export default function CustomerDashboard() {
       .catch((e: unknown) => setProfileState({ kind: "error", message: String(e) }));
 
 
-    supabase
-      .from("palata_users")
-      .select("phone")
-      .eq("id", userId)
-      .single()
-      .then(({ data }) => setUserPhone((data as { phone: string | null } | null)?.phone ?? null));
+    fetchUsers([userId])
+      .then(rows => setUserPhone((rows[0] as { phone: string | null } | undefined)?.phone ?? null));
 
     // Load avg rating that experts gave to this customer
     fetch(`/api/palata/customer-ratings?customer_id=${encodeURIComponent(userId)}`)
@@ -1090,11 +1085,14 @@ function ExpertsMatchedCard({ item, userId, onDone }: {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const { data: matches } = await supabase
-        .from("palata_request_matches")
-        .select("id, expert_id, status, decline_reason")
-        .eq("request_id", item.request_id)
-        .in("status", ["proposed", "contacts_opened", "can_start_from", "accepted"]);
+      const detailRes = await palataFetch(`/api/palata/requests/${item.request_id}/detail`, {
+        headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+      }).catch(() => null);
+      if (!detailRes || !detailRes.ok) { setLoading(false); return; }
+      const detailBody = await detailRes.json().catch(() => ({ success: false }));
+      const allMatches = (detailBody.matches ?? []) as { id: string; expert_id: string; status: string; decline_reason: string | null }[];
+      const ACTIVE_STATUSES = new Set(["proposed", "contacts_opened", "can_start_from", "accepted"]);
+      const matches = allMatches.filter(m => ACTIVE_STATUSES.has(m.status));
 
       if (!matches || matches.length === 0) { setLoading(false); return; }
 

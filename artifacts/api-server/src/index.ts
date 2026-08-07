@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { supabase } from "./lib/supabase";
+import { pool } from "./lib/db";
 import { initScheduler } from "./lib/scheduler";
 
 const rawPort = process.env["PORT"];
@@ -25,11 +25,11 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
 
-  if (supabase) {
-    initScheduler(supabase).catch(e => {
+  if (pool) {
+    initScheduler(pool).catch(e => {
       logger.warn({ err: (e as Error).message }, "Scheduler init error");
     });
   } else {
-    logger.warn("Matching scheduler disabled — Supabase not configured");
+    logger.warn("Matching scheduler disabled — PALATA_DATABASE_URL not configured");
   }
 });

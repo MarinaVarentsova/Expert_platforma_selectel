@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "wouter";
-import { supabase } from "@/lib/supabaseClient";
+import { getToken, palataFetch } from "@/lib/authClient";
 import { fetchRequests } from "@/lib/requests";
 import { fetchUsers } from "@/lib/users";
 import AdminLayout from "@/components/AdminLayout";
@@ -72,22 +72,24 @@ export default function AdminActionItems() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
 
-    let q = supabase
-      .from("palata_action_items")
-      .select("id, request_id, assigned_to_user_id, assigned_role, action_type, title, status, is_read, is_resolved, created_at, resolved_at", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .limit(200);
+    const token = getToken();
+    if (!token) { setError("Нет токена авторизации"); setLoading(false); return; }
 
-    if (fStatus)  q = q.eq("status", fStatus);
-    if (fRole)    q = q.eq("assigned_role", fRole);
-    if (fType)    q = q.eq("action_type", fType);
-    if (fRequest) q = q.ilike("request_id", `${fRequest}%`);
+    const params = new URLSearchParams({ limit: "200" });
+    if (fStatus)  params.set("status", fStatus);
+    if (fRole)    params.set("assigned_role", fRole);
+    if (fType)    params.set("action_type", fType);
+    if (fRequest) params.set("request_id", fRequest);
 
-    const { data, error: err, count } = await q;
-    if (err) { setError(err.message); setLoading(false); return; }
+    const res = await palataFetch(`/api/palata/admin/action-items?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => null);
+    if (!res || !res.ok) { setError("Ошибка загрузки"); setLoading(false); return; }
+    const body = await res.json().catch(() => null);
+    if (!body?.success) { setError(body?.error ?? "Ошибка загрузки"); setLoading(false); return; }
 
-    const items = (data ?? []) as Row[];
-    setTotal(count ?? items.length);
+    const items = (body.rows ?? []) as Row[];
+    setTotal(body.count ?? items.length);
 
     const userIds    = [...new Set(items.map(r => r.assigned_to_user_id).filter(Boolean))];
     const requestIds = [...new Set(items.map(r => r.request_id).filter(Boolean))];

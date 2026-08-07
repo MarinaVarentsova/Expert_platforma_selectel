@@ -1,0 +1,100 @@
+Работаем только в Expert_platforma_selectel.
+
+Сейчас меняем ТОЛЬКО Register.tsx.
+
+Цель:
+убрать единственный Supabase READ списка направлений из Register.tsx и заменить его на существующий backend API Selectel.
+
+Текущая логика:
+Register.tsx
+→ supabase.from("palata_expertise_directions")
+→ select id, name
+→ order by sort_order
+→ заполняет список направлений регистрации.
+
+Новая логика должна быть:
+
+Register.tsx
+→ GET /api/palata/expertise-directions
+→ PostgreSQL Selectel
+→ тот же список направлений в UI.
+
+ВАЖНО:
+не менять остальную регистрацию.
+не менять Auth.
+не менять server.js, если endpoint уже существует.
+не менять структуру ответа endpoint.
+не менять дизайн.
+не менять matching.
+не менять action_items.
+не менять status_events.
+не трогать другие Supabase-вызовы.
+
+1. Сначала проверь существующий endpoint:
+
+GET /api/palata/expertise-directions
+
+Покажи его фактический response shape.
+
+Убедись, что он возвращает минимум:
+- id
+- name
+
+и порядок соответствует sort_order.
+
+2. В Register.tsx заменить только текущий вызов:
+
+supabase
+  .from("palata_expertise_directions")
+  .select("id, name")
+  .order("sort_order")
+
+на fetch:
+
+GET /api/palata/expertise-directions
+
+Использовать тот же механизм авторизации, который уже принят для публичного списка направлений.
+Не добавлять Bearer token, если endpoint публичный и сейчас его не требует.
+
+3. Сохранить текущее поведение UI:
+
+- список направлений появляется при загрузке страницы;
+- структура данных остаётся совместимой с текущим state;
+- ошибки загрузки обрабатываются не хуже, чем сейчас;
+- регистрация клиента работает;
+- регистрация эксперта работает;
+- выбранные direction IDs отправляются в регистрацию так же, как раньше.
+
+4. После изменения удалить import Supabase из Register.tsx только если он больше в этом файле нигде не используется.
+
+Не удалять supabaseClient.ts.
+Не удалять @supabase/supabase-js.
+Это будет позже, когда уберём остальные вызовы.
+
+5. Проверить, что в Register.tsx после изменения нет:
+
+supabase.
+supabase.from
+import { supabase }
+
+6. Запустить:
+
+pnpm --filter ./artifacts/palata run build
+tsc --noEmit
+существующие тесты
+
+Если есть тесты регистрации — запустить их отдельно.
+
+7. Вернуть:
+
+- какой код был;
+- какой код стал;
+- фактический response shape /api/palata/expertise-directions;
+- подтверждение, что sort_order сохраняется;
+- удалён ли import Supabase из Register.tsx;
+- результаты build/tsc/tests;
+- hash commit;
+- push status.
+
+Commit:
+refactor: replace Register Supabase directions read

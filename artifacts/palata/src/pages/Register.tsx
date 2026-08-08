@@ -765,18 +765,33 @@ export default function Register() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-6 py-8 flex flex-col items-center justify-center gap-3 text-center">
-              <FileText className="w-10 h-10 text-slate-300" />
-              <p className="text-base font-semibold text-slate-500">Документ в разработке</p>
-              <p className="text-sm text-slate-400 leading-relaxed max-w-xs">
-                Документ будет опубликован в ближайшее время. Вы сможете ознакомиться с ним здесь.
-              </p>
+            <div className="flex-1 min-h-0">
+              <iframe
+                src={openDoc === "personal"
+                  ? "/documents/personal-data-consent.pdf"
+                  : "/documents/platform-rules.pdf"}
+                className="w-full h-full border-0"
+                style={{ minHeight: "400px" }}
+                title={openDoc === "personal"
+                  ? "Согласие на обработку персональных данных"
+                  : "Правила работы на платформе"}
+              />
             </div>
-            <div className="px-6 py-4 border-t border-[#E0E0E0]">
+            <div className="px-6 py-4 border-t border-[#E0E0E0] flex items-center gap-3">
+              <a
+                href={openDoc === "personal"
+                  ? "/documents/personal-data-consent.pdf"
+                  : "/documents/platform-rules.pdf"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 text-center text-sm text-[#002B5C] underline underline-offset-2 hover:text-[#0F4C9A]"
+              >
+                Открыть документ в новой вкладке
+              </a>
               <button
                 type="button"
                 onClick={() => setOpenDoc(null)}
-                className="w-full btn-primary py-2.5"
+                className="btn-primary py-2.5 px-6"
               >
                 Закрыть
               </button>

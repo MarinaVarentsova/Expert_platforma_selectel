@@ -80,7 +80,7 @@ export default function Register() {
   const [consentPersonal, setConsentPersonal]   = useState(false);
   const [consentMarketing, setConsentMarketing] = useState(false);
   const [consentRules, setConsentRules]         = useState(false);
-  const [openDoc, setOpenDoc]                   = useState<"personal" | "rules" | null>(null);
+  const [openDoc, setOpenDoc]                   = useState<"personal" | "rules" | "privacy" | "marketing" | null>(null);
 
   const [tripReady, setTripReady]         = useState(false);
   const [palataOk, setPalataOk]           = useState(false);
@@ -667,21 +667,28 @@ export default function Register() {
           <div className="bg-white rounded-2xl border border-[#D0D0D0] p-5 space-y-4">
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666]">Согласия</p>
 
-            {/* 1. Personal data */}
+            {/* 1. Personal data consent + privacy policy */}
             <label className="flex items-start gap-3 cursor-pointer group">
               <div className={`mt-0.5 w-4 h-4 flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors ${consentPersonal ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300 group-hover:border-[#002B5C]"}`}>
                 {consentPersonal && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
                 <input type="checkbox" className="sr-only" checked={consentPersonal} onChange={e => setConsentPersonal(e.target.checked)} />
               </div>
               <span className="text-sm text-slate-700 leading-snug">
-                Я даю согласие на{" "}
+                Я соглашаюсь{" "}
                 <button
                   type="button"
                   onClick={() => setOpenDoc("personal")}
-                  className="text-[#002B5C] underline underline-offset-2 hover:text-[#0F4C9A] inline-flex items-center gap-0.5"
+                  className="text-[#002B5C] underline underline-offset-2 hover:text-[#0F4C9A] inline"
                 >
-                  обработку персональных данных
-                  <FileText className="w-3 h-3 ml-0.5" />
+                  на обработку персональных данных
+                </button>
+                {" "}в соответствии с{" "}
+                <button
+                  type="button"
+                  onClick={() => setOpenDoc("privacy")}
+                  className="text-[#002B5C] underline underline-offset-2 hover:text-[#0F4C9A] inline"
+                >
+                  политикой конфиденциальности
                 </button>
                 <span className="text-red-500 ml-0.5">*</span>
               </span>
@@ -694,14 +701,13 @@ export default function Register() {
                 <input type="checkbox" className="sr-only" checked={consentRules} onChange={e => setConsentRules(e.target.checked)} />
               </div>
               <span className="text-sm text-slate-700 leading-snug">
-                Я ознакомлен с{" "}
+                Я ознакомлен и согласен с{" "}
                 <button
                   type="button"
                   onClick={() => setOpenDoc("rules")}
-                  className="text-[#002B5C] underline underline-offset-2 hover:text-[#0F4C9A] inline-flex items-center gap-0.5"
+                  className="text-[#002B5C] underline underline-offset-2 hover:text-[#0F4C9A] inline"
                 >
-                  правилами работы на платформе
-                  <FileText className="w-3 h-3 ml-0.5" />
+                  правилами работы на Платформе
                 </button>
                 <span className="text-red-500 ml-0.5">*</span>
               </span>
@@ -714,7 +720,14 @@ export default function Register() {
                 <input type="checkbox" className="sr-only" checked={consentMarketing} onChange={e => setConsentMarketing(e.target.checked)} />
               </div>
               <span className="text-sm text-slate-500 leading-snug">
-                Я согласен на получение рекламных и информационных сообщений по электронной почте
+                Я соглашаюсь{" "}
+                <button
+                  type="button"
+                  onClick={() => setOpenDoc("marketing")}
+                  className="text-[#002B5C] underline underline-offset-2 hover:text-[#0F4C9A] inline"
+                >
+                  на получение рекламных рассылок, звонков и сообщений
+                </button>
               </span>
             </label>
           </div>
@@ -753,9 +766,10 @@ export default function Register() {
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#E0E0E0]">
               <h2 className="text-sm font-bold text-[#111111]">
-                {openDoc === "personal"
-                  ? "Согласие на обработку персональных данных"
-                  : "Правила работы на платформе"}
+                {openDoc === "personal" ? "Согласие на обработку персональных данных"
+                  : openDoc === "privacy" ? "Политика конфиденциальности"
+                  : openDoc === "marketing" ? "Согласие на получение рекламных сообщений"
+                  : "Правила работы на Платформе"}
               </h2>
               <button
                 type="button"
@@ -767,21 +781,30 @@ export default function Register() {
             </div>
             <div className="flex-1 min-h-0">
               <iframe
-                src={openDoc === "personal"
-                  ? "/documents/personal-data-consent.pdf"
-                  : "/documents/platform-rules.pdf"}
+                src={
+                  openDoc === "personal" ? "/documents/personal-data-consent.pdf"
+                  : openDoc === "privacy" ? "/documents/privacy-policy.pdf"
+                  : openDoc === "marketing" ? "/documents/marketing-consent.pdf"
+                  : "/documents/platform-rules.pdf"
+                }
                 className="w-full h-full border-0"
                 style={{ minHeight: "400px" }}
-                title={openDoc === "personal"
-                  ? "Согласие на обработку персональных данных"
-                  : "Правила работы на платформе"}
+                title={
+                  openDoc === "personal" ? "Согласие на обработку персональных данных"
+                  : openDoc === "privacy" ? "Политика конфиденциальности"
+                  : openDoc === "marketing" ? "Согласие на получение рекламных сообщений"
+                  : "Правила работы на Платформе"
+                }
               />
             </div>
             <div className="px-6 py-4 border-t border-[#E0E0E0] flex items-center gap-3">
               <a
-                href={openDoc === "personal"
-                  ? "/documents/personal-data-consent.pdf"
-                  : "/documents/platform-rules.pdf"}
+                href={
+                  openDoc === "personal" ? "/documents/personal-data-consent.pdf"
+                  : openDoc === "privacy" ? "/documents/privacy-policy.pdf"
+                  : openDoc === "marketing" ? "/documents/marketing-consent.pdf"
+                  : "/documents/platform-rules.pdf"
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 text-center text-sm text-[#002B5C] underline underline-offset-2 hover:text-[#0F4C9A]"

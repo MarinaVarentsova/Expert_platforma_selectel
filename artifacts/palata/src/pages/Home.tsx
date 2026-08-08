@@ -385,6 +385,24 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ════════════════════════════════════════════════════
+          FOOTER
+      ════════════════════════════════════════════════════ */}
+      <footer className="bg-[#001F45] border-t border-white/10">
+        <div className={`${W} py-4 flex flex-col sm:flex-row items-center justify-between gap-3`}>
+          <p className="text-xs text-white/50">
+            © 2026 ООО «Палата судебных экспертов»
+          </p>
+          <a
+            href="/documents/privacy-policy.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-white/50 hover:text-white/80 underline underline-offset-2 transition-colors"
+          >
+            Политика обработки персональных данных
+          </a>
+        </div>
+      </footer>
 
     </div>
   );

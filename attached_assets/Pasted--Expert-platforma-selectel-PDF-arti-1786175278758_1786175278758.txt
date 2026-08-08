@@ -1,0 +1,87 @@
+Работаем только в Expert_platforma_selectel.
+
+Юридические PDF уже добавлены в репозиторий:
+
+artifacts/palata/public/documents/personal-data-consent.pdf
+artifacts/palata/public/documents/platform-rules.pdf
+
+Ничего не создавать и файлы не перемещать.
+
+ЗАДАЧА:
+
+В существующем Register.tsx подключить эти два PDF к уже существующему модальному окну документов.
+
+Существующую механику сохранить:
+
+consentPersonal
+→ setOpenDoc("personal")
+
+consentRules
+→ setOpenDoc("rules")
+
+Подключение:
+
+openDoc === "personal"
+→ /documents/personal-data-consent.pdf
+
+openDoc === "rules"
+→ /documents/platform-rules.pdf
+
+Вместо существующей заглушки
+"Документ в разработке"
+показывать соответствующий PDF внутри существующего модального окна.
+
+Использовать iframe или другой простой встроенный просмотр PDF.
+
+Дополнительно внутри модала добавить ссылку:
+"Открыть документ в новой вкладке"
+
+Она должна открывать тот же PDF с target="_blank".
+
+НЕ МЕНЯТЬ:
+- тексты трех чекбоксов;
+- дизайн формы регистрации;
+- обязательность consentPersonal;
+- обязательность consentRules;
+- необязательность consentMarketing;
+- существующие state;
+- authRegister;
+- payload регистрации;
+- auth-service;
+- backend;
+- БД;
+- маршруты приложения;
+- остальные компоненты.
+
+Маркетинговое согласие сейчас не трогать.
+
+После изменения проверить:
+
+1. Нажатие на "обработку персональных данных"
+   → открывает personal-data-consent.pdf.
+
+2. Нажатие на "правилами работы на платформе"
+   → открывает platform-rules.pdf.
+
+3. Оба файла доступны:
+   /documents/personal-data-consent.pdf
+   /documents/platform-rules.pdf
+
+4. Закрытие модала работает как раньше.
+
+5. Регистрация работает как раньше.
+
+6. pnpm build
+7. tsc --noEmit
+8. тесты
+
+Никаких других рефакторингов и cleanup в рамках этой задачи не выполнять.
+
+Вернуть кратко:
+- что изменено;
+- какие URL документов используются;
+- результаты build/tsc/tests;
+- commit hash.
+
+Commit:
+feat: connect registration legal documents

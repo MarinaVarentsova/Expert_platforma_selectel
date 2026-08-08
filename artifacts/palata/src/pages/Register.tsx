@@ -352,7 +352,7 @@ export default function Register() {
   // ── Success screen ─────────────────────────────────────────────────────────
   if (step === "success") {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
+      <div className="min-h-[calc(100vh-72px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-md space-y-4">
           <div className="bg-white rounded-2xl border border-[#D0D0D0] p-8 text-center shadow-sm">
             <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-5">
@@ -429,7 +429,7 @@ export default function Register() {
   // ── Role selection screen ──────────────────────────────────────────────────
   if (step === "role") {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
+      <div className="min-h-[calc(100vh-72px)] bg-[#F4F4F4] flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-lg">
           <div className="text-center mb-8">
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-3">Регистрация</p>
@@ -476,7 +476,7 @@ export default function Register() {
 
   // ── Registration form ──────────────────────────────────────────────────────
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-[#F4F4F4] px-4 py-10">
+    <div className="min-h-[calc(100vh-72px)] bg-[#F4F4F4] px-4 py-10">
       <div className="max-w-xl mx-auto">
 
         <button

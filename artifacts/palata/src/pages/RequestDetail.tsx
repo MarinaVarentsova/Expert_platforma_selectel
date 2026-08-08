@@ -1316,8 +1316,8 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
 
       {/* ══ 2. ОСНОВНАЯ ИНФОРМАЦИЯ ══════════════════════════════════════════ */}
       <Card>
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-mono text-slate-400 mb-1">#{shortId(r.id)}</p>
             <h1 className="text-xl font-bold text-slate-800 leading-snug">{r.title}</h1>
           </div>
@@ -1448,7 +1448,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
         ) : (
           /* ── View mode ── */
           <>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
               {role !== "expert" && (
                 <Field label="Заказчик">
                   {customer
@@ -1565,7 +1565,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mb-4">
                       <Field label="Направление">
                         {directionsMap[r.expertise_direction_id ?? ""] ?? r.expertise_type ?? "—"}
                       </Field>
@@ -2028,7 +2028,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                     {/* Expert profile */}
                     {profile ? (
                       <div className="px-4 py-3 space-y-3">
-                        <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
                           {(expertDirectionNamesMap[profile.user_id]?.length ?? 0) > 0 && (
                             <Field label="Направления экспертиз">{(expertDirectionNamesMap[profile.user_id] ?? []).join(", ")}</Field>
                           )}
@@ -2056,7 +2056,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                               : <span className="text-slate-400">Без командировок</span>}
                           </Field>
                         </div>
-                        <div className="border-t border-slate-100 pt-3 grid grid-cols-2 gap-x-6 gap-y-2.5">
+                        <div className="border-t border-slate-100 pt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
                           <RegistryField
                             label="Палата судебных экспертов РФ"
                             verified={profile.palata_registry_verified}
@@ -2110,7 +2110,7 @@ function Detail({ data, onReload }: { data: LoadedData; onReload: () => void }) 
                     {hasContacts && contact && (
                       <div className="px-4 py-3 bg-[#F4F4F4] border-t border-[#D0D0D0]">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-[#666666] mb-2">Контакты открыты</p>
-                        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
                           {/* Customer sees expert contacts */}
                           {contact.expert_phone && (
                             <div>

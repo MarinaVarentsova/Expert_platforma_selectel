@@ -87,7 +87,7 @@ const W = "max-w-6xl mx-auto px-4 sm:px-6 lg:px-8";
 function CardGrid({ cols = 4, children }: { cols?: 2 | 3 | 4; children: React.ReactNode }) {
   const colCls =
     cols === 2 ? "grid-cols-1 sm:grid-cols-2" :
-    cols === 3 ? "grid-cols-1 sm:grid-cols-3" :
+    cols === 3 ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" :
                  "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4";
   return (
     <div className={`grid ${colCls} divide-y sm:divide-y-0 sm:divide-x divide-[#D0D0D0] border border-[#D0D0D0]`}>
@@ -114,7 +114,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 xl:gap-14 items-center">
 
             {/* Left text */}
-            <div className="order-2 md:order-1">
+            <div className="order-1">
               <div className="inline-flex items-center gap-2 border border-[#D0D0D0] text-[#666666] text-xs font-medium px-3 py-1.5 rounded-full mb-6">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Закрытая профессиональная платформа
@@ -132,7 +132,7 @@ export default function Home() {
             </div>
 
             {/* Right — video */}
-            <div className="order-1 md:order-2">
+            <div className="order-2">
               <div className="rounded-2xl overflow-hidden shadow-xl border border-[#D0D0D0]" style={{ aspectRatio: "16/9" }}>
                 <iframe
                   src="/palata-promo/"
@@ -178,7 +178,7 @@ export default function Home() {
               </p>
             </div>
 
-            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-[#111111] leading-[1.05] tracking-tight mb-5">
+            <h2 className="text-3xl sm:text-4xl lg:text-6xl font-black text-[#111111] leading-[1.05] tracking-tight mb-5">
               Нужен эксперт?
             </h2>
 
@@ -197,10 +197,10 @@ export default function Home() {
         {/* Баннер 2 — Описание задачи / Критерии */}
         <div className="border-t border-[#D0D0D0]">
           <div className={`${W}`}>
-            <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-[#D0D0D0]">
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#D0D0D0]">
 
               {/* Left — white */}
-              <div className="py-10 sm:py-14 lg:pr-10 xl:pr-16 bg-white">
+              <div className="py-10 sm:py-14 md:pr-8 lg:pr-10 xl:pr-16 bg-white">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#002B5C] mb-1">
                   ОПИСАНИЕ ЗАДАЧИ
                 </p>
@@ -230,7 +230,7 @@ export default function Home() {
               </div>
 
               {/* Right — dark navy */}
-              <div className="py-10 sm:py-14 lg:pl-10 xl:pl-16 bg-[#002B5C]">
+              <div className="py-10 sm:py-14 md:pl-8 lg:pl-10 xl:pl-16 bg-[#002B5C]">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-6">
                   ЧТО УЧИТЫВАЕТСЯ ПРИ ПОДБОРЕ
                 </p>

@@ -108,14 +108,14 @@ export default function Login() {
 
   if (state.kind === "loading") {
     return (
-      <div className="min-h-[calc(100vh-56px)] flex items-center justify-center bg-[#F4F4F4]">
+      <div className="min-h-[calc(100vh-72px)] flex items-center justify-center bg-[#F4F4F4]">
         <div className="h-5 w-5 rounded-full border-2 border-[#D0D0D0] border-t-[#002B5C] animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-[calc(100vh-56px)] flex items-center justify-center px-4 sm:px-6 py-8 bg-[#F4F4F4]">
+    <div className="min-h-[calc(100vh-72px)] flex items-center justify-center px-4 sm:px-6 py-8 bg-[#F4F4F4]">
       <div className="w-full max-w-sm">
 
         {/* Brand mark */}

@@ -684,19 +684,7 @@ export default function Register() {
               </span>
             </label>
 
-            {/* 2. Marketing */}
-            <label className="flex items-start gap-3 cursor-pointer group">
-              <div className={`mt-0.5 w-4 h-4 flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors ${consentMarketing ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300 group-hover:border-[#002B5C]"}`}>
-                {consentMarketing && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
-                <input type="checkbox" className="sr-only" checked={consentMarketing} onChange={e => setConsentMarketing(e.target.checked)} />
-              </div>
-              <span className="text-sm text-slate-500 leading-snug">
-                Я соглашаюсь на получение рекламных рассылок, звонков и сообщений
-                <span className="text-red-500 ml-0.5">*</span>
-              </span>
-            </label>
-
-            {/* 3. Platform rules */}
+            {/* 2. Platform rules */}
             <label className="flex items-start gap-3 cursor-pointer group">
               <div className={`mt-0.5 w-4 h-4 flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors ${consentRules ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300 group-hover:border-[#002B5C]"}`}>
                 {consentRules && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
@@ -715,6 +703,17 @@ export default function Register() {
                 <span className="text-red-500 ml-0.5">*</span>
               </span>
             </label>
+
+            {/* 3. Marketing — optional */}
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <div className={`mt-0.5 w-4 h-4 flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors ${consentMarketing ? "bg-[#002B5C] border-[#002B5C]" : "border-slate-300 group-hover:border-[#002B5C]"}`}>
+                {consentMarketing && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                <input type="checkbox" className="sr-only" checked={consentMarketing} onChange={e => setConsentMarketing(e.target.checked)} />
+              </div>
+              <span className="text-sm text-slate-500 leading-snug">
+                Я согласен на получение рекламных и информационных сообщений по электронной почте
+              </span>
+            </label>
           </div>
 
           {error && (
@@ -725,7 +724,7 @@ export default function Register() {
 
           <button
             type="submit"
-            disabled={loading || !consentPersonal || !consentMarketing || !consentRules}
+            disabled={loading || !consentPersonal || !consentRules}
             className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Создание аккаунта…" : "Зарегистрироваться"}

@@ -192,10 +192,13 @@ export default function Register() {
 
     // ── Register via auth-service ──────────────────────────────────────────
     const registerResult = await authRegister({
-      email:     email.trim(),
+      email:                  email.trim(),
       password,
-      full_name: fullName.trim(),
-      phone:     phone.trim() || null,
+      full_name:              fullName.trim(),
+      phone:                  phone.trim() || null,
+      consent_personal_data:  consentPersonal,
+      consent_platform_rules: consentRules,
+      consent_marketing:      consentMarketing,
     });
 
     if (!registerResult.success) {

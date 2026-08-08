@@ -84,6 +84,9 @@ export type RegisterPayload = {
   password: string;
   full_name: string;
   phone?: string | null;
+  consent_personal_data: boolean;
+  consent_platform_rules: boolean;
+  consent_marketing: boolean;
 };
 
 export type RegisterResult = {
@@ -222,11 +225,14 @@ export async function register(
     {
       method: "POST",
       body: JSON.stringify({
-        project_code: PROJECT_CODE,
-        email: payload.email,
-        password: payload.password,
-        full_name: payload.full_name,
-        phone: payload.phone ?? null,
+        project_code:           PROJECT_CODE,
+        email:                  payload.email,
+        password:               payload.password,
+        full_name:              payload.full_name,
+        phone:                  payload.phone ?? null,
+        consent_personal_data:  payload.consent_personal_data,
+        consent_platform_rules: payload.consent_platform_rules,
+        consent_marketing:      payload.consent_marketing,
       }),
     },
     { email: payload.email, project_code: PROJECT_CODE },
